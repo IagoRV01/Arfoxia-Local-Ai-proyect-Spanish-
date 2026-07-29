@@ -4,6 +4,13 @@ Todos los cambios relevantes de Arfoxia se documentan en este archivo.
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/)
 y las versiones del proyecto siguen versionado semántico.
 
+## [Sin publicar]
+
+### Cambiado
+
+- Documentado el repositorio canónico y el flujo obligatorio para acompañar
+  cada cambio con changelog, pruebas, commit y subida a GitHub.
+
 ## [0.11.2] - 2026-07-29
 
 ### Añadido
