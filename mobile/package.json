@@ -1,0 +1,35 @@
+{
+  "name": "arfoxia-mobile",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start --go",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "check": "npm run typecheck && npm test && npx expo-doctor"
+  },
+  "dependencies": {
+    "expo": "~54.0.35",
+    "expo-camera": "~17.0.10",
+    "expo-document-picker": "~14.0.8",
+    "expo-file-system": "~19.0.23",
+    "expo-image": "~3.0.11",
+    "expo-image-manipulator": "~14.0.8",
+    "expo-image-picker": "~17.0.11",
+    "expo-secure-store": "~15.0.8",
+    "expo-status-bar": "~3.0.9",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-markdown-renderer": "^4.1.1",
+    "react-native-safe-area-context": "~5.6.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.0",
+    "tsx": "^4.23.1",
+    "typescript": "~5.9.2"
+  },
+  "private": true
+}

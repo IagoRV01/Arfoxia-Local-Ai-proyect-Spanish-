@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "glaceon-companion"
+version = "0.11.2"
+description = "Arfoxia, mascota Glaceon local con Tamagotchi, Ollama y control remoto seguro."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "PySide6>=6.8,<7",
+  "fastapi>=0.116,<1",
+  "uvicorn[standard]>=0.35,<1",
+  "httpx>=0.28,<1",
+  "pydantic>=2.11,<3",
+  "psutil>=7,<8",
+  "mss>=10,<11",
+  "Pillow>=11,<13",
+  "qrcode[pil]>=8,<9",
+  "ddgs>=9.14,<10",
+  "Send2Trash>=1.8.3,<2",
+  "python-multipart>=0.0.20,<1",
+  "pypdf>=5.9,<7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.4,<10"]
+
+[project.scripts]
+glaceon-companion = "glaceon_companion.app:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.package-data]
+glaceon_companion = ["static/*"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

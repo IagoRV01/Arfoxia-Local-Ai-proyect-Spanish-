@@ -1,0 +1,16 @@
+PySide6<7,>=6.8
+fastapi<1,>=0.116
+uvicorn[standard]<1,>=0.35
+httpx<1,>=0.28
+pydantic<3,>=2.11
+psutil<8,>=7
+mss<11,>=10
+Pillow<13,>=11
+qrcode[pil]<9,>=8
+ddgs<10,>=9.14
+Send2Trash<2,>=1.8.3
+python-multipart<1,>=0.0.20
+pypdf<7,>=5.9
+
+[dev]
+pytest<10,>=8.4

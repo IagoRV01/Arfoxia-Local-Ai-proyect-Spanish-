@@ -1,0 +1,61 @@
+{
+  "expo": {
+    "name": "Arfoxia",
+    "slug": "arfoxia-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#061522"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.iago.arfoxia",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Arfoxia usa la cámara únicamente para escanear el QR de emparejamiento.",
+        "NSPhotoLibraryUsageDescription": "Arfoxia necesita acceso a las fotos que decidas adjuntar al chat."
+      }
+    },
+    "android": {
+      "package": "com.iago.arfoxia",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#061522"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Arfoxia usa la cámara únicamente para escanear el QR de emparejamiento.",
+          "barcodeScannerEnabled": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Arfoxia necesita acceso a las fotos que decidas adjuntar al chat.",
+          "cameraPermission": "Arfoxia usa la cámara para adjuntar las fotos que tú decidas.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true,
+          "faceIDPermission": "Arfoxia puede usar Face ID para proteger tu emparejamiento."
+        }
+      ]
+    ]
+  }
+}

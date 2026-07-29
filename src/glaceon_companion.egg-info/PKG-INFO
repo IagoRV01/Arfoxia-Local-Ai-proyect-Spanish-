@@ -1,0 +1,153 @@
+Metadata-Version: 2.4
+Name: glaceon-companion
+Version: 0.11.2
+Summary: Arfoxia, mascota Glaceon local con Tamagotchi, Ollama y control remoto seguro.
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: PySide6<7,>=6.8
+Requires-Dist: fastapi<1,>=0.116
+Requires-Dist: uvicorn[standard]<1,>=0.35
+Requires-Dist: httpx<1,>=0.28
+Requires-Dist: pydantic<3,>=2.11
+Requires-Dist: psutil<8,>=7
+Requires-Dist: mss<11,>=10
+Requires-Dist: Pillow<13,>=11
+Requires-Dist: qrcode[pil]<9,>=8
+Requires-Dist: ddgs<10,>=9.14
+Requires-Dist: Send2Trash<2,>=1.8.3
+Requires-Dist: python-multipart<1,>=0.0.20
+Requires-Dist: pypdf<7,>=5.9
+Provides-Extra: dev
+Requires-Dist: pytest<10,>=8.4; extra == "dev"
+
+# Arfoxia — Glaceon Companion
+
+Arfoxia es una mascota local para Windows basada en un Glaceon macho. Combina animaciones existentes de la especie, un Tamagotchi determinista, conversación mediante Ollama y un conjunto cerrado de herramientas para controlar el PC. Incluye una app para iPhone mediante Expo Go que se comunica de forma privada con el PC a través de Tailscale.
+
+Este proyecto está pensado para uso personal y no comercial. Glaceon, Pokémon y los sprites oficiales pertenecen a sus respectivos titulares. Los aportes de PMDCollab exigen atribución y uso no comercial; el catálogo conserva URL, crédito, licencia indicada, hash y procedencia de cada archivo. No se ha generado ningún sprite.
+
+## Qué funciona
+
+- Ventana transparente, sin bordes y siempre visible.
+- Animaciones PMD de 8 direcciones: reposo, caminar, dormir, comer, despertar, sentarse y reacciones.
+- Paseos autónomos por la parte inferior del escritorio.
+- Arrastrar la mascota y acariciarla con movimiento mantenido.
+- Comida visible: **Dar una Baya Aranja** coloca el objeto delante de Arfoxia, activa su animación `Eat` y reduce la baya por etapas hasta que termina de comerla.
+- Juego de traer: **Jugar con el limón** muestra un limón que sigue el puntero; un clic lo lanza con un arco, Arfoxia corre a recogerlo y vuelve con él hacia el cursor. **Esc** o el botón derecho cancelan sin conceder la recompensa de juego.
+- Cama colocable y persistente: puede situarse desde el menú o arrastrarse directamente, conserva monitor y posición y puede retirarse desde el menú. Al soltar las patas de Arfoxia sobre el colchón, se centra en la cama y se duerme.
+- Menú contextual, chat y bandeja del sistema. Un doble clic abre una entrada compacta sobre Arfoxia; se cierra con **Esc** o tras 15 segundos sin actividad. Las respuestas breves aparecen en una burbuja y las conversaciones largas o autorizaciones conservan la ventana completa.
+- Al recibir un mensaje, Arfoxia interrumpe únicamente su paseo autónomo y se sienta para escucharlo; no abandona la comida, el sueño, la cama ni el juego del limón.
+- Hambre, felicidad, energía, confianza y curiosidad persistentes en SQLite.
+- Personalidad de Arfoxia ajustada como un Glaceon macho y compañero de **Gori**: respuestas breves, menos propias de un chatbot y con expresiones inspiradas en sus apariciones en los juegos.
+- Chat local con Ollama. Detecta exclusivamente el idioma del mensaje actual y responde en español, inglés o gallego; ante texto ambiguo usa español.
+- Conversaciones múltiples compartidas entre Windows y iPhone: crear, cambiar, renombrar y eliminar chats, recuperar el historial paginado y continuar en un dispositivo lo iniciado en el otro. Los reintentos móviles son idempotentes y no duplican un turno ya guardado.
+- Memoria local entre chats: Arfoxia recupera fragmentos relevantes de conversaciones anteriores mediante el índice local de SQLite. Se introducen como contexto no confiable y nunca pueden activar herramientas ni repetir órdenes antiguas.
+- Gestor independiente de dos GPU: el perfil Normal usa `qwen3.5:9b-q4_K_M` y Potencia usa `qwen3.6:27b-q4_K_M` en la gráfica de 16 GB. Con un clic puede iniciar un segundo Ollama privado y cargar `qwen3.5:4b` íntegramente en la gráfica de 8 GB. Cada proceso queda fijado por UUID, la telemetría muestra ambas tarjetas por separado y el servidor de 8 GB se descarga y detiene si aparece un juego de Steam, Epic, Xbox, GOG, Ubisoft, EA o Riot.
+- Adjuntos en el chat de escritorio y la app móvil: PNG, JPEG, WebP, PDF con texto extraíble, texto, código, JSON y CSV. Las imágenes se normalizan sin EXIF; tras enviar el mensaje se archivan fuera de SQLite en un almacén deduplicado por SHA-256 y pueden recuperarse desde el historial.
+- Convivencia con el Eevee de Codex: cuando su overlay está abierto, Arfoxia lo reconoce, se orienta hacia él, lo saluda y realiza interacciones ocasionales con animaciones y sonidos existentes. Sus paseos, arrastres y burbujas respetan una zona de separación para no taparlo.
+- Búsqueda web de solo lectura para información actual. SafeSearch permanece en nivel moderado, se aceptan como máximo cinco resultados HTTPS públicos y las respuestas incluyen las fuentes. La búsqueda intensiva contrasta de dos a cuatro consultas, con un máximo agregado de veinte resultados y sin descargar las páginas.
+- Puente local con Codex/Eevee: Arfoxia puede listar las tareas visibles, resolver un título sin ambigüedades y abrir directamente `codex://threads/<id>`.
+- Pausa de Codex siempre tras confirmación. Funciona automáticamente cuando el turno activo pertenece al servidor local que atiende la orden; para una ejecución propiedad del proceso privado de Codex Desktop, abre la tarea exacta y pide pulsar **Detener** manualmente.
+- Sonidos existentes de Glaceon en sus variantes `latest` y `legacy`, obtenidos de PokeAPI y asociados a distintas interacciones. Pueden activarse o silenciarse desde el menú contextual.
+- Apertura fiable de apps y navegador: las conocidas como Steam usan su ruta configurada y un enrutador determinista evita que el modelo responda por error que no puede abrirlas. Las órdenes de YouTube abren URLs escritas por Gori, búsquedas canónicas o vídeos reales devueltos por la búsqueda del mismo turno; nunca se inventan IDs `watch`. «Búscalos y ábrelos» recupera el tema del último mensaje de Gori, no de una URL sugerida por el asistente. Con autorización local también puede abrir otros ejecutables instalados, rutas absolutas y ventanas/protocolos admitidos de Windows.
+- Operaciones de archivos tipadas: crear carpetas, escribir o añadir texto, copiar, mover, renombrar y enviar una ruta exacta a la Papelera. No existe borrado permanente ni una consola genérica.
+- Apagado y reinicio habilitados con 30 segundos de margen; `cancel` permite abortar el temporizador.
+- Contraseña local obligatoria para cerrar programas, bloquear Windows, ejecutar destinos arbitrarios, modificar archivos, apagar/reiniciar o pausar Codex. Cada autorización queda ligada a una sola acción, caduca a los 90 segundos y se bloquea temporalmente tras cinco fallos.
+- API autenticada con token y capturas temporales.
+- App móvil para iPhone compatible con Expo Go, con sincronización periódica y al volver a primer plano.
+
+## Instalación rápida
+
+Desde PowerShell, en esta carpeta:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\install.ps1 -PullModel
+.\scripts\start.ps1
+```
+
+Para habilitar el inicio automático después de comprobar que todo funciona:
+
+```powershell
+.\scripts\install.ps1 -EnableStartup
+```
+
+La primera ejecución crea la configuración y la base de datos en `%LOCALAPPDATA%\GlaceonCompanion`. `secrets.json` contiene el token móvil y `authorization.json` solo un verificador scrypt con sal, nunca la contraseña. Ambos archivos reciben una ACL restringida al usuario de Windows, SYSTEM y administradores.
+
+## iPhone y acceso remoto
+
+La app móvil está en `mobile/` y funciona en Expo Go sin una cuenta de Apple. Ofrece chat compartido, archivos, controles, estado y capturas; el PC sigue siendo el servidor y conserva todos los datos.
+
+1. Instala Tailscale en Windows y en el iPhone e inicia sesión en la misma cuenta/tailnet.
+2. Ejecuta en Windows:
+
+```powershell
+.\scripts\configure_tailscale.ps1 -Install
+```
+
+3. Abre Arfoxia. Esperará a Tailscale e iniciará Expo/Metro automáticamente con
+   la dirección privada de la tailnet. `mobile/Iniciar Arfoxia movil.cmd` queda
+   como arranque manual de emergencia.
+4. Abre el proyecto reciente en Expo Go. Dentro de la app, usa el QR de
+   **Emparejar iPhone** que muestra Arfoxia en el PC.
+
+`tailscale serve` mantiene la API escuchando solo en `127.0.0.1` y publica un proxy HTTPS privado dentro de tu tailnet. No se abre ningún puerto del router ni se usa Funnel.
+El supervisor de Expo evita procesos duplicados, reinicia Metro si se cierra y
+registra su estado en `%LOCALAPPDATA%\GlaceonCompanion\expo-mobile.log`.
+
+## Acciones y seguridad
+
+Las aplicaciones conocidas viven en `%LOCALAPPDATA%\GlaceonCompanion\config.json`. Cada entrada contiene una ruta exacta y una lista exacta de procesos que pueden cerrarse. `open_target` puede resolver, tras autorización, un ejecutable del `PATH` o del menú Inicio, una ruta absoluta y protocolos concretos como `ms-settings:` o `steam:`. Nunca concatena una línea de comandos ni usa `shell=True`.
+
+La primera acción importante abre en el PC un campo enmascarado para configurar la contraseña local. Después, cada operación sensible crea un desafío aleatorio de un solo uso, ligado en memoria a sus argumentos exactos y con 90 segundos de validez. En escrituras se muestran ruta, bytes, vista previa, sobrescritura y una huella SHA-256; si un archivo cambia antes de ejecutar, la autorización queda invalidada. La contraseña se deriva con scrypt, se compara en tiempo constante y nunca entra en el chat, Ollama, la API, los eventos ni SQLite. Puede cambiarse con clic derecho sobre Arfoxia → **Contraseña de seguridad…**.
+
+Apagar y reiniciar están habilitados y siempre requieren ese desafío; Windows concede 30 segundos para cancelar. La API del iPhone puede solicitar la acción, pero solo muestra en el PC un botón pendiente: Gori debe pulsarlo antes de que aparezca el campo privado. Se admiten como máximo tres solicitudes sensibles remotas por minuto. Enviar `confirmed=true` no autoriza nada.
+
+Las modificaciones de archivos siguen un vocabulario cerrado y una ruta exacta. Las escrituras de texto son atómicas y están limitadas a 1 MiB, no sobrescriben salvo que la orden lo indique, y `trash` usa la Papelera. Se rechazan rutas relativas, dispositivos, nombres reservados, carpetas personales completas y los propios archivos de código/configuración/credenciales de Arfoxia. Arfoxia no lee archivos arbitrarios ni dispone de parche libre: puede escribir contenido indicado, añadirlo y mover/copiar/renombrar rutas. Continúan sin existir PowerShell/CMD genéricos, elevación, cambios de antivirus/firewall, instalación automática ni borrado permanente.
+
+La búsqueda online utiliza `ddgs` únicamente para recuperar títulos, extractos y enlaces HTTPS. Arfoxia no abre automáticamente las páginas encontradas, no descarga archivos y trata todo texto web como contenido no confiable. Puede desactivarse con `online_search_enabled=false`. En una conversación con adjuntos, una búsqueda solo puede activarse si el texto escrito por Gori pide explícitamente buscar, verificar o investigar: una instrucción incrustada en el archivo nunca habilita herramientas.
+
+El gestor consulta identidad, VRAM, uso y temperatura mediante el `nvidia-smi.exe` exacto de Windows, sin shell ni argumentos variables. El Ollama principal solo puede ver la GPU de 16 GB; la instancia secundaria escucha exclusivamente en `127.0.0.1:11435` y solo puede ver la GPU de 8 GB. Antes de aceptar cualquiera de los perfiles manuales, Arfoxia comprueba que el modelo queda al menos al 99,5 % en VRAM; si hubiera descarga de capas a RAM/CPU, cancela la operación. El móvil nunca accede directamente a Ollama: todos los controles pasan por la API autenticada de Arfoxia. Los valores principales viven en `config.json`: `ai_gpu_uuid`, `gaming_gpu_uuid`, `gaming_gpu_model`, `gaming_gpu_ollama_url`, `power_model`, los contextos respectivos y la lista opcional `game_processes`.
+
+Los adjuntos aceptan como máximo cuatro archivos, 8 MiB por archivo y 16 MiB por mensaje. Antes de enviar se conservan temporalmente en memoria; al asociarlos a un mensaje se archiva su representación validada en `%LOCALAPPDATA%\GlaceonCompanion\attachments`. El almacén tiene un límite lógico de 150 GiB, no preasigna ese espacio, deduplica contenido idéntico y mantiene 20 GiB libres para Windows. El contenido se marca como no confiable, no puede autorizar acciones del PC y nunca se inserta en SQLite ni en la auditoría.
+
+Eevee es la mascota visual de Codex, no un agente independiente. Arfoxia detecta su presencia de forma pasiva leyendo la selección y posición locales del overlay; nunca mueve a Eevee ni modifica esos archivos. El puente de tareas usa el protocolo local `codex app-server`, nunca coordenadas de pantalla, señales a procesos ni una consola genérica. Ejemplos:
+
+```text
+Arfoxia, busca online las novedades actuales de Ollama.
+Arfoxia, ¿qué tareas tengo en Codex?
+Arfoxia, abre en Codex la tarea Añadir seguimiento de horas en Steam.
+Arfoxia, abre ChatGPT y pausa la tarea Añadir seguimiento de horas en Steam.
+```
+
+En la última orden, abrir ChatGPT es inmediato y pausar requiere confirmar en la ventana de conversación. Codex Desktop mantiene sus turnos activos en un canal `stdio` privado: una segunda instancia puede leer el historial pero no siempre puede interrumpir esa ejecución viva. En ese caso Arfoxia lo dice explícitamente y abre la tarea correcta para completar el único clic manual. Consulta [docs/CODEX_BRIDGE.md](docs/CODEX_BRIDGE.md) para el detalle técnico y [docs/EEVEE_COMPANION.md](docs/EEVEE_COMPANION.md) para la convivencia visual.
+
+## Sprites y sonidos
+
+El descargador consulta cuatro fuentes visuales existentes:
+
+- PMDCollab/SpriteCollab: tres variantes animadas y retratos.
+- PokeAPI/sprites: variantes de los juegos, iconos, Home, Dream World y Showdown.
+- Pokémon Showdown: búsqueda de `glaceon` en todos los directorios publicados.
+- The Spriters Resource: los resultados etiquetados con Glaceon.
+
+Para el audio se utilizan exclusivamente los gritos existentes que el endpoint de Glaceon en PokeAPI publica como `cries.latest` y `cries.legacy`; no se sintetiza ni se genera ningún sonido nuevo.
+
+Las interacciones también reutilizan recursos existentes: la Baya Aranja de PokeAPI, un limón pixel-art CC0 de 7Soul1 y una cama pixel-art CC0 de ArlanTR. Solo se escalan al mostrarlos; no se ha creado ni alterado ningún sprite de Glaceon. Los enlaces, autores, licencia y hashes están en `assets/external/props/ATTRIBUTION.md` y `assets/external/asset_catalog.json`.
+
+Repite el inventario cuando quieras:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\fetch_assets.py
+```
+
+El resultado reproducible está en `assets/external/asset_catalog.json`. La aplicación utiliza por defecto `assets/external/pmd/default` porque ofrece las animaciones más completas y coherentes para un compañero de escritorio.
+
+## Desarrollo y pruebas
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\python.exe .\scripts\validate_assets.py
+```
+
+La arquitectura y el modelo de amenazas están documentados en `docs/ARCHITECTURE.md` y `docs/SECURITY.md`.

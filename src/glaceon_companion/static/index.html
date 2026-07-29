@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="theme-color" content="#071829" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Arfoxia · Glaceon Companion</title>
+    <link rel="manifest" href="/manifest.webmanifest?v=9" />
+    <link rel="stylesheet" href="/style.css?v=9" />
+    <style>
+      html, body { min-height: 100%; background: #071829; color: #edfaff; }
+    </style>
+    <script>
+      window.addEventListener("error", function () {
+        var card = document.getElementById("startup-error");
+        var connection = document.getElementById("connection");
+        if (card) card.classList.remove("hidden");
+        if (connection) connection.textContent = "No se ha podido iniciar";
+      });
+    </script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div class="mark" aria-hidden="true">❄</div>
+        <div>
+          <p class="eyebrow">Glaceon macho · compañero local</p>
+          <h1>Arfoxia</h1>
+          <p id="connection" class="muted">Conectando con tu PC…</p>
+        </div>
+      </header>
+
+      <section id="startup-error" class="card startup-error hidden" role="alert">
+        Safari no ha podido iniciar la interfaz. Recarga la página o vuelve a
+        escanear el QR de emparejamiento.
+      </section>
+
+      <section id="pairing" class="card hidden">
+        <h2>Emparejamiento necesario</h2>
+        <p>Abre el enlace de emparejamiento que muestra la mascota en Windows. El token se guarda solo en este dispositivo.</p>
+      </section>
+
+      <section id="dashboard" class="content hidden">
+        <div class="card state-card">
+          <div class="mood-line">
+            <span>Estado</span><strong id="mood">—</strong>
+          </div>
+          <div id="meters" class="meters"></div>
+        </div>
+
+        <div class="quick-grid card">
+          <button data-interaction="pet">Acariciar</button>
+          <button data-interaction="feed">Dar Baya Aranja</button>
+          <button data-interaction="play">Jugar</button>
+          <button data-interaction="sleep">Dormir</button>
+        </div>
+
+        <section class="card">
+          <h2>PC</h2>
+          <div class="action-grid">
+            <button data-action="pc_status">Estado</button>
+            <button data-action="take_screenshot">Captura</button>
+            <button data-open="steam">Steam</button>
+            <button data-open="discord">Discord</button>
+            <button data-open="chrome">Chrome</button>
+            <button data-open="explorador">Archivos</button>
+          </div>
+          <pre id="pc-status" class="status-box hidden"></pre>
+          <img id="screenshot" class="screenshot hidden" alt="Captura remota del PC" />
+        </section>
+
+        <section class="card chat-card">
+          <h2>Hablar con Arfoxia</h2>
+          <p class="muted">Entiende español, inglés y gallego, y puede responder con expresiones y sonidos de Glaceon.</p>
+          <div class="conversation-toolbar">
+            <label for="conversation-select">Conversación</label>
+            <div class="conversation-controls">
+              <select id="conversation-select" aria-label="Conversación activa">
+                <option value="">Cargando conversaciones…</option>
+              </select>
+              <button id="new-conversation-button" type="button">+ Nueva</button>
+            </div>
+          </div>
+          <div id="messages" class="messages" aria-live="polite"></div>
+          <form id="chat-form">
+            <div id="attachment-panel" class="attachment-panel hidden">
+              <div id="attachment-list" class="attachment-list"></div>
+              <p id="attachment-summary" class="attachment-summary"></p>
+            </div>
+            <div class="composer">
+              <button id="attach-button" type="button" class="secondary" aria-label="Adjuntar archivos" title="Adjuntar archivos">Adjuntar</button>
+              <input id="attachment-input" type="file" multiple hidden
+                accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,.md,.markdown,.csv,.json,.jsonl,.py,.js,.mjs,.cjs,.ts,.tsx,.jsx,.html,.htm,.css,.xml,.yaml,.yml,.toml,.ini,.cfg,.log,.sql,.ps1,.bat,image/png,image/jpeg,image/webp,application/pdf,text/*,application/json" />
+              <input id="message" maxlength="1200" autocomplete="off" placeholder="Escribe una orden o un mensaje…" />
+              <button id="send-button" type="submit">Enviar</button>
+            </div>
+            <p id="chat-status" class="chat-status hidden" role="status" aria-live="polite"></p>
+          </form>
+        </section>
+      </section>
+    </main>
+
+    <dialog id="confirm-dialog">
+      <h2>Autorización local</h2>
+      <p id="confirm-text"></p>
+      <p class="muted">La contraseña se introduce únicamente en el PC y nunca pasa por el chat ni por Ollama.</p>
+      <div class="dialog-actions">
+        <button id="close-confirm" class="secondary">Entendido</button>
+      </div>
+    </dialog>
+    <noscript>
+      <p class="card">Arfoxia necesita JavaScript activado en Safari.</p>
+    </noscript>
+    <script src="/app.js?v=9" defer></script>
+  </body>
+</html>

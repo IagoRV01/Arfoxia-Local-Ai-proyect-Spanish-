@@ -1,0 +1,25 @@
+* text=auto
+
+*.py text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.xml text eol=lf
+*.svg text eol=lf
+*.webmanifest text eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+
+*.gif binary
+*.ico binary
+*.jpeg binary
+*.jpg binary
+*.ogg binary
+*.png binary
+*.webp binary
+*.zip binary

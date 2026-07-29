@@ -1,0 +1,2 @@
+[console_scripts]
+glaceon-companion = glaceon_companion.app:main

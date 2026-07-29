@@ -1,0 +1,10 @@
+{
+  "name": "Arfoxia · Glaceon Companion",
+  "short_name": "Arfoxia",
+  "id": "/",
+  "start_url": "/?ui=9",
+  "display": "standalone",
+  "background_color": "#071829",
+  "theme_color": "#071829",
+  "lang": "es"
+}
