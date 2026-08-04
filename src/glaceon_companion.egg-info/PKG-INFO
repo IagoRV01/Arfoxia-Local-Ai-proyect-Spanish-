@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: glaceon-companion
-Version: 0.11.2
+Version: 0.11.3
 Summary: Arfoxia, mascota Glaceon local con Tamagotchi, Ollama y control remoto seguro.
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
@@ -17,6 +17,7 @@ Requires-Dist: ddgs<10,>=9.14
 Requires-Dist: Send2Trash<2,>=1.8.3
 Requires-Dist: python-multipart<1,>=0.0.20
 Requires-Dist: pypdf<7,>=5.9
+Requires-Dist: tzdata<2027,>=2026.1
 Provides-Extra: dev
 Requires-Dist: pytest<10,>=8.4; extra == "dev"
 
@@ -35,17 +36,18 @@ Este proyecto está pensado para uso personal y no comercial. Glaceon, Pokémon 
 - Comida visible: **Dar una Baya Aranja** coloca el objeto delante de Arfoxia, activa su animación `Eat` y reduce la baya por etapas hasta que termina de comerla.
 - Juego de traer: **Jugar con el limón** muestra un limón que sigue el puntero; un clic lo lanza con un arco, Arfoxia corre a recogerlo y vuelve con él hacia el cursor. **Esc** o el botón derecho cancelan sin conceder la recompensa de juego.
 - Cama colocable y persistente: puede situarse desde el menú o arrastrarse directamente, conserva monitor y posición y puede retirarse desde el menú. Al soltar las patas de Arfoxia sobre el colchón, se centra en la cama y se duerme.
-- Menú contextual, chat y bandeja del sistema. Un doble clic abre una entrada compacta sobre Arfoxia; se cierra con **Esc** o tras 15 segundos sin actividad. Las respuestas breves aparecen en una burbuja y las conversaciones largas o autorizaciones conservan la ventana completa.
+- Menú contextual, chat y bandeja del sistema. Un doble clic abre una entrada compacta sobre Arfoxia; se cierra con **Esc** o tras 15 segundos sin actividad. Las respuestas breves aparecen en una burbuja y las conversaciones largas o autorizaciones conservan la ventana completa. La ventana de conversación usa el copo de nieve de Arfoxia como icono de Windows y dispone de minimizar, restaurar y cerrar nativos.
 - Al recibir un mensaje, Arfoxia interrumpe únicamente su paseo autónomo y se sienta para escucharlo; no abandona la comida, el sueño, la cama ni el juego del limón.
 - Hambre, felicidad, energía, confianza y curiosidad persistentes en SQLite.
 - Personalidad de Arfoxia ajustada como un Glaceon macho y compañero de **Gori**: respuestas breves, menos propias de un chatbot y con expresiones inspiradas en sus apariciones en los juegos.
 - Chat local con Ollama. Detecta exclusivamente el idioma del mensaje actual y responde en español, inglés o gallego; ante texto ambiguo usa español.
-- Conversaciones múltiples compartidas entre Windows y iPhone: crear, cambiar, renombrar y eliminar chats, recuperar el historial paginado y continuar en un dispositivo lo iniciado en el otro. Los reintentos móviles son idempotentes y no duplican un turno ya guardado.
+- Conversaciones múltiples compartidas entre Windows y iPhone: crear, cambiar, renombrar y eliminar chats, recuperar el historial paginado y continuar en un dispositivo lo iniciado en el otro. Crear una conversación es siempre una acción explícita del botón **+ Nueva**; enviar, abrir Arfoxia, sincronizar o borrar el último chat nunca crea otro automáticamente. Los reintentos móviles son idempotentes y no duplican un turno ya guardado.
 - Memoria local entre chats: Arfoxia recupera fragmentos relevantes de conversaciones anteriores mediante el índice local de SQLite. Se introducen como contexto no confiable y nunca pueden activar herramientas ni repetir órdenes antiguas.
-- Gestor independiente de dos GPU: el perfil Normal usa `qwen3.5:9b-q4_K_M` y Potencia usa `qwen3.6:27b-q4_K_M` en la gráfica de 16 GB. Con un clic puede iniciar un segundo Ollama privado y cargar `qwen3.5:4b` íntegramente en la gráfica de 8 GB. Cada proceso queda fijado por UUID, la telemetría muestra ambas tarjetas por separado y el servidor de 8 GB se descarga y detiene si aparece un juego de Steam, Epic, Xbox, GOG, Ubisoft, EA o Riot.
+- Gestor independiente de dos GPU: el perfil Normal usa `qwen3.5:9b-q4_K_M` y Potencia usa `qwen3.6:27b-q4_K_M` en la gráfica de 16 GB. Ambos permanecen residentes tras cada respuesta (`keep_alive=-1`) hasta una descarga, un cambio manual de perfil o una salvaguarda por fallo. Con un clic puede iniciar un segundo Ollama privado y cargar `qwen3.5:4b` íntegramente en la gráfica de 8 GB. Cada proceso queda fijado por UUID, la telemetría muestra ambas tarjetas por separado y el servidor de 8 GB se descarga y detiene si aparece un juego de Steam, Epic, Xbox, GOG, Ubisoft, EA o Riot.
 - Adjuntos en el chat de escritorio y la app móvil: PNG, JPEG, WebP, PDF con texto extraíble, texto, código, JSON y CSV. Las imágenes se normalizan sin EXIF; tras enviar el mensaje se archivan fuera de SQLite en un almacén deduplicado por SHA-256 y pueden recuperarse desde el historial.
 - Convivencia con el Eevee de Codex: cuando su overlay está abierto, Arfoxia lo reconoce, se orienta hacia él, lo saluda y realiza interacciones ocasionales con animaciones y sonidos existentes. Sus paseos, arrastres y burbujas respetan una zona de separación para no taparlo.
 - Búsqueda web de solo lectura para información actual. SafeSearch permanece en nivel moderado, se aceptan como máximo cinco resultados HTTPS públicos y las respuestas incluyen las fuentes. La búsqueda intensiva contrasta de dos a cuatro consultas, con un máximo agregado de veinte resultados y sin descargar las páginas.
+- Reloj local dinámico por conversación: cada turno recibe la fecha y hora actuales de `Europe/Madrid`. «Hoy», «ayer», «mañana» y «esta semana» se convierten en fechas absolutas; las noticias usan el índice específico de noticias, una ventana temporal limitada y conservan fecha y medio de publicación. No hace falta reiniciar Arfoxia ni actualizar manualmente una base de datos al cambiar de día.
 - Puente local con Codex/Eevee: Arfoxia puede listar las tareas visibles, resolver un título sin ambigüedades y abrir directamente `codex://threads/<id>`.
 - Pausa de Codex siempre tras confirmación. Funciona automáticamente cuando el turno activo pertenece al servidor local que atiende la orden; para una ejecución propiedad del proceso privado de Codex Desktop, abre la tarea exacta y pide pulsar **Detener** manualmente.
 - Sonidos existentes de Glaceon en sus variantes `latest` y `legacy`, obtenidos de PokeAPI y asociados a distintas interacciones. Pueden activarse o silenciarse desde el menú contextual.
@@ -107,7 +109,7 @@ Las modificaciones de archivos siguen un vocabulario cerrado y una ruta exacta. 
 
 La búsqueda online utiliza `ddgs` únicamente para recuperar títulos, extractos y enlaces HTTPS. Arfoxia no abre automáticamente las páginas encontradas, no descarga archivos y trata todo texto web como contenido no confiable. Puede desactivarse con `online_search_enabled=false`. En una conversación con adjuntos, una búsqueda solo puede activarse si el texto escrito por Gori pide explícitamente buscar, verificar o investigar: una instrucción incrustada en el archivo nunca habilita herramientas.
 
-El gestor consulta identidad, VRAM, uso y temperatura mediante el `nvidia-smi.exe` exacto de Windows, sin shell ni argumentos variables. El Ollama principal solo puede ver la GPU de 16 GB; la instancia secundaria escucha exclusivamente en `127.0.0.1:11435` y solo puede ver la GPU de 8 GB. Antes de aceptar cualquiera de los perfiles manuales, Arfoxia comprueba que el modelo queda al menos al 99,5 % en VRAM; si hubiera descarga de capas a RAM/CPU, cancela la operación. El móvil nunca accede directamente a Ollama: todos los controles pasan por la API autenticada de Arfoxia. Los valores principales viven en `config.json`: `ai_gpu_uuid`, `gaming_gpu_uuid`, `gaming_gpu_model`, `gaming_gpu_ollama_url`, `power_model`, los contextos respectivos y la lista opcional `game_processes`.
+El gestor consulta identidad, VRAM, uso y temperatura mediante el `nvidia-smi.exe` exacto de Windows, sin shell ni argumentos variables. El Ollama principal solo puede ver la GPU de 16 GB; la instancia secundaria escucha exclusivamente en `127.0.0.1:11435` y solo puede ver la GPU de 8 GB. Antes de aceptar cualquiera de los perfiles manuales, Arfoxia comprueba que el modelo queda al menos al 99,5 % en VRAM; si hubiera descarga de capas a RAM/CPU, cancela la operación. El botón **Descargar VRAM** es la forma explícita de liberar los modelos residentes sin cambiar de perfil. El móvil nunca accede directamente a Ollama: todos los controles pasan por la API autenticada de Arfoxia. Los valores principales viven en `config.json`: `ai_gpu_uuid`, `gaming_gpu_uuid`, `gaming_gpu_model`, `gaming_gpu_ollama_url`, `power_model`, los contextos respectivos y la lista opcional `game_processes`.
 
 Los adjuntos aceptan como máximo cuatro archivos, 8 MiB por archivo y 16 MiB por mensaje. Antes de enviar se conservan temporalmente en memoria; al asociarlos a un mensaje se archiva su representación validada en `%LOCALAPPDATA%\GlaceonCompanion\attachments`. El almacén tiene un límite lógico de 150 GiB, no preasigna ese espacio, deduplica contenido idéntico y mantiene 20 GiB libres para Windows. El contenido se marca como no confiable, no puede autorizar acciones del PC y nunca se inserta en SQLite ni en la auditoría.
 
@@ -151,3 +153,4 @@ El resultado reproducible está en `assets/external/asset_catalog.json`. La apli
 ```
 
 La arquitectura y el modelo de amenazas están documentados en `docs/ARCHITECTURE.md` y `docs/SECURITY.md`.
+Los cambios publicados se registran en [CHANGELOG.md](CHANGELOG.md).

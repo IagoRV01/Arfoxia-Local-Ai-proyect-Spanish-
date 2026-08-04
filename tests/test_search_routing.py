@@ -1,13 +1,21 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from glaceon_companion.config import ConfigStore
 from glaceon_companion.services import CompanionService, required_web_action
+from glaceon_companion.temporal import TemporalContext
+
+
+FIXED_TEMPORAL = TemporalContext.current(
+    datetime(2026, 8, 4, 14, 30, tzinfo=ZoneInfo("Europe/Madrid"))
+)
 
 
 class FakeOllama:
@@ -113,14 +121,18 @@ def test_required_web_action_classifies_only_typed_unambiguous_requests(
     expected_action: str,
     expected_language: str,
 ) -> None:
-    routed = required_web_action(message)
+    routed = required_web_action(message, temporal_context=FIXED_TEMPORAL)
 
     assert routed is not None
     action, arguments = routed
     assert action == expected_action
     assert arguments["language"] == expected_language
+    assert arguments["as_of_date"] == "2026-08-04"
+    assert arguments["timezone"] == "Europe/Madrid"
     if action == "web_search":
-        assert arguments["query"] == message
+        if arguments.get("search_type") != "news":
+            assert arguments["query"].startswith(message)
+        assert "2026-08-0" in arguments["query"]
     else:
         assert 2 <= len(arguments["queries"]) <= 4
         assert len(set(arguments["queries"])) == len(arguments["queries"])
@@ -326,6 +338,55 @@ def test_model_tool_call_is_not_duplicated_by_deterministic_routing(
     assert len(result["action_results"]) == 1
     assert len(ollama.requests) == 2
     assert ollama.options[1]["tools"] is False
+
+
+def test_current_news_uses_trusted_date_even_if_model_proposes_an_old_query(
+    tmp_path: Path,
+) -> None:
+    service = make_service(tmp_path)
+    service._temporal_context_factory = lambda: FIXED_TEMPORAL
+    search = TrackingSearch()
+    ollama = FakeOllama(
+        [
+            {
+                "message": {
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "function": {
+                                "name": "web_search",
+                                "arguments": {
+                                    "query": "noticias antiguas de 2024",
+                                    "language": "es",
+                                },
+                            }
+                        }
+                    ],
+                }
+            },
+            {"message": {"content": "Noticias verificadas del día."}},
+        ]
+    )
+    service.online_search = search
+    service.ollama = ollama
+    try:
+        result = asyncio.run(
+            chat_in_new_conversation(service, "Busca noticias de hoy sobre IA")
+        )
+    finally:
+        service.close()
+
+    assert result["message"] == "Noticias verificadas del día."
+    assert len(search.search_calls) == 1
+    query, options = search.search_calls[0]
+    assert "2026-08-04" in query
+    assert "2024" not in query
+    assert options["search_type"] == "news"
+    assert options["timelimit"] == "d"
+    assert options["date_from"] == "2026-08-04"
+    assert options["date_to"] == "2026-08-04"
+    assert ollama.options[0]["temporal_context"] is FIXED_TEMPORAL
+    assert ollama.options[1]["temporal_context"] is FIXED_TEMPORAL
 
 
 def test_attachment_content_cannot_enable_web_but_typed_request_can(

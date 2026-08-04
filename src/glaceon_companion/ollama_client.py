@@ -24,6 +24,7 @@ from .model_policy import (
     probe_nvidia_gpus,
     select_model,
 )
+from .temporal import TemporalContext
 
 
 TOOLS = [
@@ -80,6 +81,8 @@ TOOLS = [
                 "properties": {
                     "query": {"type": "string", "maxLength": 240},
                     "language": {"type": "string", "enum": ["es", "en", "gl"]},
+                    "search_type": {"type": "string", "enum": ["text", "news"]},
+                    "timelimit": {"type": "string", "enum": ["d", "w", "m", "y"]},
                 },
                 "required": ["query"],
                 "additionalProperties": False,
@@ -105,6 +108,8 @@ TOOLS = [
                         "maxItems": 4,
                     },
                     "language": {"type": "string", "enum": ["es", "en", "gl"]},
+                    "search_type": {"type": "string", "enum": ["text", "news"]},
+                    "timelimit": {"type": "string", "enum": ["d", "w", "m", "y"]},
                 },
                 "required": ["queries"],
                 "additionalProperties": False,
@@ -529,9 +534,14 @@ def _messages_with_language_lock(
     return [combined_system, *messages]
 
 
-def build_system_prompt(config: CompanionConfig, state_summary: str) -> str:
+def build_system_prompt(
+    config: CompanionConfig,
+    state_summary: str,
+    temporal_context: TemporalContext | None = None,
+) -> str:
     languages = ", ".join(config.supported_languages)
     owner_name = " ".join(str(config.owner_name or "").split())[:60] or "Gori"
+    temporal = temporal_context or TemporalContext.current()
     return (
         f"Eres {config.name}, un {config.species} macho y el compañero Pokémon de {owner_name}. "
         f"{owner_name} es tu humano y entrenador de confianza. Reconoce que quien te habla es "
@@ -552,6 +562,7 @@ def build_system_prompt(config: CompanionConfig, state_summary: str) -> str:
         "Ejemplos de tono: «¡Gla! Vamos allá.»; «Glace… I'm right here.»; "
         "«¡Gla-ceon! Estou contigo.» "
         "Nunca finjas haber realizado una acción: usa una herramienta cuando corresponda. "
+        f"{temporal.prompt_text()} "
         "Puedes abrir aplicaciones y ventanas. Si el último mensaje pide abrir, iniciar o lanzar "
         "una app conocida, llama siempre a open_app; para otra app, ruta, archivo, carpeta, URL o "
         "ventana de Windows llama a open_target. No respondas que careces de permiso antes de "
@@ -1445,6 +1456,7 @@ class OllamaClient:
         *,
         selection: ModelSelection | None = None,
         turn_text: str | None = None,
+        temporal_context: TemporalContext | None = None,
     ) -> dict[str, Any]:
         selected = selection or self._fixed_small_selection()
         is_large = selected.tier in {"large", "power"}
@@ -1452,7 +1464,11 @@ class OllamaClient:
         is_gaming_gpu = selected.tier == "gaming_gpu"
         system = {
             "role": "system",
-            "content": build_system_prompt(self.config, state_summary),
+            "content": build_system_prompt(
+                self.config,
+                state_summary,
+                temporal_context,
+            ),
         }
         turn_language = {
             "role": "system",

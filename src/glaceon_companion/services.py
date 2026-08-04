@@ -53,6 +53,13 @@ from .ollama_client import (
 )
 from .model_policy import ModelSelection, detect_game_processes
 from .online_search import OnlineSearchClient, OnlineSearchError
+from .temporal import (
+    TemporalContext,
+    TemporalGrounding,
+    enrich_query_with_time,
+    madrid_date_from_iso,
+    resolve_temporal_grounding,
+)
 
 
 _OPEN_COMMAND_WORDS = {
@@ -136,6 +143,7 @@ _WEB_ACTION_WORDS = {
     "consultar",
     "contrasta",
     "contrastar",
+    "find",
     "investiga",
     "investigar",
     "research",
@@ -180,6 +188,11 @@ _WEATHER_TIME_WORDS = {
     "hora",
     "horas",
     "hoy",
+    "ayer",
+    "onte",
+    "yesterday",
+    "semana",
+    "week",
     "mana",
     "manana",
     "now",
@@ -197,7 +210,10 @@ _CURRENT_INFO_WORDS = {
     "horario",
     "marcador",
     "news",
+    "noticia",
     "noticias",
+    "novas",
+    "novidades",
     "precio",
     "prezos",
     "price",
@@ -222,9 +238,17 @@ _CURRENT_TIME_WORDS = {
     "reciente",
     "recientes",
     "today",
+    "week",
+    "semana",
+    "ayer",
+    "onte",
+    "yesterday",
+    "ultima",
+    "ultimas",
     "ultimo",
     "ultimos",
 }
+_NEWS_WORDS = {"news", "noticia", "noticias", "novas", "novidades"}
 _WEB_NEGATIONS = {"no", "non", "sen", "sin", "without"}
 
 
@@ -251,7 +275,115 @@ def deterministic_open_app(text: str, app_ids: Any) -> str | None:
     return matches[0]
 
 
-def required_web_action(text: str) -> tuple[str, dict[str, Any]] | None:
+def _temporal_web_metadata(
+    context: TemporalContext,
+    grounding: TemporalGrounding | None,
+    *,
+    news: bool,
+) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "as_of_date": context.today.isoformat(),
+        "searched_at": context.now.isoformat(timespec="seconds"),
+        "timezone": context.timezone_name,
+    }
+    if news:
+        metadata["search_type"] = "news"
+    if grounding is not None:
+        metadata.update(
+            {
+                "relative_period": grounding.period,
+                "date_from": grounding.date_from.isoformat(),
+                "date_to": grounding.date_to.isoformat(),
+            }
+        )
+        if news and grounding.timelimit:
+            metadata["timelimit"] = grounding.timelimit
+    return metadata
+
+
+def _news_search_subject(text: str) -> str:
+    """Turn a spoken news command into a compact search-engine query."""
+
+    normalized = " ".join(str(text or "").split()).strip()
+    subject_matches = list(
+        re.finditer(
+            r"(?=\b(?:sobre|acerca\s+de|about)\s*:?\s*(.+)$)",
+            normalized,
+            flags=re.IGNORECASE,
+        )
+    )
+    if subject_matches:
+        normalized = subject_matches[-1].group(1).strip()
+    normalized = re.sub(
+        r"^\s*(?:busca|buscar|búscame|buscame|search|find|consulta|consultar)\b\s*",
+        "",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    normalized = re.sub(
+        r"\b(?:de\s+)?(?:hoy|hoxe|today|ayer|onte|yesterday)\b",
+        " ",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    normalized = re.sub(
+        r"\b(?:de\s+)?(?:esta\s+semana|this\s+week|"
+        r"últimas?\s+24\s+horas|last\s+24\s+hours)\b",
+        " ",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    normalized = re.sub(
+        r"^\s*(?:últimas?|recent(?:e|es)?|latest)?\s*"
+        r"(?:noticias?|news|novas|novidades)\b\s*"
+        r"(?:sobre|acerca\s+de|about|del|de)?\s*",
+        "",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    return " ".join(normalized.split()).strip() or "noticias"
+
+
+def _web_action_arguments(
+    text: str,
+    *,
+    language: str,
+    temporal_context: TemporalContext,
+    research: bool,
+) -> dict[str, Any]:
+    folded = _fold_command(text)
+    words = set(re.findall(r"[a-z0-9]+", folded))
+    news = bool(words & _NEWS_WORDS)
+    grounding = resolve_temporal_grounding(
+        text,
+        temporal_context,
+        default_latest=news,
+    )
+    metadata = _temporal_web_metadata(
+        temporal_context,
+        grounding,
+        news=news,
+    )
+    search_text = _news_search_subject(text) if news else text
+    if research:
+        base = " ".join(str(search_text or "").split()).strip()[:160].rstrip()
+        queries = [
+            enrich_query_with_time(base, grounding),
+            enrich_query_with_time(f"fuentes oficiales {base}", grounding),
+        ]
+        return {"queries": queries, "language": language, **metadata}
+    return {
+        "query": enrich_query_with_time(search_text, grounding),
+        "language": language,
+        **metadata,
+    }
+
+
+def required_web_action(
+    text: str,
+    *,
+    temporal_context: TemporalContext | None = None,
+) -> tuple[str, dict[str, Any]] | None:
     """Route unambiguous current-information requests from typed text only."""
 
     normalized = " ".join(str(text or "").split())
@@ -270,15 +402,16 @@ def required_web_action(text: str) -> tuple[str, dict[str, Any]] | None:
             return None
 
     language = detect_message_language(normalized)
-    query = normalized[:240].rstrip()
+    temporal = temporal_context or TemporalContext.current()
     if any(phrase in folded for phrase in _INTENSIVE_WEB_PHRASES):
-        base = normalized[:190].rstrip()
         return (
             "web_research",
-            {
-                "queries": [base, f"{base} fuentes oficiales"[:240]],
-                "language": language,
-            },
+            _web_action_arguments(
+                normalized,
+                language=language,
+                temporal_context=temporal,
+                research=True,
+            ),
         )
 
     explicit_search = bool(words & _WEB_ACTION_WORDS)
@@ -299,10 +432,12 @@ def required_web_action(text: str) -> tuple[str, dict[str, Any]] | None:
         return None
     return (
         "web_search",
-        {
-            "query": query,
-            "language": language,
-        },
+        _web_action_arguments(
+            normalized,
+            language=language,
+            temporal_context=temporal,
+            research=False,
+        ),
     )
 
 
@@ -349,6 +484,7 @@ class CompanionService:
         self.codex = CodexBridge()
         self.ollama = OllamaClient(config, runtime_dir=store.data_dir)
         self.attachments = AttachmentStore()
+        self._temporal_context_factory = TemporalContext.current
         # Desktop and FastAPI use different asyncio loops. A native lock keeps
         # each model/tool turn atomic across both without binding to one loop.
         self._turn_lock = threading.Lock()
@@ -1034,17 +1170,41 @@ class CompanionService:
             )
         query = str(args.get("query") or "")
         language = str(args.get("language") or "es").casefold()
+        temporal_options = {
+            key: args[key]
+            for key in (
+                "search_type",
+                "timelimit",
+                "as_of_date",
+                "searched_at",
+                "timezone",
+                "relative_period",
+                "date_from",
+                "date_to",
+            )
+            if key in args
+        }
         payload = self.online_search.search_payload(
             query,
             language=language,
             max_results=self.config.online_search_max_results,
+            **temporal_options,
         )
         count = len(payload["results"])
-        message = (
-            f"He encontrado {count} fuentes online de solo lectura."
-            if count
-            else "No he encontrado resultados online seguros para esa consulta."
-        )
+        if count:
+            noun = (
+                "noticias con fecha verificable"
+                if payload.get("search_type") == "news"
+                else "fuentes online de solo lectura"
+            )
+            message = f"He encontrado {count} {noun}."
+        elif payload.get("search_type") == "news":
+            message = (
+                "No he encontrado noticias seguras con una fecha verificable "
+                "dentro del periodo solicitado."
+            )
+        else:
+            message = "No he encontrado resultados online seguros para esa consulta."
         return ActionResult(bool(count), "web_search", message, payload)
 
     def _research_online(self, args: dict[str, Any]) -> ActionResult:
@@ -1056,7 +1216,25 @@ class CompanionService:
             )
         queries = args.get("queries")
         language = str(args.get("language") or "es").casefold()
-        payload = self.online_search.research_payload(queries, language=language)
+        temporal_options = {
+            key: args[key]
+            for key in (
+                "search_type",
+                "timelimit",
+                "as_of_date",
+                "searched_at",
+                "timezone",
+                "relative_period",
+                "date_from",
+                "date_to",
+            )
+            if key in args
+        }
+        payload = self.online_search.research_payload(
+            queries,
+            language=language,
+            **temporal_options,
+        )
         count = len(payload["results"])
         if count:
             suffix = " Algunos intentos no respondieron." if payload.get("partial") else ""
@@ -1454,7 +1632,10 @@ class CompanionService:
                 continue
             title = str(item.get("conversation_title") or "Chat anterior")
             role = "Gori" if item.get("role") == "user" else self.config.name
-            fragments.append(f"- [{title} · {role}] {content[:520]}")
+            created_date = madrid_date_from_iso(str(item.get("created_at") or ""))
+            created_on = created_date.isoformat() if created_date is not None else ""
+            dated_title = f"{created_on} · {title}" if created_on else title
+            fragments.append(f"- [{dated_title} · {role}] {content[:520]}")
         if not fragments:
             return None
         return {
@@ -1604,6 +1785,7 @@ class CompanionService:
             if research_mode
             else turn_text
         )
+        temporal_context = self._temporal_context_factory()
         stored_text = text or "Analiza estos archivos adjuntos."
         user_message = existing_user or self.database.add_message(
             "user",
@@ -1726,6 +1908,7 @@ class CompanionService:
                         tools=False,
                         selection=browser_selection,
                         turn_text=turn_text,
+                        temporal_context=temporal_context,
                     )
                 except (httpx.HTTPError, asyncio.TimeoutError):
                     if browser_selection.tier in {
@@ -1750,6 +1933,7 @@ class CompanionService:
                                 tools=False,
                                 selection=browser_selection,
                                 turn_text=turn_text,
+                                temporal_context=temporal_context,
                             )
                         except (httpx.HTTPError, asyncio.TimeoutError):
                             browser_reply = None
@@ -1865,20 +2049,10 @@ class CompanionService:
                 attachments,
                 max_text_chars=text_limit,
             )
-        if research_mode:
-            language = detect_message_language(turn_text)
-            required_web = (
-                "web_research",
-                {
-                    "queries": [
-                        turn_text[:240],
-                        f"{turn_text[:210]} fuentes oficiales",
-                    ],
-                    "language": language,
-                },
-            )
-        else:
-            required_web = required_web_action(routing_text)
+        required_web = required_web_action(
+            routing_text,
+            temporal_context=temporal_context,
+        )
         if required_web is not None:
             required_action, required_arguments = required_web
             enabled_tools: bool | set[str] = {required_action}
@@ -1893,6 +2067,7 @@ class CompanionService:
                 tools=enabled_tools,
                 selection=selection,
                 turn_text=turn_text,
+                temporal_context=temporal_context,
             )
         except (httpx.HTTPError, asyncio.TimeoutError) as exc:
             if selection.tier in {"large", "power", "gaming_gpu"}:
@@ -1911,6 +2086,7 @@ class CompanionService:
                         tools=enabled_tools,
                         selection=selection,
                         turn_text=turn_text,
+                        temporal_context=temporal_context,
                     )
                 except (httpx.HTTPError, asyncio.TimeoutError) as fallback_exc:
                     exc = fallback_exc
@@ -1945,17 +2121,12 @@ class CompanionService:
         assistant_message = response.get("message") or {}
         proposed_calls = parse_tool_calls(assistant_message)
         assistant_for_followup = assistant_message
-        if required_action is not None and not any(
-            action == required_action for action, _ in proposed_calls
-        ):
-            # Ollama's native API has no `tool_choice=required`. If Qwen says
-            # "I need to search" without emitting a structured call, insert
-            # the deterministic, typed-text-only call instead of publishing
-            # that empty promise to the user.
-            proposed_calls = [
-                (required_action, required_arguments),
-                *proposed_calls[:5],
-            ]
+        if required_action is not None:
+            # Ollama's native API has no ``tool_choice=required``. Always use
+            # the trusted arguments derived from Gori's current text. This
+            # prevents a model call such as ``noticias 2024`` from weakening
+            # the exact current-date query and recency window.
+            proposed_calls = [(required_action, required_arguments)]
             assistant_for_followup = {
                 "role": "assistant",
                 "content": "",
@@ -2065,6 +2236,7 @@ class CompanionService:
                     tools=False,
                     selection=selection,
                     turn_text=turn_text,
+                    temporal_context=temporal_context,
                 )
                 message = clean_model_text(
                     (followup.get("message") or {}).get("content")
@@ -2082,6 +2254,7 @@ class CompanionService:
                             tools=False,
                             selection=selection,
                             turn_text=turn_text,
+                            temporal_context=temporal_context,
                         )
                         message = clean_model_text(
                             (followup.get("message") or {}).get("content")

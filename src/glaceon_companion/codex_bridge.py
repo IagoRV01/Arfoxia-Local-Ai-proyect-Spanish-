@@ -214,7 +214,7 @@ class CodexAppServerClient(AbstractContextManager["CodexAppServerClient"]):
                     "clientInfo": {
                         "name": "arfoxia",
                         "title": "Arfoxia local companion",
-                        "version": "0.11.2",
+                        "version": "0.11.3",
                     }
                 },
             )

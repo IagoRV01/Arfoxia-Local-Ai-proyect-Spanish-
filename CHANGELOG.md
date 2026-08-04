@@ -6,10 +6,35 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+## [0.11.3] - 2026-08-04
+
+### Añadido
+
+- Reloj local inmutable por turno en `Europe/Madrid`, con fecha, hora, ayer,
+  mañana y límites de la semana disponibles para el modelo.
+- Búsqueda específica de noticias con ventana diaria o semanal, fecha de
+  referencia y metadatos verificables de publicación y fuente.
+
 ### Cambiado
 
 - Documentado el repositorio canónico y el flujo obligatorio para acompañar
   cada cambio con changelog, pruebas, commit y subida a GitHub.
+- Las expresiones «hoy», «ayer», «mañana» y «esta semana» se transforman en
+  fechas ISO dentro de la consulta, por lo que la caché cambia cada día.
+- Los recuerdos de otros chats muestran su fecha para evitar que un «hoy»
+  antiguo compita con el reloj actual.
+
+### Corregido
+
+- Impedido que el modelo sustituya una consulta temporal determinista por una
+  consulta antigua o sin fecha.
+- Las noticias sin fecha verificable o fuera del periodo solicitado ya no se
+  presentan como noticias actuales.
+- Las fechas históricas escritas por Gori se respetan y no se sustituyen por
+  «hoy»; las búsquedas de texto como el tiempo tampoco se filtran como noticias.
+- Las consultas de noticias usan una frase breve y una fecha ISO natural; si
+  el proveedor etiqueta mal el día, también se valida la fecha explícita de la
+  URL antes de descartar una noticia vigente.
 
 ## [0.11.2] - 2026-07-29
 
@@ -58,3 +83,4 @@ y las versiones del proyecto siguen versionado semántico.
   multimedia como binarios en Git.
 
 [0.11.2]: https://github.com/IagoRV01/Arfoxia-Local-Ai-proyect-Spanish-/releases/tag/v0.11.2
+[0.11.3]: https://github.com/IagoRV01/Arfoxia-Local-Ai-proyect-Spanish-/releases/tag/v0.11.3

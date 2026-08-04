@@ -82,7 +82,7 @@ class ModelModeRequest(BaseModel):
 def create_api(service: CompanionService, token: str, static_dir: Path) -> FastAPI:
     app = FastAPI(
         title=f"{service.config.name} Companion",
-        version="0.11.2",
+        version="0.11.3",
         docs_url=None,
         redoc_url=None,
     )
@@ -141,7 +141,7 @@ def create_api(service: CompanionService, token: str, static_dir: Path) -> FastA
                 float(service.config.chat_storage_limit_gb),
                 150.0,
             ),
-            "version": "0.11.2",
+            "version": "0.11.3",
         }
 
     @app.get("/api/state", dependencies=[auth])

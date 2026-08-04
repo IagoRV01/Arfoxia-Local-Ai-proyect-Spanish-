@@ -8,8 +8,12 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import asdict, dataclass
+from datetime import date, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any, Protocol
 from urllib.parse import urlsplit, urlunsplit
+
+from .temporal import TemporalContext
 
 
 UNTRUSTED_WEB_NOTICE = (
@@ -31,6 +35,17 @@ class SearchProvider(Protocol):
         region: str,
         safesearch: str,
         max_results: int,
+        timelimit: str | None = None,
+    ) -> Iterable[Mapping[str, Any]]: ...
+
+    def news(
+        self,
+        query: str,
+        *,
+        region: str,
+        safesearch: str,
+        max_results: int,
+        timelimit: str | None = None,
     ) -> Iterable[Mapping[str, Any]]: ...
 
 
@@ -39,17 +54,23 @@ class SearchResult:
     title: str
     url: str
     snippet: str
+    published_at: str | None = None
+    source: str | None = None
 
     def to_dict(self) -> dict[str, str]:
-        return asdict(self)
+        return {
+            key: value
+            for key, value in asdict(self).items()
+            if value not in {None, ""}
+        }
 
 
 class OnlineSearchClient:
     """Small, read-only web search boundary backed by DDGS.
 
-    The client performs text searches only. It never downloads or opens a result
-    URL, and it drops non-HTTPS, local and malformed links before returning data
-    to the model.
+    The client performs text or news-index searches only. It never downloads or
+    opens a result URL, and it drops non-HTTPS, local and malformed links before
+    returning data to the model.
     """
 
     MAX_QUERY_CHARS = 240
@@ -81,9 +102,24 @@ class OnlineSearchClient:
         *,
         language: str = "es",
         max_results: int = MAX_RESULTS,
+        search_type: str = "text",
+        timelimit: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
     ) -> list[SearchResult]:
         normalized_query = self._normalize_query(query)
-        return self._search_normalized(normalized_query, language, max_results)
+        normalized_type = self._normalize_search_type(search_type)
+        normalized_limit = self._normalize_timelimit(timelimit)
+        start, end = self._normalize_date_range(date_from, date_to)
+        return self._search_normalized(
+            normalized_query,
+            language,
+            max_results,
+            search_type=normalized_type,
+            timelimit=normalized_limit,
+            date_from=start if normalized_type == "news" else None,
+            date_to=end if normalized_type == "news" else None,
+        )
 
     def search_payload(
         self,
@@ -91,21 +127,61 @@ class OnlineSearchClient:
         *,
         language: str = "es",
         max_results: int = MAX_RESULTS,
+        search_type: str = "text",
+        timelimit: str | None = None,
+        as_of_date: str | None = None,
+        searched_at: str | None = None,
+        timezone: str | None = None,
+        relative_period: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
     ) -> dict[str, Any]:
         """Return a bounded payload suitable for an Ollama tool result."""
 
         normalized_query = self._normalize_query(query)
-        results = self._search_normalized(normalized_query, language, max_results)
-        return {
+        normalized_type = self._normalize_search_type(search_type)
+        normalized_limit = self._normalize_timelimit(timelimit)
+        start, end = self._normalize_date_range(date_from, date_to)
+        results = self._search_normalized(
+            normalized_query,
+            language,
+            max_results,
+            search_type=normalized_type,
+            timelimit=normalized_limit,
+            date_from=start if normalized_type == "news" else None,
+            date_to=end if normalized_type == "news" else None,
+        )
+        payload: dict[str, Any] = {
             "query": normalized_query,
             "security_notice": UNTRUSTED_WEB_NOTICE,
             "results": [result.to_dict() for result in results],
         }
+        self._add_temporal_metadata(
+            payload,
+            search_type=normalized_type,
+            timelimit=normalized_limit,
+            as_of_date=as_of_date,
+            searched_at=searched_at,
+            timezone=timezone,
+            relative_period=relative_period,
+            date_from=start,
+            date_to=end,
+        )
+        return payload
 
     def research_payload(
         self,
         queries: Iterable[str],
         language: str = "es",
+        *,
+        search_type: str = "text",
+        timelimit: str | None = None,
+        as_of_date: str | None = None,
+        searched_at: str | None = None,
+        timezone: str | None = None,
+        relative_period: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
     ) -> dict[str, Any]:
         """Run a bounded multi-query search without opening result pages.
 
@@ -116,6 +192,9 @@ class OnlineSearchClient:
         """
 
         normalized_queries = self._normalize_research_queries(queries)
+        normalized_type = self._normalize_search_type(search_type)
+        normalized_limit = self._normalize_timelimit(timelimit)
+        start, end = self._normalize_date_range(date_from, date_to)
         executor = ThreadPoolExecutor(
             max_workers=self.MAX_RESEARCH_CONCURRENCY,
             thread_name_prefix="arfoxia-web-research",
@@ -126,6 +205,10 @@ class OnlineSearchClient:
                 query,
                 language,
                 self.MAX_RESULTS,
+                search_type=normalized_type,
+                timelimit=normalized_limit,
+                date_from=start if normalized_type == "news" else None,
+                date_to=end if normalized_type == "news" else None,
             ): index
             for index, query in enumerate(normalized_queries)
         }
@@ -156,28 +239,60 @@ class OnlineSearchClient:
             for index, query in enumerate(normalized_queries)
             if index in failed_indexes
         ]
-        return {
+        payload: dict[str, Any] = {
             "queries": normalized_queries,
             "security_notice": UNTRUSTED_WEB_NOTICE,
             "results": [result.to_dict() for result in results],
             "partial": bool(failed_queries),
             "failed_queries": failed_queries,
         }
+        self._add_temporal_metadata(
+            payload,
+            search_type=normalized_type,
+            timelimit=normalized_limit,
+            as_of_date=as_of_date,
+            searched_at=searched_at,
+            timezone=timezone,
+            relative_period=relative_period,
+            date_from=start,
+            date_to=end,
+        )
+        return payload
 
     def _search_normalized(
-        self, query: str, language: str, max_results: int
+        self,
+        query: str,
+        language: str,
+        max_results: int,
+        *,
+        search_type: str = "text",
+        timelimit: str | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
     ) -> list[SearchResult]:
         limit = self._result_limit(max_results)
         region = self._REGIONS.get(str(language).casefold(), "es-es")
         try:
             provider = self._provider_factory()
-            rows = provider.text(
-                query,
-                region=region,
-                safesearch="moderate",
-                max_results=limit,
+            arguments: dict[str, Any] = {
+                "region": region,
+                "safesearch": "moderate",
+                "max_results": limit,
+            }
+            if search_type == "news":
+                arguments["timelimit"] = timelimit
+                rows = provider.news(query, **arguments)
+            else:
+                if timelimit:
+                    arguments["timelimit"] = timelimit
+                rows = provider.text(query, **arguments)
+            return self._sanitize_rows(
+                rows,
+                limit,
+                require_published_date=search_type == "news" and date_from is not None,
+                date_from=date_from,
+                date_to=date_to,
             )
-            return self._sanitize_rows(rows, limit)
         except OnlineSearchError:
             raise
         except Exception as exc:
@@ -244,6 +359,8 @@ class OnlineSearchClient:
                     title=result.title,
                     url=result.url,
                     snippet=snippet,
+                    published_at=result.published_at,
+                    source=result.source,
                 )
                 seen_urls.add(url_key)
                 domain_counts[domain] += 1
@@ -276,7 +393,13 @@ class OnlineSearchClient:
 
     @classmethod
     def _sanitize_rows(
-        cls, rows: Iterable[Mapping[str, Any]], limit: int
+        cls,
+        rows: Iterable[Mapping[str, Any]],
+        limit: int,
+        *,
+        require_published_date: bool = False,
+        date_from: date | None = None,
+        date_to: date | None = None,
     ) -> list[SearchResult]:
         output: list[SearchResult] = []
         seen_urls: set[str] = set()
@@ -290,7 +413,6 @@ class OnlineSearchClient:
             url = cls._safe_https_url(row.get("href") or row.get("url"))
             if not url or url.casefold() in seen_urls:
                 continue
-            seen_urls.add(url.casefold())
             hostname = urlsplit(url).hostname or "Fuente web"
             title = cls._clean_result_text(
                 row.get("title") or hostname, cls.MAX_TITLE_CHARS
@@ -299,8 +421,167 @@ class OnlineSearchClient:
                 row.get("body") or row.get("snippet") or "",
                 cls.MAX_SNIPPET_CHARS,
             )
-            output.append(SearchResult(title=title, url=url, snippet=snippet))
+            provider_date = cls._clean_result_text(row.get("date") or "", 80)
+            provider_published_on = cls._published_local_date(provider_date)
+            url_published_on = cls._published_date_from_url(url)
+            dated_candidates = [
+                ("provider", provider_published_on),
+                ("url", url_published_on),
+            ]
+            dated_candidates = [
+                (source_name, published_on)
+                for source_name, published_on in dated_candidates
+                if published_on is not None
+            ]
+            chosen_source = ""
+            published_on: date | None = None
+            if date_from is not None or date_to is not None:
+                for source_name, candidate in dated_candidates:
+                    if date_from is not None and candidate < date_from:
+                        continue
+                    if date_to is not None and candidate > date_to:
+                        continue
+                    chosen_source = source_name
+                    published_on = candidate
+                    break
+            elif dated_candidates:
+                chosen_source, published_on = dated_candidates[0]
+            if require_published_date and published_on is None:
+                continue
+            if (date_from is not None or date_to is not None) and published_on is None:
+                continue
+            published_at = (
+                provider_date
+                if chosen_source == "provider"
+                else published_on.isoformat() if published_on is not None else ""
+            )
+            source = cls._clean_result_text(
+                row.get("source") or row.get("publisher") or "",
+                120,
+            )
+            seen_urls.add(url.casefold())
+            output.append(
+                SearchResult(
+                    title=title,
+                    url=url,
+                    snippet=snippet,
+                    published_at=published_at or None,
+                    source=source or None,
+                )
+            )
         return output
+
+    @staticmethod
+    def _normalize_search_type(value: str) -> str:
+        normalized = str(value or "text").casefold().strip()
+        if normalized not in {"text", "news"}:
+            raise ValueError("El tipo de búsqueda no es válido.")
+        return normalized
+
+    @staticmethod
+    def _normalize_timelimit(value: str | None) -> str | None:
+        if value is None or not str(value).strip():
+            return None
+        normalized = str(value).casefold().strip()
+        if normalized not in {"d", "w", "m", "y"}:
+            raise ValueError("El límite temporal de búsqueda no es válido.")
+        return normalized
+
+    @staticmethod
+    def _normalize_date_range(
+        date_from: str | None,
+        date_to: str | None,
+    ) -> tuple[date | None, date | None]:
+        def parse(value: str | None) -> date | None:
+            if value is None or not str(value).strip():
+                return None
+            try:
+                return date.fromisoformat(str(value).strip())
+            except ValueError as exc:
+                raise ValueError("La fecha de búsqueda no es válida.") from exc
+
+        start = parse(date_from)
+        end = parse(date_to)
+        if start is not None and end is not None and start > end:
+            raise ValueError("El intervalo temporal de búsqueda no es válido.")
+        return start, end
+
+    @classmethod
+    def _add_temporal_metadata(
+        cls,
+        payload: dict[str, Any],
+        *,
+        search_type: str,
+        timelimit: str | None,
+        as_of_date: str | None,
+        searched_at: str | None,
+        timezone: str | None,
+        relative_period: str | None,
+        date_from: date | None,
+        date_to: date | None,
+    ) -> None:
+        if search_type != "text":
+            payload["search_type"] = search_type
+        if timelimit:
+            payload["timelimit"] = timelimit
+        if as_of_date:
+            normalized_as_of, _ = cls._normalize_date_range(as_of_date, None)
+            if normalized_as_of is not None:
+                payload["as_of_date"] = normalized_as_of.isoformat()
+        if searched_at:
+            raw = str(searched_at).strip()
+            try:
+                datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise ValueError("La hora de búsqueda no es válida.") from exc
+            payload["searched_at"] = raw[:64]
+        if timezone:
+            payload["timezone"] = cls._clean_result_text(timezone, 64)
+        if relative_period:
+            payload["relative_period"] = cls._clean_result_text(
+                relative_period,
+                64,
+            )
+        if date_from is not None:
+            payload["date_from"] = date_from.isoformat()
+        if date_to is not None:
+            payload["date_to"] = date_to.isoformat()
+
+    @staticmethod
+    def _published_local_date(value: str) -> date | None:
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        parsed: datetime | None = None
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            try:
+                parsed = parsedate_to_datetime(raw)
+            except (TypeError, ValueError, OverflowError):
+                try:
+                    return date.fromisoformat(raw[:10])
+                except ValueError:
+                    return None
+        if parsed.tzinfo is None:
+            return parsed.date()
+        madrid_zone = TemporalContext.current().now.tzinfo
+        return parsed.astimezone(madrid_zone).date()
+
+    @staticmethod
+    def _published_date_from_url(value: str) -> date | None:
+        path = urlsplit(str(value or "")).path
+        match = re.search(
+            r"(?<!\d)(20\d{2})[/_-](0?[1-9]|1[0-2])[/_-]"
+            r"(0?[1-9]|[12]\d|3[01])(?!\d)",
+            path,
+        )
+        if match is None:
+            return None
+        try:
+            return date(*(int(part) for part in match.groups()))
+        except ValueError:
+            return None
 
     @staticmethod
     def _result_limit(value: int) -> int:

@@ -6,12 +6,14 @@ src/glaceon_companion/api.py
 src/glaceon_companion/app.py
 src/glaceon_companion/attachments.py
 src/glaceon_companion/auth.py
+src/glaceon_companion/browser_routing.py
 src/glaceon_companion/codex_bridge.py
 src/glaceon_companion/codex_presence.py
 src/glaceon_companion/config.py
 src/glaceon_companion/conversation_storage.py
 src/glaceon_companion/database.py
 src/glaceon_companion/desktop_interactions.py
+src/glaceon_companion/icons.py
 src/glaceon_companion/mobile_runtime.py
 src/glaceon_companion/model_policy.py
 src/glaceon_companion/ollama_client.py
@@ -19,6 +21,7 @@ src/glaceon_companion/online_search.py
 src/glaceon_companion/services.py
 src/glaceon_companion/sprites.py
 src/glaceon_companion/state.py
+src/glaceon_companion/temporal.py
 src/glaceon_companion/ui.py
 src/glaceon_companion.egg-info/PKG-INFO
 src/glaceon_companion.egg-info/SOURCES.txt
@@ -53,5 +56,8 @@ tests/test_physical_pet_ui.py
 tests/test_quick_chat_popup.py
 tests/test_search_routing.py
 tests/test_service_tools.py
+tests/test_snowflake_icon.py
 tests/test_sprites.py
 tests/test_state.py
+tests/test_temporal_grounding.py
+tests/test_youtube_browser_routing.py

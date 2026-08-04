@@ -136,6 +136,159 @@ def test_tool_payload_marks_results_as_untrusted():
     }
 
 
+class FakeNewsProvider:
+    def __init__(self, rows=()) -> None:
+        self.rows = list(rows)
+        self.news_calls: list[dict] = []
+        self.text_calls: list[dict] = []
+
+    def text(self, query: str, **kwargs):
+        self.text_calls.append({"query": query, **kwargs})
+        return []
+
+    def news(self, query: str, **kwargs):
+        self.news_calls.append({"query": query, **kwargs})
+        return list(self.rows)
+
+
+def test_daily_news_uses_news_index_and_keeps_only_dated_results_from_the_day():
+    provider = FakeNewsProvider(
+        [
+            {
+                "title": "Noticia de hoy",
+                "url": "https://example.com/hoy",
+                "body": "Publicada durante el día solicitado.",
+                "date": "2026-08-04T09:30:00+00:00",
+                "source": "Agencia fiable",
+            },
+            {
+                "title": "Noticia anterior",
+                "url": "https://example.org/ayer",
+                "body": "No debe mezclarse con hoy.",
+                "date": "2026-08-03T09:30:00+00:00",
+                "source": "Otra agencia",
+            },
+            {
+                "title": "Sin fecha",
+                "url": "https://example.net/sin-fecha",
+                "body": "No se puede verificar.",
+            },
+        ]
+    )
+
+    payload = client(provider).search_payload(
+        "noticias IA 2026-08-04",
+        search_type="news",
+        timelimit="d",
+        as_of_date="2026-08-04",
+        searched_at="2026-08-04T14:30:00+02:00",
+        timezone="Europe/Madrid",
+        relative_period="hoy",
+        date_from="2026-08-04",
+        date_to="2026-08-04",
+    )
+
+    assert provider.text_calls == []
+    assert provider.news_calls == [
+        {
+            "query": "noticias IA 2026-08-04",
+            "region": "es-es",
+            "safesearch": "moderate",
+            "max_results": 5,
+            "timelimit": "d",
+        }
+    ]
+    assert payload["results"] == [
+        {
+            "title": "Noticia de hoy",
+            "url": "https://example.com/hoy",
+            "snippet": "Publicada durante el día solicitado.",
+            "published_at": "2026-08-04T09:30:00+00:00",
+            "source": "Agencia fiable",
+        }
+    ]
+    assert payload["search_type"] == "news"
+    assert payload["timelimit"] == "d"
+    assert payload["as_of_date"] == "2026-08-04"
+    assert payload["searched_at"] == "2026-08-04T14:30:00+02:00"
+    assert payload["date_from"] == payload["date_to"] == "2026-08-04"
+
+
+def test_daily_news_accepts_an_explicit_url_date_when_provider_date_is_stale():
+    provider = FakeNewsProvider(
+        [
+            {
+                "title": "Resumen informativo del día",
+                "url": "https://example.com/2026/08/04/resumen-del-dia/",
+                "body": "La fuente marca incorrectamente una fecha anterior.",
+                "date": "2026-08-02T10:00:00+00:00",
+                "source": "Agencia fiable",
+            }
+        ]
+    )
+
+    payload = client(provider).search_payload(
+        "resumen 2026-08-04",
+        search_type="news",
+        timelimit="d",
+        date_from="2026-08-04",
+        date_to="2026-08-04",
+    )
+
+    assert payload["results"][0]["published_at"] == "2026-08-04"
+    assert payload["results"][0]["source"] == "Agencia fiable"
+
+
+def test_temporal_metadata_does_not_filter_ordinary_text_search_results():
+    provider = FakeProvider(
+        [
+            {
+                "title": "Previsión del tiempo",
+                "url": "https://example.com/weather",
+                "body": "Pronóstico para mañana sin fecha de publicación.",
+            }
+        ]
+    )
+
+    payload = client(provider).search_payload(
+        "tiempo Madrid 2026-08-05",
+        search_type="text",
+        as_of_date="2026-08-04",
+        date_from="2026-08-05",
+        date_to="2026-08-05",
+    )
+
+    assert len(payload["results"]) == 1
+    assert payload["date_from"] == payload["date_to"] == "2026-08-05"
+
+
+@pytest.mark.parametrize(
+    ("search_type", "timelimit", "date_from", "date_to"),
+    [
+        ("images", "d", None, None),
+        ("news", "hour", None, None),
+        ("news", "d", "04-08-2026", "2026-08-04"),
+        ("news", "d", "2026-08-05", "2026-08-04"),
+    ],
+)
+def test_news_search_rejects_untrusted_temporal_options(
+    search_type, timelimit, date_from, date_to
+):
+    provider = FakeNewsProvider()
+
+    with pytest.raises(ValueError):
+        client(provider).search_payload(
+            "consulta",
+            search_type=search_type,
+            timelimit=timelimit,
+            date_from=date_from,
+            date_to=date_to,
+        )
+
+    assert provider.news_calls == []
+    assert provider.text_calls == []
+
+
 class ResearchProvider:
     def __init__(
         self,
