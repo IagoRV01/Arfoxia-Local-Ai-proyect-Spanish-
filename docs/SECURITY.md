@@ -13,7 +13,7 @@
 
 `ActionDispatcher` acepta únicamente nombres y argumentos tipados. `open_app` ejecuta una ruta exacta de configuración y `close_app` solo termina nombres exactos de proceso asociados. `open_target` permite HTTPS de forma inmediata; un ejecutable instalado, una ruta ejecutable o un protocolo de Windows requieren antes una autorización local. Todos se abren con una lista de argumentos exacta u `os.startfile`, nunca con `shell=True`.
 
-Los enlaces HTTPS se entregan al navegador predeterminado de Windows. Se rechazan credenciales embebidas, puertos malformados, espacios, barras invertidas y escapes `%` inválidos; las rutas de vídeo conocidas de YouTube también deben contener un identificador con sintaxis válida. `os.startfile` solo confirma que Windows aceptó la solicitud: no permite comprobar que la página terminó de cargar ni imponer si el navegador reutiliza una pestaña o crea otra.
+Los enlaces HTTPS escritos literalmente por Gori se entregan al navegador predeterminado de Windows. Se rechazan credenciales embebidas, puertos malformados, espacios, barras invertidas y escapes `%` inválidos; las rutas de vídeo conocidas de YouTube también deben contener un identificador con sintaxis válida. Los destinos sugeridos por el modelo solo pueden abrirse si coinciden exactamente con una fuente comprobada durante ese turno. `os.startfile` confirma únicamente que Windows aceptó la solicitud: no permite comprobar que la página terminó de cargar ni imponer si el navegador reutiliza una pestaña o crea otra.
 
 Cerrar aplicaciones, bloquear Windows, apagar/reiniciar, pausar Codex y cualquier modificación de archivos requieren una contraseña introducida exclusivamente en un diálogo enmascarado del PC. El servicio valida primero los argumentos y después crea un identificador aleatorio ligado a una copia profunda de la acción y sus argumentos; caduca a los 90 segundos y se consume antes de ejecutar. Un booleano `confirmed=true` procedente de la API se rechaza y no concede permisos. Las peticiones remotas quedan como botón pendiente —no abren solas el campo— y se limitan a tres por minuto.
 
@@ -31,8 +31,10 @@ La posición normalizada de la cama es el único dato nuevo que se persiste. No 
 
 - Solo se permite búsqueda de texto con SafeSearch moderado y un máximo de cinco resultados.
 - Las consultas se truncan a 240 caracteres y no se guardan completas en el registro de auditoría.
-- Se descartan URLs HTTP, locales, privadas, con credenciales o malformadas.
-- No se abre ni descarga el contenido de los resultados; el modelo recibe únicamente título, extracto y URL saneados.
+- Se descartan URLs HTTP, locales, privadas, con credenciales, malformadas o no disponibles en el momento de la consulta.
+- Cada destino general se comprueba con la IP pública fijada, TLS con SNI, redirecciones revalidadas y peticiones HEAD/GET de cabeceras acotadas. No se descarga el cuerpo ni se ejecuta contenido.
+- Los vídeos se validan contra oEmbed de YouTube y contra una lectura limitada del estado de reproducción de la página oficial; así se distingue la mera existencia de metadatos de la reproducción real desde el PC.
+- El modelo recibe únicamente título, extracto y URL comprobada; cualquier otra URL escrita en su respuesta se elimina antes de guardarla o enviarla a los clientes.
 - Todo resultado lleva una advertencia de contenido no confiable. Una página no puede conceder permisos ni cambiar las reglas de Arfoxia.
 
 ## Codex y Eevee
@@ -54,7 +56,7 @@ Se reducen a un máximo de 1600×1000, se guardan como WebP con un identificador
 - Una contraseña corta continúa siendo susceptible a ataque offline si alguien roba el verificador. No reutilices una clave que hayas escrito en una conversación; cámbiala desde el menú local.
 - Una captura puede contener información sensible visible en pantalla.
 - Terminar un proceso puede perder cambios sin guardar; por eso necesita confirmación.
-- Los resultados de un buscador pueden ser falsos o estar desactualizados; Arfoxia muestra las fuentes para poder comprobarlos.
+- Una fuente accesible todavía puede contener información falsa, cambiar después de la comprobación o estar restringida en otra región; Arfoxia muestra las fuentes para poder evaluarlas.
 - El protocolo de Codex lee metadatos locales para resolver las tareas, pero la API de Arfoxia solo devuelve título y estado. Quien obtenga el token podría solicitar ese listado reducido.
 - Codex no publica una API externa para ordenar animaciones a Eevee. Las interacciones directas se representan desde Arfoxia; Eevee conserva únicamente sus reacciones naturales gestionadas por Codex.
 - Los sprites no tienen una licencia comercial uniforme. No distribuyas la carpeta `assets/external` sin revisar cada fuente.

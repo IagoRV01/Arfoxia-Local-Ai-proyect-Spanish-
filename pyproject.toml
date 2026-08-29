@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "glaceon-companion"
-version = "0.11.3"
+version = "0.11.4"
 description = "Arfoxia, mascota Glaceon local con Tamagotchi, Ollama y control remoto seguro."
 readme = "README.md"
 requires-python = ">=3.11"

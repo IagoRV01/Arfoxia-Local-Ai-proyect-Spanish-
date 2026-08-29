@@ -3,17 +3,19 @@ from __future__ import annotations
 import html
 import ipaddress
 import re
+import time
 import unicodedata
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor, wait
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any, Protocol
 from urllib.parse import urlsplit, urlunsplit
 
 from .temporal import TemporalContext
+from .link_availability import LinkAvailability, LinkAvailabilityChecker
 
 
 UNTRUSTED_WEB_NOTICE = (
@@ -56,6 +58,7 @@ class SearchResult:
     snippet: str
     published_at: str | None = None
     source: str | None = None
+    availability: str | None = None
 
     def to_dict(self) -> dict[str, str]:
         return {
@@ -68,9 +71,12 @@ class SearchResult:
 class OnlineSearchClient:
     """Small, read-only web search boundary backed by DDGS.
 
-    The client performs text or news-index searches only. It never downloads or
-    opens a result URL, and it drops non-HTTPS, local and malformed links before
-    returning data to the model.
+    The client performs text or news-index searches only. It validates result
+    availability using headers or official YouTube endpoints, and drops
+    non-HTTPS, local, malformed or unavailable links before returning data to
+    the model. It never reads generic page bodies; the YouTube fallback reads a
+    strictly bounded watch page to distinguish a removed video from one that
+    merely disables embedding.
     """
 
     MAX_QUERY_CHARS = 240
@@ -85,6 +91,9 @@ class OnlineSearchClient:
     MAX_RESEARCH_RESULTS_PER_DOMAIN = 2
     MAX_RESEARCH_CHARS = 20_000
     RESEARCH_DEADLINE_SECONDS = 20.0
+    LINK_VALIDATION_DEADLINE_SECONDS = 8.0
+    MAX_LINK_CHECKS = 15
+    MAX_LINK_CHECK_CONCURRENCY = 5
     _REGIONS = {"es": "es-es", "gl": "es-es", "en": "us-en"}
 
     def __init__(
@@ -92,9 +101,22 @@ class OnlineSearchClient:
         provider_factory: Callable[[], SearchProvider] | None = None,
         *,
         timeout_seconds: float = 8.0,
+        availability_checker: (
+            Callable[[str], LinkAvailability | bool] | None
+        ) = None,
+        validate_result_urls: bool | None = None,
     ) -> None:
         self.timeout_seconds = max(1.0, min(float(timeout_seconds), 20.0))
         self._provider_factory = provider_factory or self._default_provider
+        self._availability_checker = (
+            availability_checker
+            or LinkAvailabilityChecker(
+                timeout_seconds=min(self.timeout_seconds, 5.0)
+            ).check
+        )
+        self._validate_result_urls = (
+            True if validate_result_urls is None else bool(validate_result_urls)
+        )
 
     def search(
         self,
@@ -156,6 +178,8 @@ class OnlineSearchClient:
             "security_notice": UNTRUSTED_WEB_NOTICE,
             "results": [result.to_dict() for result in results],
         }
+        if self._validate_result_urls:
+            payload["link_validation"] = "live"
         self._add_temporal_metadata(
             payload,
             search_type=normalized_type,
@@ -246,6 +270,8 @@ class OnlineSearchClient:
             "partial": bool(failed_queries),
             "failed_queries": failed_queries,
         }
+        if self._validate_result_urls:
+            payload["link_validation"] = "live"
         self._add_temporal_metadata(
             payload,
             search_type=normalized_type,
@@ -271,13 +297,18 @@ class OnlineSearchClient:
         date_to: date | None = None,
     ) -> list[SearchResult]:
         limit = self._result_limit(max_results)
+        provider_limit = (
+            min(self.MAX_LINK_CHECKS, max(limit * 3, limit))
+            if self._validate_result_urls
+            else limit
+        )
         region = self._REGIONS.get(str(language).casefold(), "es-es")
         try:
             provider = self._provider_factory()
             arguments: dict[str, Any] = {
                 "region": region,
                 "safesearch": "moderate",
-                "max_results": limit,
+                "max_results": provider_limit,
             }
             if search_type == "news":
                 arguments["timelimit"] = timelimit
@@ -286,19 +317,95 @@ class OnlineSearchClient:
                 if timelimit:
                     arguments["timelimit"] = timelimit
                 rows = provider.text(query, **arguments)
-            return self._sanitize_rows(
+            candidates = self._sanitize_rows(
                 rows,
-                limit,
+                provider_limit,
                 require_published_date=search_type == "news" and date_from is not None,
                 date_from=date_from,
                 date_to=date_to,
             )
+            return self._available_results(candidates, limit)
         except OnlineSearchError:
             raise
         except Exception as exc:
             raise OnlineSearchError(
                 "La búsqueda online no está disponible en este momento."
             ) from exc
+
+    def check_url(self, url: str) -> LinkAvailability:
+        """Expose the same bounded probe used by search result filtering."""
+
+        outcome = self._availability_checker(str(url or ""))
+        if isinstance(outcome, LinkAvailability):
+            return outcome
+        return LinkAvailability(
+            "available" if bool(outcome) else "unavailable",
+            final_url=str(url or "") if bool(outcome) else None,
+        )
+
+    def _available_results(
+        self,
+        candidates: list[SearchResult],
+        limit: int,
+    ) -> list[SearchResult]:
+        if not self._validate_result_urls:
+            return candidates[:limit]
+        bounded = candidates[: self.MAX_LINK_CHECKS]
+        if not bounded:
+            return []
+        executor = ThreadPoolExecutor(
+            max_workers=min(self.MAX_LINK_CHECK_CONCURRENCY, len(bounded)),
+            thread_name_prefix="arfoxia-link-check",
+        )
+        verified: list[SearchResult] = []
+        deadline = time.monotonic() + self.LINK_VALIDATION_DEADLINE_SECONDS
+        try:
+            cursor = 0
+            while cursor < len(bounded) and len(verified) < limit:
+                remaining_slots = max(1, limit - len(verified))
+                batch_size = min(
+                    self.MAX_LINK_CHECK_CONCURRENCY,
+                    remaining_slots,
+                    len(bounded) - cursor,
+                )
+                batch = bounded[cursor : cursor + batch_size]
+                cursor += batch_size
+                futures: dict[Future[LinkAvailability], int] = {
+                    executor.submit(self.check_url, result.url): index
+                    for index, result in enumerate(batch)
+                }
+                remaining_time = deadline - time.monotonic()
+                if remaining_time <= 0:
+                    for future in futures:
+                        future.cancel()
+                    break
+                done, pending = wait(futures, timeout=remaining_time)
+                outcomes: dict[int, LinkAvailability] = {}
+                for future in done:
+                    try:
+                        outcomes[futures[future]] = future.result()
+                    except Exception:
+                        continue
+                for future in pending:
+                    future.cancel()
+                for index, original in enumerate(batch):
+                    outcome = outcomes.get(index)
+                    if outcome is None or not outcome.available:
+                        continue
+                    verified.append(
+                        replace(
+                            original,
+                            url=outcome.final_url or original.url,
+                            availability="verified",
+                        )
+                    )
+                    if len(verified) >= limit:
+                        break
+                if pending:
+                    break
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+        return verified[:limit]
 
     @classmethod
     def _normalize_research_queries(
@@ -342,7 +449,12 @@ class OnlineSearchClient:
             for result in results_by_query[index]:
                 if len(output) >= cls.MAX_RESEARCH_RESULTS:
                     return output
-                url_key = result.url.casefold()
+                video_id = LinkAvailabilityChecker.youtube_video_id(result.url)
+                url_key = (
+                    f"youtube:{video_id}"
+                    if video_id is not None
+                    else result.url.casefold()
+                )
                 if url_key in seen_urls:
                     continue
                 hostname = (urlsplit(result.url).hostname or "").casefold()
@@ -361,6 +473,7 @@ class OnlineSearchClient:
                     snippet=snippet,
                     published_at=result.published_at,
                     source=result.source,
+                    availability=result.availability,
                 )
                 seen_urls.add(url_key)
                 domain_counts[domain] += 1
@@ -411,7 +524,13 @@ class OnlineSearchClient:
             if not isinstance(row, Mapping):
                 continue
             url = cls._safe_https_url(row.get("href") or row.get("url"))
-            if not url or url.casefold() in seen_urls:
+            video_id = LinkAvailabilityChecker.youtube_video_id(url or "")
+            url_identity = (
+                f"youtube:{video_id}"
+                if video_id is not None
+                else str(url or "").casefold()
+            )
+            if not url or url_identity in seen_urls:
                 continue
             hostname = urlsplit(url).hostname or "Fuente web"
             title = cls._clean_result_text(
@@ -459,7 +578,7 @@ class OnlineSearchClient:
                 row.get("source") or row.get("publisher") or "",
                 120,
             )
-            seen_urls.add(url.casefold())
+            seen_urls.add(url_identity)
             output.append(
                 SearchResult(
                     title=title,

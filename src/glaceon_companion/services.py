@@ -37,6 +37,8 @@ from .attachments import (
 from .browser_routing import (
     BrowserPlan,
     extract_explicit_https_urls,
+    filter_untrusted_https_urls,
+    https_url_key,
     is_youtube_video_url,
     plan_browser_request,
     youtube_search_url,
@@ -123,6 +125,10 @@ _WEB_INTENT_WORDS = {
     "contrasta",
     "contrastar",
     "fuentes",
+    "enlace",
+    "enlaces",
+    "ligazon",
+    "ligazons",
     "internet",
     "investiga",
     "investigar",
@@ -131,6 +137,8 @@ _WEB_INTENT_WORDS = {
     "research",
     "search",
     "sources",
+    "link",
+    "links",
     "verifica",
     "verificar",
     "verify",
@@ -249,7 +257,51 @@ _CURRENT_TIME_WORDS = {
     "ultimos",
 }
 _NEWS_WORDS = {"news", "noticia", "noticias", "novas", "novidades"}
-_WEB_NEGATIONS = {"no", "non", "sen", "sin", "without"}
+_LINK_NOUN_WORDS = {
+    "enlace",
+    "enlaces",
+    "fuente",
+    "fuentes",
+    "link",
+    "links",
+    "ligazon",
+    "ligazons",
+    "source",
+    "sources",
+    "url",
+    "urls",
+    "video",
+    "videos",
+}
+_LINK_REQUEST_WORDS = {
+    "comparte",
+    "comparteme",
+    "dame",
+    "envia",
+    "enviame",
+    "give",
+    "manda",
+    "mandame",
+    "pasa",
+    "pasame",
+    "recomienda",
+    "recomiendame",
+    "recomenda",
+    "recomendame",
+    "recommend",
+    "send",
+    "share",
+}
+_WEB_NEGATIONS = {
+    "dont",
+    "never",
+    "no",
+    "non",
+    "not",
+    "sen",
+    "sin",
+    "without",
+}
 
 
 def _fold_command(value: str) -> str:
@@ -344,6 +396,33 @@ def _news_search_subject(text: str) -> str:
     return " ".join(normalized.split()).strip() or "noticias"
 
 
+def _link_search_subject(text: str) -> str:
+    """Remove the conversational wrapper from an explicit link request."""
+
+    normalized = " ".join(str(text or "").split()).strip()
+    normalized = re.sub(
+        r"^\s*(?:arfoxia[\s,:-]*)?"
+        r"(?:dame|p[aá]same|env[ií]a(?:me)?|m[aá]nda(?:me)?|"
+        r"comp[aá]rte(?:me)?|recomi[eé]nda(?:me)?|recom[eé]nda(?:me)?|"
+        r"(?:send|share|give|recommend)(?:\s+me)?)\s+",
+        "",
+        normalized,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+    normalized = re.sub(
+        r"^\s*(?:(?:un|una|el|la|los|las|[1-5]|uno|dos|tres|cuatro|cinco)\s+)?"
+        r"(?:enlaces?|links?|urls?|fuentes?|sources?|ligazóns?|ligazons?|"
+        r"vídeos?|videos?)\b"
+        r"\s*(?:de|sobre|acerca\s+de|about|for)?\s*",
+        "",
+        normalized,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+    return " ".join(normalized.split()).strip(" ,:;-") or "fuentes oficiales"
+
+
 def _web_action_arguments(
     text: str,
     *,
@@ -354,6 +433,7 @@ def _web_action_arguments(
     folded = _fold_command(text)
     words = set(re.findall(r"[a-z0-9]+", folded))
     news = bool(words & _NEWS_WORDS)
+    link_request = _explicit_link_request(words, folded)
     grounding = resolve_temporal_grounding(
         text,
         temporal_context,
@@ -364,7 +444,11 @@ def _web_action_arguments(
         grounding,
         news=news,
     )
-    search_text = _news_search_subject(text) if news else text
+    search_text = (
+        _news_search_subject(text)
+        if news
+        else _link_search_subject(text) if link_request else text
+    )
     if research:
         base = " ".join(str(search_text or "").split()).strip()[:160].rstrip()
         queries = [
@@ -387,7 +471,7 @@ def required_web_action(
     """Route unambiguous current-information requests from typed text only."""
 
     normalized = " ".join(str(text or "").split())
-    folded = _fold_command(normalized)
+    folded = re.sub(r"\bdon['’]?t\b", "dont", _fold_command(normalized))
     words_in_order = re.findall(r"[a-z0-9]+", folded)
     words = set(words_in_order)
     if not words:
@@ -428,7 +512,8 @@ def required_web_action(
     current_request = bool(words & _CURRENT_INFO_WORDS) and bool(
         words & _CURRENT_TIME_WORDS
     )
-    if not (explicit_search or weather_request or current_request):
+    link_request = _explicit_link_request(words, folded)
+    if not (explicit_search or weather_request or current_request or link_request):
         return None
     return (
         "web_search",
@@ -439,6 +524,16 @@ def required_web_action(
             research=False,
         ),
     )
+
+
+def _explicit_link_request(words: set[str], folded: str) -> bool:
+    nouns = words & _LINK_NOUN_WORDS
+    if not nouns or not (words & _LINK_REQUEST_WORDS):
+        return False
+    explicit_link_nouns = nouns - {"fuente", "source"}
+    if explicit_link_nouns:
+        return True
+    return re.search(r"\b(?:codigo fuente|source code)\b", folded) is None
 
 
 def explicit_attachment_web_intent(text: str) -> bool:
@@ -1322,6 +1417,56 @@ class CompanionService:
         )
 
     @staticmethod
+    def _verified_urls_from_actions(
+        completed: list[tuple[str, ActionResult]],
+    ) -> set[str]:
+        trusted: set[str] = set()
+        for action, result in completed:
+            if (
+                action in {"web_search", "web_research"}
+                and result.success
+                and isinstance(result.data, dict)
+            ):
+                for row in result.data.get("results", []):
+                    if (
+                        isinstance(row, dict)
+                        and row.get("availability") == "verified"
+                    ):
+                        url = str(row.get("url") or "").strip()
+                        if url:
+                            trusted.add(url)
+            elif (
+                action == "open_target"
+                and result.success
+                and isinstance(result.data, dict)
+            ):
+                target = str(result.data.get("target") or "").strip()
+                if target:
+                    trusted.add(target)
+        return trusted
+
+    @classmethod
+    def _filter_response_links(
+        cls,
+        message: str,
+        *,
+        request_text: str,
+        completed: list[tuple[str, ActionResult]],
+    ) -> str:
+        trusted = set(extract_explicit_https_urls(request_text))
+        trusted.update(cls._verified_urls_from_actions(completed))
+        language = detect_message_language(request_text)
+        replacement = {
+            "en": "unverified link omitted",
+            "gl": "ligazón non verificada omitida",
+        }.get(language, "enlace no verificado omitido")
+        return filter_untrusted_https_urls(
+            message,
+            trusted,
+            replacement=replacement,
+        )
+
+    @staticmethod
     def _youtube_search_arguments(query: str, request_text: str) -> dict[str, Any]:
         """Build one bounded search that favours real YouTube result URLs."""
 
@@ -1358,7 +1503,12 @@ class CompanionService:
                     continue
                 target = str(row.get("url") or "").strip()
                 key = target.casefold()
-                if not target or key in seen or not is_youtube_video_url(target):
+                if (
+                    not target
+                    or key in seen
+                    or row.get("availability") != "verified"
+                    or not is_youtube_video_url(target)
+                ):
                     continue
                 try:
                     kind, validated = self.actions._validated_open_target(
@@ -1941,6 +2091,11 @@ class CompanionService:
                     ((browser_reply or {}).get("message") or {}).get("content")
                     or self._direct_browser_message(request_text, completed)
                 )
+                message = self._filter_response_links(
+                    message,
+                    request_text=request_text,
+                    completed=completed,
+                )
                 model_metadata = self._model_metadata(browser_selection)
                 payload = {
                     "action_result": (
@@ -2144,8 +2299,9 @@ class CompanionService:
         if proposed_calls:
             completed: list[tuple[str, ActionResult]] = []
             trusted_turn_urls = {
-                url.casefold()
+                key
                 for url in extract_explicit_https_urls(request_text)
+                if (key := https_url_key(url)) is not None
             }
             for action, arguments in proposed_calls:
                 if (
@@ -2157,19 +2313,16 @@ class CompanionService:
                         action,
                         "He bloqueado una herramienta que no estaba habilitada para este turno.",
                     )
-                elif (
-                    action == "open_target"
-                    and is_youtube_video_url(
+                elif action == "open_target" and (
+                    target_key := https_url_key(
                         str(arguments.get("target") or "")
                     )
-                    and str(arguments.get("target") or "").strip().casefold()
-                    not in trusted_turn_urls
-                ):
+                ) is not None and target_key not in trusted_turn_urls:
                     action_result = ActionResult(
                         False,
                         action,
-                        "He bloqueado un enlace de vídeo de YouTube que no fue "
-                        "escrito por Gori ni devuelto por la búsqueda de este turno.",
+                        "He bloqueado un enlace HTTPS que no fue escrito por Gori "
+                        "ni verificado por la búsqueda de este turno.",
                     )
                 else:
                     action_result = await asyncio.to_thread(
@@ -2187,8 +2340,10 @@ class CompanionService:
                     for row in action_result.data.get("results", []):
                         if isinstance(row, dict):
                             url = str(row.get("url") or "").strip()
-                            if url:
-                                trusted_turn_urls.add(url.casefold())
+                            if url and row.get("availability") == "verified":
+                                key = https_url_key(url)
+                                if key is not None:
+                                    trusted_turn_urls.add(key)
                 if action_result.requires_authorization:
                     message = self._authorization_chat_message(turn_text)
                     model_metadata = self._model_metadata(selection)
@@ -2264,6 +2419,11 @@ class CompanionService:
                         message = " ".join(result.message for _, result in completed)
                 else:
                     message = " ".join(result.message for _, result in completed)
+            message = self._filter_response_links(
+                message,
+                request_text=request_text,
+                completed=completed,
+            )
             payload: dict[str, Any] = {
                 **self._model_metadata(selection),
             }
@@ -2299,6 +2459,11 @@ class CompanionService:
 
         message = clean_model_text(
             assistant_message.get("content") or "¡Gla! Estoy aquí contigo."
+        )
+        message = self._filter_response_links(
+            message,
+            request_text=request_text,
+            completed=[],
         )
         model_metadata = self._model_metadata(selection)
         assistant_stored = self._record_assistant_message(

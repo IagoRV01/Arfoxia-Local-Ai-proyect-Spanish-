@@ -153,6 +153,64 @@ def test_required_web_action_ignores_timeless_small_talk_and_negation(
 
 
 @pytest.mark.parametrize(
+    ("message", "subject"),
+    [
+        ("Pásame enlaces sobre Qwen 3.6", "Qwen 3.6"),
+        ("Dame el enlace oficial de Ollama", "oficial de Ollama"),
+        ("Recomiéndame vídeos de programación en Python", "programación en Python"),
+    ],
+)
+def test_explicit_link_requests_force_search_with_a_clean_subject(
+    message: str,
+    subject: str,
+) -> None:
+    routed = required_web_action(message, temporal_context=FIXED_TEMPORAL)
+
+    assert routed is not None
+    action, arguments = routed
+    assert action == "web_search"
+    assert subject.casefold() in arguments["query"].casefold()
+    assert not arguments["query"].casefold().startswith(
+        ("pásame", "dame", "recomiéndame")
+    )
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "No me envíes enlaces sobre Ollama",
+        "Sin enlaces ni fuentes, explícame qué es Python",
+        "Never send me links about Python",
+        "Do not send me links about Python",
+        "Don't send me links about Python",
+        "Dame el código fuente de un hello world",
+    ],
+)
+def test_negated_link_requests_do_not_force_web_search(message: str) -> None:
+    assert required_web_action(message) is None
+
+
+@pytest.mark.parametrize(
+    ("message", "subject"),
+    [
+        ("Pásame ligazóns sobre Ollama", "Ollama"),
+        ("Recoméndame vídeos sobre Python", "Python"),
+        ("Give me links about Qwen", "Qwen"),
+        ("Send me sources about local AI", "local AI"),
+    ],
+)
+def test_galician_and_english_link_requests_use_the_actual_subject(
+    message: str,
+    subject: str,
+) -> None:
+    routed = required_web_action(message, temporal_context=FIXED_TEMPORAL)
+
+    assert routed is not None
+    assert routed[0] == "web_search"
+    assert subject.casefold() in routed[1]["query"].casefold()
+
+
+@pytest.mark.parametrize(
     ("message", "expected_action"),
     [
         (

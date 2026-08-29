@@ -7,6 +7,10 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
+from glaceon_companion.browser_routing import (
+    filter_untrusted_https_urls,
+    https_url_key,
+)
 from glaceon_companion.config import ConfigStore
 from glaceon_companion.services import CompanionService
 
@@ -54,6 +58,7 @@ class FakeVideoSearch:
                     "title": f"Vídeo P40 {index}",
                     "url": url,
                     "snippet": "Resultado real devuelto por el buscador.",
+                    "availability": "verified",
                 }
                 for index, url in enumerate(self.video_urls, start=1)
             ]
@@ -95,6 +100,94 @@ def youtube_query(url: str) -> str:
     query = parse_qs(parsed.query, strict_parsing=True)
     assert set(query) == {"search_query"}
     return query["search_query"][0]
+
+
+def test_markdown_and_plain_urls_are_limited_to_verified_sources():
+    verified = "https://example.com/live"
+    invented = "https://old.example/dead"
+    filtered = filter_untrusted_https_urls(
+        f"[Fuente]({verified}) [Vieja]({invented}) y {invented}",
+        [verified],
+    )
+
+    assert verified in filtered
+    assert invented not in filtered
+    assert filtered.count("enlace no verificado omitido") == 2
+
+
+@pytest.mark.parametrize(
+    "link",
+    [
+        r"[x](https\://evil.example/path)",
+        r"[x](https:\/\/evil.example/path)",
+        r"[x](<https\://evil.example/path>)",
+        "[x](https&#58;//evil.example/path)",
+        "[x][dead]\n\n[dead]: https&#58;//evil.example/path",
+        '<a href="https&#58;//evil.example/path">x</a>',
+        '<a href=https&#58;//evil.example/path>x</a>',
+    ],
+)
+def test_obfuscated_markdown_urls_cannot_bypass_the_verified_allowlist(link):
+    filtered = filter_untrusted_https_urls(link, [])
+
+    assert "evil.example" not in filtered
+    assert "https://" not in filtered
+
+
+def test_markdown_escape_is_normalized_only_for_an_exact_verified_source():
+    verified = "https://example.com/live"
+    filtered = filter_untrusted_https_urls(
+        r"[Fuente](https\://example.com/live)",
+        [verified],
+    )
+
+    assert verified in filtered
+    assert "no verificado" not in filtered
+
+
+def test_url_identity_rejects_embedded_credentials():
+    assert https_url_key("https://evil@example.com/ruta") is None
+    assert https_url_key("https://example.com/ruta") is not None
+
+
+class FakeUnavailableVideoSearch:
+    def search_payload(self, query, **kwargs):
+        return {
+            "query": str(query),
+            "security_notice": "contenido web no confiable",
+            "results": [
+                {
+                    "title": "Vídeo retirado",
+                    "url": "https://www.youtube.com/watch?v=AAAAAAAAAAA",
+                    "snippet": "Ya no está disponible.",
+                    "availability": "unavailable",
+                }
+            ],
+        }
+
+
+def test_no_verified_youtube_video_opens_only_the_canonical_search(
+    tmp_path,
+    monkeypatch,
+):
+    service = make_service(tmp_path)
+    service.ollama = FakeOllama()
+    service.online_search = FakeUnavailableVideoSearch()
+    opened: list[str] = []
+    monkeypatch.setattr(service.actions, "_shell_open", opened.append)
+    try:
+        result = send(
+            service,
+            "Busca dos vídeos de pruebas de GPU en YouTube y ábrelos",
+        )
+
+        assert len(opened) == 1
+        assert "pruebas de GPU" in youtube_query(opened[0])
+        assert "/watch" not in opened[0]
+        assert result["action_results"][0]["action"] == "web_search"
+        assert result["action_results"][1]["success"] is True
+    finally:
+        service.close()
 
 
 def test_open_youtube_home_is_deterministic_and_does_not_call_the_model(
@@ -303,10 +396,16 @@ def test_contextual_search_and_open_reuses_user_topic_not_assistant_guessed_url(
         service.close()
 
 
-def test_model_cannot_open_a_guessed_youtube_watch_id(
-    tmp_path, monkeypatch
+@pytest.mark.parametrize(
+    "invented_url",
+    [
+        "https://www.youtube.com/watch?v=AAAAAAAAAAA",
+        "https://old.example/dead",
+    ],
+)
+def test_model_cannot_open_an_unverified_external_url(
+    tmp_path, monkeypatch, invented_url
 ):
-    invented_url = "https://www.youtube.com/watch?v=AAAAAAAAAAA"
     service = make_service(tmp_path)
     service.ollama = FakeOllama(
         [

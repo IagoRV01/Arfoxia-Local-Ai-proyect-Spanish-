@@ -6,6 +6,41 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+## [0.11.4] - 2026-08-29
+
+### Añadido
+
+- Comprobación en vivo y con caché breve de los enlaces encontrados antes de
+  entregarlos al modelo, al historial compartido o al navegador.
+- Verificación específica de vídeos mediante oEmbed y el estado oficial de
+  reproducción de YouTube, incluida la distinción entre un vídeo eliminado y
+  uno válido que simplemente no permite incrustación.
+
+### Cambiado
+
+- Las peticiones explícitas como «pásame enlaces», «dame la fuente» o
+  «recomiéndame vídeos» fuerzan una búsqueda actual y solicitan candidatos de
+  reserva para sustituir resultados rotos.
+- Los resultados de YouTube se deduplican por identificador real de vídeo y,
+  si ninguno sigue disponible, Arfoxia abre la búsqueda canónica sin inventar
+  un destino `watch`.
+
+### Corregido
+
+- Descartados enlaces con respuesta 404/410/451 y vídeos eliminados, privados,
+  restringidos o no reproducibles antes de mostrarlos como fuentes válidas.
+- Impedido que el modelo vuelva a insertar en Markdown o intente abrir una URL
+  que no fue escrita por Gori ni verificada en la búsqueda del turno actual,
+  incluso si disfraza el destino con escapes, entidades HTML o referencias.
+
+### Seguridad
+
+- Las comprobaciones web generales fijan una IP pública validada, conservan
+  SNI y certificado TLS, revalidan cada redirección HTTPS y bloquean destinos
+  locales, privados, credenciales, puertos alternativos y DNS mixto.
+- Los sondeos usan límites estrictos de tiempo, concurrencia, redirecciones y
+  cabeceras; no descargan cuerpos genéricos ni ejecutan contenido remoto.
+
 ## [0.11.3] - 2026-08-04
 
 ### Añadido
@@ -84,3 +119,4 @@ y las versiones del proyecto siguen versionado semántico.
 
 [0.11.2]: https://github.com/IagoRV01/Arfoxia-Local-Ai-proyect-Spanish-/releases/tag/v0.11.2
 [0.11.3]: https://github.com/IagoRV01/Arfoxia-Local-Ai-proyect-Spanish-/releases/tag/v0.11.3
+[0.11.4]: https://github.com/IagoRV01/Arfoxia-Local-Ai-proyect-Spanish-/releases/tag/v0.11.4

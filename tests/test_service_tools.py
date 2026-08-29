@@ -46,6 +46,7 @@ class FakeSearch:
                     "title": "Fuente segura",
                     "url": "https://example.com/noticia",
                     "snippet": "Dato reciente",
+                    "availability": "verified",
                 }
             ],
         }
@@ -239,6 +240,34 @@ def test_web_tool_payload_reaches_followup_and_sources_reach_client(tmp_path):
         assert tool_message["role"] == "tool"
         assert "contenido no confiable" in tool_message["content"]
         assert "https://example.com/noticia" in tool_message["content"]
+    finally:
+        service.close()
+
+
+def test_model_reply_keeps_verified_sources_and_removes_invented_links(tmp_path):
+    service = make_service(tmp_path)
+    service.online_search = FakeSearch()
+    service.ollama = FakeOllama(
+        [
+            {"message": {"content": "No necesito buscar."}},
+            {
+                "message": {
+                    "content": (
+                        "[Fuente comprobada](https://example.com/noticia) y "
+                        "[enlace antiguo](https://old.example/dead)."
+                    )
+                }
+            },
+        ]
+    )
+    try:
+        result = asyncio.run(
+            chat_in_new_conversation(service, "Busca información reciente")
+        )
+
+        assert "https://example.com/noticia" in result["message"]
+        assert "https://old.example/dead" not in result["message"]
+        assert "enlace no verificado omitido" in result["message"]
     finally:
         service.close()
 

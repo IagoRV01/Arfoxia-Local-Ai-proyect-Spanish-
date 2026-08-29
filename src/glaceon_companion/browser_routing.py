@@ -1,12 +1,30 @@
 from __future__ import annotations
 
+import html
 import re
 import unicodedata
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from urllib.parse import quote_plus, urlsplit
 
 
 _HTTPS_URL = re.compile(r"https://[^\s<>{}\[\]\"']+", re.IGNORECASE)
+_MARKDOWN_AUTOLINK = re.compile(r"<([^<>\r\n]+)>")
+_MARKDOWN_REFERENCE_DEFINITION = re.compile(
+    r"(?m)^(?P<indent>[ \t]{0,3})\[(?P<id>[^\]\r\n]+)\]:"
+    r"[ \t]*(?P<destination>[^\r\n]+)$"
+)
+_MARKDOWN_REFERENCE_LINK = re.compile(
+    r"!?\[(?P<label>[^\]\r\n]+)\]"
+    r"\[(?P<id>[^\]\r\n]*)\]"
+)
+_HTML_URL_ATTRIBUTE = re.compile(
+    r"(?P<prefix>\b(?:href|src)\s*=\s*)"
+    r"(?:(?P<quote>['\"])(?P<quoted>[^'\"\r\n]*)(?P=quote)|"
+    r"(?P<bare>[^\s>]+))",
+    re.IGNORECASE,
+)
+_MARKDOWN_ESCAPABLE = re.compile(r"\\([!\"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~])")
 _OPEN_WORD = re.compile(
     r"\b(?:"
     r"abre(?:me|lo|los|la|las)?|abras|abrir|"
@@ -128,6 +146,226 @@ def extract_explicit_https_urls(text: str, *, limit: int = 6) -> tuple[str, ...]
         if len(output) >= max(1, min(int(limit), 6)):
             break
     return tuple(output)
+
+
+def https_url_key(value: str) -> str | None:
+    """Canonical comparison key that ignores only a URL fragment."""
+
+    try:
+        parsed = urlsplit(str(value or "").strip())
+        hostname = (parsed.hostname or "").casefold().rstrip(".")
+        port = parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.scheme.casefold() != "https"
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        return None
+    authority = hostname if port in {None, 443} else f"{hostname}:{port}"
+    return f"https://{authority}{parsed.path or ''}?{parsed.query}".rstrip("?")
+
+
+def filter_untrusted_https_urls(
+    text: str,
+    trusted_urls: Iterable[str],
+    *,
+    replacement: str = "enlace no verificado omitido",
+) -> str:
+    """Remove model-written links that were not verified or user supplied."""
+
+    allowed = {
+        key
+        for url in trusted_urls
+        if (key := https_url_key(str(url or ""))) is not None
+    }
+
+    def normalized_target(value: str) -> str:
+        decoded = html.unescape(str(value or "").strip())
+        return _MARKDOWN_ESCAPABLE.sub(r"\1", decoded).strip()
+
+    def trusted_target(value: str) -> str | None:
+        normalized = normalized_target(value)
+        key = https_url_key(normalized)
+        return normalized if key is not None and key in allowed else None
+
+    def reference_key(value: str) -> str:
+        return " ".join(normalized_target(value).casefold().split())
+
+    blocked_references: set[str] = set()
+
+    def reference_definition(match: re.Match[str]) -> str:
+        destination, _ = _markdown_destination(match.group("destination"))
+        verified = trusted_target(destination)
+        if verified is None:
+            blocked_references.add(reference_key(match.group("id")))
+            return ""
+        return f'{match.group("indent")}[{match.group("id")}]: <{verified}>'
+
+    filtered = _MARKDOWN_REFERENCE_DEFINITION.sub(
+        reference_definition,
+        str(text or ""),
+    )
+
+    def reference_link(match: re.Match[str]) -> str:
+        label = match.group("label")
+        identifier = match.group("id") or label
+        if reference_key(identifier) not in blocked_references:
+            return match.group(0)
+        return f"{label} ({replacement})"
+
+    filtered = _MARKDOWN_REFERENCE_LINK.sub(reference_link, filtered)
+    for identifier in sorted(blocked_references, key=len, reverse=True):
+        if not identifier:
+            continue
+        filtered = re.sub(
+            rf"(?<![!\[])\[{re.escape(identifier)}\]",
+            replacement,
+            filtered,
+            flags=re.IGNORECASE,
+        )
+
+    filtered = _sanitize_inline_markdown_links(
+        filtered,
+        trusted_target=trusted_target,
+        replacement=replacement,
+    )
+
+    def autolink(match: re.Match[str]) -> str:
+        target = normalized_target(match.group(1))
+        if https_url_key(target) is None:
+            return match.group(0)
+        verified = trusted_target(target)
+        return f"<{verified}>" if verified is not None else replacement
+
+    filtered = _MARKDOWN_AUTOLINK.sub(autolink, filtered)
+
+    def html_attribute(match: re.Match[str]) -> str:
+        verified = trusted_target(match.group("quoted") or match.group("bare"))
+        value = html.escape(verified, quote=True) if verified is not None else ""
+        return f'{match.group("prefix")}"{value}"'
+
+    filtered = _HTML_URL_ATTRIBUTE.sub(html_attribute, filtered)
+
+    def raw(match: re.Match[str]) -> str:
+        value = match.group(0)
+        target = value.rstrip(".,;!¡¿)]}")
+        suffix = value[len(target) :]
+        return value if trusted_target(target) is not None else f"{replacement}{suffix}"
+
+    return _HTTPS_URL.sub(raw, filtered)
+
+
+def _markdown_destination(value: str) -> tuple[str, str]:
+    """Split a CommonMark destination from its optional title."""
+
+    raw = str(value or "").strip()
+    if raw.startswith("<"):
+        escaped = False
+        for index, character in enumerate(raw[1:], start=1):
+            if escaped:
+                escaped = False
+                continue
+            if character == "\\":
+                escaped = True
+                continue
+            if character == ">":
+                return raw[1:index], raw[index + 1 :].strip()
+        return raw, ""
+
+    escaped = False
+    depth = 0
+    for index, character in enumerate(raw):
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\":
+            escaped = True
+            continue
+        if character == "(":
+            depth += 1
+            continue
+        if character == ")" and depth:
+            depth -= 1
+            continue
+        if character.isspace() and depth == 0:
+            return raw[:index], raw[index:].strip()
+    return raw, ""
+
+
+def _sanitize_inline_markdown_links(
+    text: str,
+    *,
+    trusted_target: Callable[[str], str | None],
+    replacement: str,
+) -> str:
+    """Rewrite inline CommonMark links, including escaped destinations."""
+
+    output: list[str] = []
+    cursor = 0
+    length = len(text)
+    while cursor < length:
+        label_start = text.find("[", cursor)
+        if label_start < 0:
+            output.append(text[cursor:])
+            break
+        output.append(text[cursor:label_start])
+        label_end = _matching_markdown_delimiter(text, label_start, "[", "]")
+        if label_end is None or label_end + 1 >= length or text[label_end + 1] != "(":
+            output.append(text[label_start])
+            cursor = label_start + 1
+            continue
+        destination_end = _matching_markdown_delimiter(
+            text,
+            label_end + 1,
+            "(",
+            ")",
+        )
+        if destination_end is None:
+            output.append(text[label_start])
+            cursor = label_start + 1
+            continue
+        raw_destination = text[label_end + 2 : destination_end]
+        destination, _ = _markdown_destination(raw_destination)
+        verified = trusted_target(destination)
+        label = text[label_start + 1 : label_end]
+        image_prefix = label_start > 0 and text[label_start - 1] == "!"
+        if image_prefix and output and output[-1].endswith("!"):
+            output[-1] = output[-1][:-1]
+        if verified is None:
+            output.append(f"{label} ({replacement})")
+        else:
+            marker = "!" if image_prefix else ""
+            output.append(f"{marker}[{label}](<{verified}>)")
+        cursor = destination_end + 1
+    return "".join(output)
+
+
+def _matching_markdown_delimiter(
+    text: str,
+    start: int,
+    opening: str,
+    closing: str,
+) -> int | None:
+    depth = 0
+    escaped = False
+    for index in range(start, len(text)):
+        character = text[index]
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\":
+            escaped = True
+            continue
+        if character == opening:
+            depth += 1
+        elif character == closing:
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
 
 
 def is_youtube_video_url(value: str) -> bool:

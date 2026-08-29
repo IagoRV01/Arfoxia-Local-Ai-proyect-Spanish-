@@ -5,6 +5,7 @@ import time
 
 import pytest
 
+from glaceon_companion.link_availability import LinkAvailability
 from glaceon_companion.online_search import (
     OnlineSearchClient,
     OnlineSearchError,
@@ -27,7 +28,10 @@ class FakeProvider:
 
 
 def client(provider: FakeProvider) -> OnlineSearchClient:
-    return OnlineSearchClient(provider_factory=lambda: provider)
+    return OnlineSearchClient(
+        provider_factory=lambda: provider,
+        validate_result_urls=False,
+    )
 
 
 def test_search_is_bounded_safe_and_sanitized():
@@ -134,6 +138,128 @@ def test_tool_payload_marks_results_as_untrusted():
             {"title": "Fuente", "url": "https://example.com", "snippet": "Dato"}
         ],
     }
+
+
+def test_live_validation_discards_dead_links_and_uses_reserve_candidates():
+    provider = FakeProvider(
+        [
+            {
+                "title": "Retirado",
+                "href": "https://example.com/removed",
+                "body": "Ya no existe.",
+            },
+            {
+                "title": "Disponible",
+                "href": "https://example.org/current",
+                "body": "Sigue publicado.",
+            },
+            {
+                "title": "Indeterminado",
+                "href": "https://example.net/timeout",
+                "body": "No pudo comprobarse.",
+            },
+        ]
+    )
+    outcomes = {
+        "https://example.com/removed": LinkAvailability("unavailable"),
+        "https://example.org/current": LinkAvailability(
+            "available",
+            final_url="https://example.org/current",
+        ),
+        "https://example.net/timeout": LinkAvailability("unknown"),
+    }
+    search = OnlineSearchClient(
+        provider_factory=lambda: provider,
+        availability_checker=outcomes.__getitem__,
+    )
+
+    payload = search.search_payload("fuentes actuales", max_results=1)
+
+    assert provider.calls[0]["max_results"] == 3
+    assert payload["link_validation"] == "live"
+    assert payload["results"] == [
+        {
+            "title": "Disponible",
+            "url": "https://example.org/current",
+            "snippet": "Sigue publicado.",
+            "availability": "verified",
+        }
+    ]
+
+
+def test_youtube_results_are_deduplicated_by_video_id_before_probing():
+    provider = FakeProvider(
+        [
+            {
+                "title": "Vídeo web",
+                "href": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                "body": "Primera forma.",
+            },
+            {
+                "title": "Vídeo móvil duplicado",
+                "href": "https://m.youtube.com/watch?v=dQw4w9WgXcQ",
+                "body": "Mismo vídeo.",
+            },
+        ]
+    )
+    probed: list[str] = []
+
+    def available(url: str) -> LinkAvailability:
+        probed.append(url)
+        return LinkAvailability("available", final_url=url)
+
+    search = OnlineSearchClient(
+        provider_factory=lambda: provider,
+        availability_checker=available,
+    )
+
+    results = search.search("vídeo", max_results=5)
+
+    assert len(results) == 1
+    assert len(probed) == 1
+
+
+def test_alternative_provider_keeps_live_validation_enabled_by_default():
+    provider = FakeProvider(
+        [{"title": "Fuente", "href": "https://example.com/live", "body": "Dato"}]
+    )
+    search = OnlineSearchClient(provider_factory=lambda: provider)
+    search._availability_checker = lambda url: LinkAvailability(
+        "available",
+        final_url=url,
+    )
+
+    payload = search.search_payload("fuente actual")
+
+    assert payload["link_validation"] == "live"
+    assert payload["results"][0]["availability"] == "verified"
+
+
+def test_live_validation_stops_after_filling_the_requested_result_limit():
+    rows = [
+        {
+            "title": f"Fuente {index}",
+            "href": f"https://source{index}.example/article",
+            "body": "Dato",
+        }
+        for index in range(15)
+    ]
+    provider = FakeProvider(rows)
+    probed: list[str] = []
+
+    def available(url: str) -> LinkAvailability:
+        probed.append(url)
+        return LinkAvailability("available", final_url=url)
+
+    search = OnlineSearchClient(
+        provider_factory=lambda: provider,
+        availability_checker=available,
+    )
+
+    results = search.search("fuentes", max_results=5)
+
+    assert len(results) == 5
+    assert len(probed) == 5
 
 
 class FakeNewsProvider:
@@ -435,7 +561,10 @@ def test_research_uses_at_most_two_concurrent_searches():
                 with state_lock:
                     state["active"] -= 1
 
-    search = OnlineSearchClient(provider_factory=ConcurrentProvider)
+    search = OnlineSearchClient(
+        provider_factory=ConcurrentProvider,
+        validate_result_urls=False,
+    )
 
     payload = search.research_payload(["uno", "dos", "tres", "cuatro"])
 
