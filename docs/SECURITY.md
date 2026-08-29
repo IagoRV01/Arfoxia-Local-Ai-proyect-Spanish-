@@ -21,6 +21,42 @@ El verificador usa scrypt con sal aleatoria y comparación constante. La contras
 
 `file_operation` limita el contenido UTF-8 a 1 MiB y ofrece solo crear carpeta, escribir, añadir, copiar, mover, renombrar y enviar a la Papelera. Las escrituras son atómicas, no sobrescriben por defecto y vinculan la versión existente mediante SHA-256 para detectar cambios entre autorización y ejecución. Se rechazan raíces amplias, rutas relativas, dispositivos, flujos alternativos, inicio automático y los archivos internos/código de Arfoxia. No existen lectura arbitraria, shell, PowerShell, CMD, ejecución con argumentos arbitrarios, elevación, instalación, descarga automática, cambios de firewall/antivirus ni borrado permanente.
 
+## Streaming de juegos
+
+- Los endpoints de juego requieren el mismo Bearer aleatorio que el resto de la
+  API privada y solo permiten consultar estado, iniciar el servicio exacto de
+  Sunshine o enviar un PIN ASCII de cuatro cifras.
+- No se expone un proxy genérico a la API administrativa de Sunshine ni se
+  añade esta capacidad a las herramientas que Ollama puede seleccionar.
+- La contraseña aleatoria de Sunshine permanece cifrada con DPAPI para el
+  usuario actual dentro de `secrets.json`, que conserva además la ACL local
+  endurecida. Si la ACL no puede aplicarse, el guardado falla de forma cerrada.
+  Nunca se incluye en configuración pública, respuestas, registros, QR ni
+  solicitudes del móvil.
+- La excepción al certificado autofirmado está limitada en código a
+  `https://127.0.0.1:<puerto>` y no acepta un host configurable, DNS ni proxy del
+  entorno. El panel web de Sunshine continúa limitado al propio PC.
+- Cada cliente nuevo exige un challenge local de un solo uso y la contraseña se
+  introduce solo en el PC. Los intentos de PIN se limitan además a cinco por
+  minuto y el resultado no se marca como emparejado hasta que Sunshine devuelve
+  un cliente habilitado en su API autenticada.
+- Tailscale Serve publica la API de Arfoxia, no el vídeo. Moonlight accede
+  directamente a los puertos de Sunshine mediante la IP privada o MagicDNS del
+  PC; no se abre Funnel ni se configura UPnP.
+- Las reglas entrantes de Windows se limitan a TCP `47984`, `47989`, `48010` y
+  UDP `47998-48000`, con origen en la subred local o en `100.64.0.0/10`. El panel
+  `47990` queda fuera de esas reglas y solo se usa por loopback en el PC.
+
+El host de captura está fijado en este equipo a la pantalla física conectada a
+la RTX 5060 Ti de 8 GB, dejando la tarjeta de 16 GB para IA. ViGEmBus proporciona
+el mando virtual. La primera vinculación de Moonlight para iOS se realiza en la
+misma LAN y, después, el certificado del host emparejado protege la conexión.
+
+No se anuncia un falso encendido remoto: cuando el PC está apagado tampoco puede
+atender su propia API. Tailscale necesita otro nodo siempre activo en la LAN para
+emitir Wake-on-LAN; hasta que exista, la app muestra esa limitación y no ofrece
+un botón que simule poder despertar el equipo.
+
 ## Interacciones de escritorio
 
 La vista previa del limón y la colocación de la cama se implementan dentro de Qt, sin inyectar entrada en otras aplicaciones. La capa temporal solo observa movimiento y el clic que completa la acción, se cancela a los 30 segundos y libera cualquier captura de teclado al cerrarse. Los objetos animados siguen siendo transparentes a la entrada; la cama solo recibe el ratón dentro de su máscara visible para poder arrastrarla y nunca toma el foco del teclado.
@@ -60,3 +96,12 @@ Se reducen a un máximo de 1600×1000, se guardan como WebP con un identificador
 - El protocolo de Codex lee metadatos locales para resolver las tareas, pero la API de Arfoxia solo devuelve título y estado. Quien obtenga el token podría solicitar ese listado reducido.
 - Codex no publica una API externa para ordenar animaciones a Eevee. Las interacciones directas se representan desde Arfoxia; Eevee conserva únicamente sus reacciones naturales gestionadas por Codex.
 - Los sprites no tienen una licencia comercial uniforme. No distribuyas la carpeta `assets/external` sin revisar cada fuente.
+- Quien obtenga el token también podría consultar el estado de Sunshine, iniciar
+  su servicio o gastar los intentos limitados de PIN, aunque nunca recibe sus
+  credenciales administrativas.
+- Una ruta Tailscale indirecta mediante DERP puede añadir demasiada latencia para
+  jugar; conviene verificar que PC e iPhone establecen una conexión directa.
+- Expo SDK 54 conserva avisos de `npm audit` en dependencias internas de Metro y
+  prebuild cuya única corrección publicada exige saltar a un SDK mayor. No se
+  procesan proyectos ni recursos de terceros; se actualizará el SDK cuando la
+  versión correspondiente sea compatible con Expo Go en el iPhone.

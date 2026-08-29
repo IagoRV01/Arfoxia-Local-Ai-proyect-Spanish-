@@ -301,3 +301,80 @@ def test_model_mode_switch_is_authenticated_and_strict(tmp_path):
             )
     finally:
         service.close()
+
+
+def test_game_streaming_routes_are_authenticated_and_pin_is_strict(tmp_path):
+    store = ConfigStore(tmp_path)
+    service = CompanionService(store, store.load())
+    token = "gaming-token"
+    app = create_api(
+        service,
+        token,
+        PROJECT_ROOT / "src" / "glaceon_companion" / "static",
+    )
+    calls = []
+    safe_status = {
+        "ready": True,
+        "host": "pc.tailnet.ts.net",
+        "pairing_available": True,
+    }
+    service.game_streaming_status = lambda: dict(safe_status)
+    service.prepare_game_streaming = lambda: {
+        **safe_status,
+        "message": "PC listo.",
+    }
+
+    def fake_pair(pin, name):
+        calls.append((pin, name))
+        return {**safe_status, "paired": True}
+
+    service.pair_game_streaming = fake_pair
+    service.authorization.configure("clave-local-segura")
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        with TestClient(app) as client:
+            assert client.get("/api/gaming/status").status_code == 401
+            status_response = client.get("/api/gaming/status", headers=headers)
+            assert status_response.status_code == 200
+            assert status_response.json()["host"] == "pc.tailnet.ts.net"
+
+            assert client.post("/api/gaming/prepare").status_code == 401
+            prepared = client.post("/api/gaming/prepare", headers=headers)
+            assert prepared.status_code == 200
+            assert prepared.json()["message"] == "PC listo."
+
+            paired = client.post(
+                "/api/gaming/pair",
+                headers=headers,
+                json={"pin": "1234", "name": "iPhone"},
+            )
+            assert paired.status_code == 200
+            assert paired.json()["requires_authorization"] is True
+            assert paired.json()["success"] is False
+            assert "controle el PC" in paired.json()["authorization_summary"]
+            challenge_id = paired.json()["challenge_id"]
+            approved = service.authorize_action(
+                challenge_id,
+                "clave-local-segura",
+            )
+            assert approved.success is True
+            assert approved.data["paired"] is True
+            assert calls == [("1234", "iPhone")]
+            assert (
+                client.post(
+                    "/api/gaming/pair",
+                    headers=headers,
+                    json={"pin": "12ab"},
+                ).status_code
+                == 422
+            )
+            assert (
+                client.post(
+                    "/api/gaming/pair",
+                    headers=headers,
+                    json={"pin": "1234", "extra": True},
+                ).status_code
+                == 422
+            )
+    finally:
+        service.close()

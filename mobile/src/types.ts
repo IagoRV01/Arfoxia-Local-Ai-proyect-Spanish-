@@ -25,6 +25,7 @@ export interface Health {
   privileged_actions: boolean;
   conversations?: boolean;
   cross_chat_memory?: boolean;
+  game_streaming?: boolean;
   chat_storage_limit_gb?: number;
   version: string;
 }
@@ -338,4 +339,32 @@ export interface PcStatus {
     temperature_c: number;
   } | null;
   gpus?: DetailedGpuStatus[];
+}
+
+export interface GameStreamingStatus {
+  enabled: boolean;
+  installed: boolean;
+  service_status: string;
+  running: boolean;
+  ready: boolean;
+  sunshine_ready: boolean;
+  remote_ready: boolean;
+  web_ready: boolean;
+  ports: Record<string, boolean>;
+  host: string;
+  tailscale_ip: string;
+  tailscale_ready: boolean;
+  credentials_managed: boolean;
+  credentials_verified: boolean;
+  pin_submission_available: boolean;
+  pairing_available: boolean;
+  paired: boolean;
+  paired_clients: number;
+  paired_device_names: string[];
+  gamepad_ready: boolean;
+  capture_gpu: string;
+  moonlight_app_store_url: string;
+  wake_available: boolean;
+  wake_reason: string;
+  message?: string;
 }

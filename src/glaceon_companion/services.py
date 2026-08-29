@@ -47,6 +47,7 @@ from .codex_bridge import CodexBridge, CodexBridgeError, NoActiveTurnError
 from .config import CompanionConfig, ConfigStore
 from .conversation_storage import ConversationStorage, ConversationStorageError
 from .database import Database
+from .game_streaming import GameStreamingError, GameStreamingManager
 from .ollama_client import (
     OllamaClient,
     clean_model_text,
@@ -549,8 +550,9 @@ class CompanionService:
         "codex_list_tasks",
         "codex_open_task",
         "codex_pause_task",
+        "game_streaming_pair",
     }
-    SENSITIVE_EXTERNAL_ACTIONS = {"codex_pause_task"}
+    SENSITIVE_EXTERNAL_ACTIONS = {"codex_pause_task", "game_streaming_pair"}
     ATTACHMENT_TOOLS = {"web_search", "web_research"}
 
     def __init__(self, store: ConfigStore, config: CompanionConfig) -> None:
@@ -573,6 +575,7 @@ class CompanionService:
             config, self.database, store.data_dir, self.events
         )
         self.authorization = LocalAuthorizationManager(store.data_dir)
+        self.game_streaming = GameStreamingManager(config, store)
         self._remote_authorization_lock = threading.RLock()
         self._remote_authorization_times: deque[float] = deque()
         self.online_search = OnlineSearchClient()
@@ -602,6 +605,15 @@ class CompanionService:
 
     async def model_status(self) -> dict[str, Any]:
         return await self.ollama.model_status()
+
+    def game_streaming_status(self) -> dict[str, Any]:
+        return self.game_streaming.status()
+
+    def prepare_game_streaming(self) -> dict[str, Any]:
+        return self.game_streaming.prepare()
+
+    def pair_game_streaming(self, pin: str, name: str) -> dict[str, Any]:
+        return self.game_streaming.pair(pin, name)
 
     async def set_model_mode(self, mode: str) -> dict[str, Any]:
         """Switch the runtime model profile atomically and warm power mode."""
@@ -1012,6 +1024,10 @@ class CompanionService:
             ][:4]
             audit_arguments["queries"] = "[no almacenadas]"
             audit_arguments["query_lengths"] = lengths
+        elif result.action == "game_streaming_pair":
+            pin = str(audit_arguments.pop("pin", ""))
+            audit_arguments["pin"] = "[no almacenado]"
+            audit_arguments["pin_length"] = len(pin)
         self.database.audit(
             result.action,
             audit_arguments,
@@ -1045,11 +1061,32 @@ class CompanionService:
             or (action not in self.EXTERNAL_ACTIONS and self.actions.is_sensitive(action, args))
         )
         if sensitive:
-            if action in self.SENSITIVE_EXTERNAL_ACTIONS:
+            if action == "codex_pause_task":
                 task = args.get("task")
                 if not isinstance(task, str) or not task.strip() or len(task) > 160:
                     return self._record_external_action(
                         ActionResult(False, action, "Indica una tarea concreta de Codex."),
+                        args,
+                    )
+            elif action == "game_streaming_pair":
+                pin = args.get("pin")
+                name = args.get("name", "iPhone de Iago")
+                if (
+                    not isinstance(pin, str)
+                    or len(pin) != 4
+                    or any(character not in "0123456789" for character in pin)
+                ):
+                    return self._record_external_action(
+                        ActionResult(
+                            False,
+                            action,
+                            "El PIN de Moonlight debe tener exactamente 4 cifras.",
+                        ),
+                        args,
+                    )
+                if not isinstance(name, str) or not name.strip() or len(name) > 64:
+                    return self._record_external_action(
+                        ActionResult(False, action, "El nombre del iPhone no es válido."),
                         args,
                     )
             else:
@@ -1083,9 +1120,25 @@ class CompanionService:
                 result = self._list_codex_tasks(args)
             elif action == "codex_open_task":
                 result = self._open_codex_task(args)
+            elif action == "game_streaming_pair":
+                stream_status = self.pair_game_streaming(
+                    str(args.get("pin") or ""),
+                    str(args.get("name") or "iPhone de Iago"),
+                )
+                result = ActionResult(
+                    True,
+                    action,
+                    str(stream_status.get("message") or "PIN enviado a Sunshine."),
+                    data=stream_status,
+                )
             else:
                 result = self._pause_codex_task(args)
-        except (ValueError, OnlineSearchError, CodexBridgeError) as exc:
+        except (
+            ValueError,
+            GameStreamingError,
+            OnlineSearchError,
+            CodexBridgeError,
+        ) as exc:
             result = ActionResult(False, action, str(exc))
         except Exception:
             # This boundary is user-facing: never expose provider, path or RPC internals.
@@ -1134,6 +1187,12 @@ class CompanionService:
             return f"Cerrar la aplicación «{self._short_value(args.get('app'))}»"
         if action == "codex_pause_task":
             return f"Pausar la tarea de Codex «{self._short_value(args.get('task'))}»"
+        if action == "game_streaming_pair":
+            return (
+                "Permitir que «"
+                f"{self._short_value(args.get('name') or 'iPhone de Iago')}"
+                "» controle el PC mediante Moonlight"
+            )
         if action == "open_target":
             return f"Abrir o ejecutar «{self._short_value(args.get('target'))}»"
         if action == "file_operation":

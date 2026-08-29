@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .attachments import AttachmentError, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_CHAT
+from .game_streaming import GameStreamingError
 from .services import CompanionService
 
 
@@ -79,10 +80,17 @@ class ModelModeRequest(BaseModel):
     mode: str = Field(pattern=r"^(normal|power|gaming_gpu)$")
 
 
+class GameStreamingPairRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pin: str = Field(pattern=r"^[0-9]{4}$")
+    name: str = Field(default="iPhone de Iago", min_length=1, max_length=64)
+
+
 def create_api(service: CompanionService, token: str, static_dir: Path) -> FastAPI:
     app = FastAPI(
         title=f"{service.config.name} Companion",
-        version="0.11.4",
+        version="0.12.0",
         docs_url=None,
         redoc_url=None,
     )
@@ -137,11 +145,12 @@ def create_api(service: CompanionService, token: str, static_dir: Path) -> FastA
             "privileged_actions": True,
             "conversations": True,
             "cross_chat_memory": service.config.cross_chat_memory_enabled,
+            "game_streaming": service.config.game_streaming_enabled,
             "chat_storage_limit_gb": min(
                 float(service.config.chat_storage_limit_gb),
                 150.0,
             ),
-            "version": "0.11.4",
+            "version": "0.12.0",
         }
 
     @app.get("/api/state", dependencies=[auth])
@@ -316,6 +325,28 @@ def create_api(service: CompanionService, token: str, static_dir: Path) -> FastA
             return await service.set_model_mode(request.mode)
         except RuntimeError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/api/gaming/status", dependencies=[auth])
+    async def gaming_status() -> dict[str, Any]:
+        return await asyncio.to_thread(service.game_streaming_status)
+
+    @app.post("/api/gaming/prepare", dependencies=[auth])
+    async def prepare_gaming() -> dict[str, Any]:
+        try:
+            return await asyncio.to_thread(service.prepare_game_streaming)
+        except GameStreamingError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/gaming/pair", dependencies=[auth])
+    async def pair_gaming(request: GameStreamingPairRequest) -> dict[str, Any]:
+        result = await asyncio.to_thread(
+            service.execute_action,
+            "game_streaming_pair",
+            {"pin": request.pin, "name": request.name},
+            False,
+            origin="api",
+        )
+        return result.to_dict()
 
     @app.post("/api/ui/show-chat", dependencies=[auth])
     async def show_chat() -> dict[str, bool]:

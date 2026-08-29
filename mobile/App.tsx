@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -21,6 +22,11 @@ import {
   loadCredentials,
 } from './src/credentials';
 import { PairScreen } from './src/PairScreen';
+import { GamingLauncher } from './src/GamingLauncher';
+import {
+  MOONLIGHT_APP_STORE_URL,
+  moonlightShortcutUrl,
+} from './src/moonlight';
 import { SettingsScreen } from './src/SettingsScreen';
 import { SystemScreen } from './src/SystemScreen';
 import type { Credentials, Health, TabKey } from './src/types';
@@ -188,6 +194,7 @@ export default function App() {
             />
           ) : null}
         </View>
+        <GamingLauncher api={api} onUnauthorized={unauthorized} />
         <BottomNavigation active={tab} onChange={setTab} />
       </View>
     );
@@ -234,6 +241,11 @@ function OfflineScreen({
             'Comprueba que el PC esté encendido y Tailscale conectado en el iPhone.'}
         </Text>
         <View style={styles.offlineActions}>
+          <Button
+            label="Abrir Moonlight"
+            icon="🎮"
+            onPress={() => void openMoonlightOffline()}
+          />
           <Button label="Volver a intentar" onPress={onRetry} />
           <Button
             label="Desemparejar"
@@ -244,6 +256,21 @@ function OfflineScreen({
       </Card>
     </View>
   );
+}
+
+async function openMoonlightOffline() {
+  try {
+    await Linking.openURL(moonlightShortcutUrl());
+  } catch {
+    try {
+      await Linking.openURL(MOONLIGHT_APP_STORE_URL);
+    } catch {
+      Alert.alert(
+        'No se ha podido abrir Moonlight',
+        'Abre Moonlight manualmente o comprueba que esté instalado.',
+      );
+    }
+  }
 }
 
 function BottomNavigation({

@@ -12,10 +12,11 @@
     "check": "npm run typecheck && npm test && npx expo-doctor"
   },
   "dependencies": {
-    "expo": "~54.0.35",
+    "expo": "~54.0.37",
     "expo-camera": "~17.0.10",
+    "expo-clipboard": "~8.0.8",
     "expo-document-picker": "~14.0.8",
-    "expo-file-system": "~19.0.23",
+    "expo-file-system": "~19.0.24",
     "expo-image": "~3.0.11",
     "expo-image-manipulator": "~14.0.8",
     "expo-image-picker": "~17.0.11",

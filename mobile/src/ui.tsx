@@ -352,7 +352,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 141, 154, 0.55)',
   },
   buttonCompact: {
-    minHeight: 38,
+    minHeight: 44,
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 12,

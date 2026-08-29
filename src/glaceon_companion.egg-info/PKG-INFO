@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: glaceon-companion
-Version: 0.11.4
+Version: 0.12.0
 Summary: Arfoxia, mascota Glaceon local con Tamagotchi, Ollama y control remoto seguro.
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
@@ -57,6 +57,7 @@ Este proyecto está pensado para uso personal y no comercial. Glaceon, Pokémon 
 - Contraseña local obligatoria para cerrar programas, bloquear Windows, ejecutar destinos arbitrarios, modificar archivos, apagar/reiniciar o pausar Codex. Cada autorización queda ligada a una sola acción, caduca a los 90 segundos y se bloquea temporalmente tras cinco fallos.
 - API autenticada con token y capturas temporales.
 - App móvil para iPhone compatible con Expo Go, con sincronización periódica y al volver a primer plano.
+- Lanzador permanente **🎮 Jugar en mi PC** en Expo Go: prepara el servicio de Sunshine, muestra el host privado de Tailscale, permite confirmar el PIN de Moonlight y abre la app mediante un Atajo de iOS o su ficha oficial.
 
 ## Instalación rápida
 
@@ -74,7 +75,7 @@ Para habilitar el inicio automático después de comprobar que todo funciona:
 .\scripts\install.ps1 -EnableStartup
 ```
 
-La primera ejecución crea la configuración y la base de datos en `%LOCALAPPDATA%\GlaceonCompanion`. `secrets.json` contiene el token móvil y `authorization.json` solo un verificador scrypt con sal, nunca la contraseña. Ambos archivos reciben una ACL restringida al usuario de Windows, SYSTEM y administradores.
+La primera ejecución crea la configuración y la base de datos en `%LOCALAPPDATA%\GlaceonCompanion`. `secrets.json` contiene el token móvil y, si Arfoxia configura una instalación nueva de Sunshine, su contraseña administrativa aleatoria cifrada con DPAPI para el usuario actual; nunca se devuelve a Expo ni se publica en Git. `authorization.json` solo contiene un verificador scrypt con sal, nunca la contraseña. Ambos archivos reciben una ACL restringida al usuario de Windows, SYSTEM y administradores; Arfoxia no continúa si no puede aplicarla al almacén de secretos.
 
 ## iPhone y acceso remoto
 
@@ -96,6 +97,39 @@ La app móvil está en `mobile/` y funciona en Expo Go sin una cuenta de Apple. 
 `tailscale serve` mantiene la API escuchando solo en `127.0.0.1` y publica un proxy HTTPS privado dentro de tu tailnet. No se abre ningún puerto del router ni se usa Funnel.
 El supervisor de Expo evita procesos duplicados, reinicia Metro si se cierra y
 registra su estado en `%LOCALAPPDATA%\GlaceonCompanion\expo-mobile.log`.
+
+## Jugar en el PC desde el iPhone
+
+El streaming usa Sunshine en Windows y la app oficial Moonlight en iPhone. El
+vídeo no pasa por Expo Go: el botón fijo de Arfoxia prepara el PC y guía el
+emparejamiento, y Moonlight mantiene la sesión de baja latencia.
+
+1. Instala Sunshine en el PC si aún no está disponible:
+
+```powershell
+winget install --id LizardByte.Sunshine --exact
+```
+
+2. Instala [Moonlight Game Streaming](https://apps.apple.com/es/app/moonlight-game-streaming/id1000551566)
+   en el iPhone y conecta Tailscale en ambos dispositivos.
+3. Para el primer emparejamiento, conecta el iPhone a la misma red local que el
+   PC. En Arfoxia pulsa **🎮 Jugar en mi PC**, copia el host privado, añádelo con
+   **+** en Moonlight y escribe en Arfoxia el PIN de cuatro cifras que muestre
+   Moonlight. Como esta vinculación concede control persistente del escritorio,
+   aprueba una vez la solicitud privada que aparecerá en el PC.
+4. En iOS crea un Atajo llamado exactamente **Abrir Moonlight**, con la acción
+   **Abrir app → Moonlight**. A partir de entonces el botón **Abrir con Atajo**
+   lo lanza con un toque; la ficha de App Store queda como alternativa.
+
+En este equipo Sunshine queda como servicio automático, captura la pantalla
+conectada a la RTX 5060 Ti de 8 GB y usa ViGEmBus para el mando virtual. Moonlight
+debe conectarse directamente al nombre MagicDNS o a la IP `100.x` del PC; el
+proxy HTTPS de `tailscale serve` se reserva para la API de Arfoxia y no transporta
+los puertos UDP/TCP del streaming.
+
+Tailscale no puede despertar por sí solo un PC completamente apagado. Para
+encenderlo desde fuera de casa hará falta más adelante un router, NAS o Raspberry
+Pi siempre activo en la red local que envíe el paquete Wake-on-LAN.
 
 ## Acciones y seguridad
 

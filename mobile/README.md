@@ -36,7 +36,33 @@ cifrado de iOS.
 - Estado de CPU, RAM, GPU, VRAM, juego detectado y modelo adaptativo.
 - Captura autenticada del monitor, apertura de aplicaciones permitidas y
   liberación manual de VRAM.
+- Botón fijo **🎮 Jugar en mi PC** con estado de Sunshine y Tailscale, copia del
+  host privado, confirmación segura del PIN de Moonlight y acceso a la app.
 - Desemparejamiento que borra la clave del llavero.
+
+## Jugar con Sunshine y Moonlight
+
+1. Instala la app oficial
+   [Moonlight Game Streaming](https://apps.apple.com/es/app/moonlight-game-streaming/id1000551566).
+2. La primera vez, usa el iPhone en la misma Wi‑Fi que el PC. Pulsa
+   **🎮 Jugar en mi PC**, copia el host que muestra Arfoxia y añádelo con **+**
+   dentro de Moonlight.
+3. Escribe en Arfoxia las cuatro cifras que enseña Moonlight. El PIN viaja a la
+   API autenticada de Arfoxia; las credenciales administrativas de Sunshine no
+   salen del PC. La primera vinculación exige además aprobar la solicitud
+   privada en Windows; después no hay que repetirla para jugar.
+4. Crea en la app Atajos un atajo llamado exactamente **Abrir Moonlight** con
+   la acción **Abrir app → Moonlight**. El botón **Abrir con Atajo** podrá
+   ejecutarlo desde Expo Go. Si no existe, usa **Instalar / abrir Moonlight** y
+   pulsa **Abrir** en la ficha oficial.
+
+Moonlight para iOS no publica un enlace profundo que permita a Expo Go abrir un
+equipo o juego concreto. Por eso la selección final del PC o de **Desktop/Steam
+Big Picture** se realiza dentro de Moonlight. Fuera de casa, conecta Tailscale y
+usa el mismo host ya emparejado. Encender un PC apagado desde otra red requiere
+un segundo dispositivo siempre activo en casa que haga de relé Wake-on-LAN.
+Si Arfoxia queda temporalmente sin conexión, la pantalla offline conserva el
+botón **Abrir Moonlight** para entrar al cliente ya emparejado.
 
 ## Comprobaciones de desarrollo
 

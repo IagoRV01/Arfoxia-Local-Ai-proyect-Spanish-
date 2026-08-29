@@ -7,6 +7,7 @@ FastAPI (localhost:8742) ──────┤         │              │
                                │         │              └─ Archivo SHA-256 (adjuntos)
 App Expo Go ← Tailscale Serve ─┘         ├─ Tamagotchi determinista
                                          ├─ Ollama adaptativo
+                                         ├─ GameStreamingManager → Sunshine (loopback)
                                          ├─ ActionDispatcher (acciones tipadas)
                                          ├─ LocalAuthorizationManager (scrypt + challenge)
                                          ├─ OnlineSearchClient → DDGS (HTTPS)
@@ -46,4 +47,8 @@ Ollama puede devolver varias llamadas tipadas en una sola respuesta. `CompanionS
 
 Las reacciones sonoras reutilizan los dos gritos existentes que PokeAPI expone para Glaceon, `latest` y `legacy`. Los archivos se conservan sin modificar; el reproductor varía únicamente volumen y velocidad durante la reproducción para distinguir cada interacción.
 
-La app React Native/Expo es el cliente de iPhone viable desde Windows y consume la misma API autenticada. Una futura compilación independiente o app SwiftUI puede mantener este contrato cuando haya acceso a macOS, Xcode y una identidad de firma.
+La app React Native/Expo es el cliente de iPhone viable desde Windows y consume la misma API autenticada. El lanzador de juego permanece fuera de las pestañas para estar siempre visible y usa tres endpoints limitados: estado, preparación del servicio exacto `SunshineService` y solicitud de envío de un PIN de cuatro cifras. Esta última crea un challenge de `LocalAuthorizationManager`; solo después de aprobarlo en el PC se entrega el PIN. `GameStreamingManager` habla únicamente con `https://127.0.0.1:47990`, conserva la contraseña de Sunshine cifrada con DPAPI en el almacén local protegido y nunca ofrece un proxy administrativo genérico.
+
+El plano de control y el vídeo siguen rutas distintas. Expo usa la API HTTPS de Arfoxia a través de Tailscale Serve; Moonlight se conecta directamente al MagicDNS o IP Tailscale del PC y a los puertos nativos TCP/UDP de Sunshine. Expo no transporta ni representa el streaming. Como Moonlight iOS no registra un enlace profundo público, el lanzador invoca opcionalmente un Atajo de iOS llamado `Abrir Moonlight` y deja la selección del equipo o juego dentro de Moonlight.
+
+Una futura compilación independiente o app SwiftUI puede mantener este contrato cuando haya acceso a macOS, Xcode y una identidad de firma.

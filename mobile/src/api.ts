@@ -14,6 +14,7 @@ import type {
   Credentials,
   DeleteConversationResponse,
   Health,
+  GameStreamingStatus,
   InteractionKind,
   ModelStatus,
   RequestedModelMode,
@@ -255,6 +256,28 @@ export class ArfoxiaApi {
   showDesktopChat(): Promise<{ ok: boolean }> {
     return this.request<{ ok: boolean }>('/api/ui/show-chat', {
       method: 'POST',
+    });
+  }
+
+  gameStreamingStatus(): Promise<GameStreamingStatus> {
+    return this.request<GameStreamingStatus>('/api/gaming/status');
+  }
+
+  prepareGameStreaming(): Promise<GameStreamingStatus> {
+    return this.request<GameStreamingStatus>('/api/gaming/prepare', {
+      method: 'POST',
+      timeoutMs: 60_000,
+    });
+  }
+
+  pairGameStreaming(
+    pin: string,
+    name = 'iPhone de Iago',
+  ): Promise<ActionResult> {
+    return this.request<ActionResult>('/api/gaming/pair', {
+      method: 'POST',
+      body: { pin, name },
+      timeoutMs: 60_000,
     });
   }
 

@@ -1,14 +1,115 @@
 from __future__ import annotations
 
+import base64
+import ctypes
 import json
 import os
 import secrets
+import tempfile
+import threading
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_SUNSHINE_DPAPI_ENTROPY = b"Arfoxia Sunshine credentials v1"
+
+
+class _DataBlob(ctypes.Structure):
+    _fields_ = [
+        ("cbData", ctypes.c_ulong),
+        ("pbData", ctypes.POINTER(ctypes.c_ubyte)),
+    ]
+
+
+def _data_blob(value: bytes) -> tuple[_DataBlob, ctypes.Array[Any]]:
+    buffer = ctypes.create_string_buffer(value)
+    blob = _DataBlob(
+        len(value),
+        ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte)),
+    )
+    return blob, buffer
+
+
+def _protect_windows_secret(value: str) -> str:
+    if os.name != "nt":
+        return value
+    source, source_buffer = _data_blob(value.encode("utf-8"))
+    entropy, entropy_buffer = _data_blob(_SUNSHINE_DPAPI_ENTROPY)
+    destination = _DataBlob()
+    crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    crypt32.CryptProtectData.argtypes = [
+        ctypes.POINTER(_DataBlob),
+        ctypes.c_wchar_p,
+        ctypes.POINTER(_DataBlob),
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_ulong,
+        ctypes.POINTER(_DataBlob),
+    ]
+    crypt32.CryptProtectData.restype = ctypes.c_int
+    kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel32.LocalFree.restype = ctypes.c_void_p
+    if not crypt32.CryptProtectData(
+        ctypes.byref(source),
+        None,
+        ctypes.byref(entropy),
+        None,
+        None,
+        0x1,
+        ctypes.byref(destination),
+    ):
+        raise RuntimeError("Windows no ha podido proteger el secreto local.")
+    try:
+        encrypted = ctypes.string_at(destination.pbData, destination.cbData)
+    finally:
+        kernel32.LocalFree(destination.pbData)
+    return base64.b64encode(encrypted).decode("ascii")
+
+
+def _unprotect_windows_secret(value: str) -> str:
+    if os.name != "nt":
+        return value
+    try:
+        encrypted = base64.b64decode(value, validate=True)
+    except (ValueError, TypeError) as exc:
+        raise RuntimeError("El secreto local protegido no es válido.") from exc
+    source, source_buffer = _data_blob(encrypted)
+    entropy, entropy_buffer = _data_blob(_SUNSHINE_DPAPI_ENTROPY)
+    destination = _DataBlob()
+    crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    crypt32.CryptUnprotectData.argtypes = [
+        ctypes.POINTER(_DataBlob),
+        ctypes.POINTER(ctypes.c_wchar_p),
+        ctypes.POINTER(_DataBlob),
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_ulong,
+        ctypes.POINTER(_DataBlob),
+    ]
+    crypt32.CryptUnprotectData.restype = ctypes.c_int
+    kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel32.LocalFree.restype = ctypes.c_void_p
+    if not crypt32.CryptUnprotectData(
+        ctypes.byref(source),
+        None,
+        ctypes.byref(entropy),
+        None,
+        None,
+        0x1,
+        ctypes.byref(destination),
+    ):
+        raise RuntimeError("Windows no ha podido descifrar el secreto local.")
+    try:
+        cleartext = ctypes.string_at(destination.pbData, destination.cbData)
+        return cleartext.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise RuntimeError("El secreto local protegido no es válido.") from exc
+    finally:
+        kernel32.LocalFree(destination.pbData)
 
 
 def default_data_dir() -> Path:
@@ -63,6 +164,10 @@ class CompanionConfig:
     mobile_dev_server_enabled: bool = True
     mobile_dev_server_port: int = 8081
     mobile_dev_server_host: str = "pciagorv.tail122075.ts.net"
+    game_streaming_enabled: bool = True
+    game_streaming_host: str = ""
+    sunshine_service_name: str = "SunshineService"
+    sunshine_web_port: int = 47990
     sprite_variant: str = "default"
     sprite_scale: int = 4
     always_on_top: bool = True
@@ -142,6 +247,7 @@ class ConfigStore:
         self.data_dir = (data_dir or default_data_dir()).resolve()
         self.path = self.data_dir / "config.json"
         self.secrets_path = self.data_dir / "secrets.json"
+        self._secrets_lock = threading.RLock()
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
     def load(self) -> CompanionConfig:
@@ -210,6 +316,10 @@ class ConfigStore:
             "mobile_dev_server_enabled",
             "mobile_dev_server_port",
             "mobile_dev_server_host",
+            "game_streaming_enabled",
+            "game_streaming_host",
+            "sunshine_service_name",
+            "sunshine_web_port",
         ):
             if key not in raw:
                 migrated = True
@@ -256,17 +366,111 @@ class ConfigStore:
         # authorization subsystem while reusing its exact-file ACL hardening.
         from .auth import harden_authorization_file
 
-        if self.secrets_path.exists():
-            value = json.loads(self.secrets_path.read_text(encoding="utf-8"))
+        with self._secrets_lock:
+            value = self._read_secrets()
             if value.get("api_token"):
-                harden_authorization_file(self.secrets_path)
+                if not harden_authorization_file(self.secrets_path):
+                    raise RuntimeError(
+                        "Windows no ha podido restringir el almacén local de secretos."
+                    )
                 return str(value["api_token"])
-        token = secrets.token_urlsafe(32)
-        self.secrets_path.write_text(
-            json.dumps({"api_token": token}, indent=2), encoding="utf-8"
-        )
-        harden_authorization_file(self.secrets_path)
-        return token
+            token = secrets.token_urlsafe(32)
+            value["api_token"] = token
+            self._write_secrets(value)
+            return token
+
+    def sunshine_credentials(self) -> tuple[str, str] | None:
+        """Return locally protected Sunshine credentials, never public config."""
+
+        from .auth import harden_authorization_file
+
+        with self._secrets_lock:
+            value = self._read_secrets()
+            record = value.get("sunshine")
+            if not isinstance(record, dict):
+                return None
+            username = record.get("username")
+            if not isinstance(username, str) or not username.strip():
+                return None
+            protected_password = record.get("password_dpapi")
+            legacy_password = record.get("password")
+            if isinstance(protected_password, str) and protected_password:
+                password = _unprotect_windows_secret(protected_password)
+            elif isinstance(legacy_password, str) and legacy_password:
+                password = legacy_password
+                if os.name == "nt":
+                    record.pop("password", None)
+                    record["password_dpapi"] = _protect_windows_secret(password)
+                    self._write_secrets(value)
+            else:
+                return None
+            if not harden_authorization_file(self.secrets_path):
+                raise RuntimeError(
+                    "Windows no ha podido restringir el almacén local de secretos."
+                )
+            return username, password
+
+    def save_sunshine_credentials(self, username: str, password: str) -> None:
+        """Persist generated local-only credentials without losing the API token."""
+
+        username_value = str(username).strip()
+        password_value = str(password)
+        if not username_value or not password_value:
+            raise ValueError("Las credenciales de Sunshine no pueden estar vacías.")
+        with self._secrets_lock:
+            value = self._read_secrets()
+            record = {"username": username_value}
+            if os.name == "nt":
+                record["password_dpapi"] = _protect_windows_secret(password_value)
+            else:
+                record["password"] = password_value
+            value["sunshine"] = record
+            self._write_secrets(value)
+
+    def _read_secrets(self) -> dict[str, Any]:
+        if not self.secrets_path.exists():
+            return {}
+        try:
+            value = json.loads(self.secrets_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError("El almacén local de secretos no es válido.") from exc
+        if not isinstance(value, dict):
+            raise RuntimeError("El almacén local de secretos no es válido.")
+        return value
+
+    def _write_secrets(self, value: dict[str, Any]) -> None:
+        from .auth import harden_authorization_file
+
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        temporary_path: Path | None = None
+        try:
+            descriptor, temporary_name = tempfile.mkstemp(
+                prefix=".secrets-",
+                suffix=".tmp",
+                dir=self.data_dir,
+            )
+            temporary_path = Path(temporary_name)
+            with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+                json.dump(value, handle, ensure_ascii=False, indent=2)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            if not harden_authorization_file(temporary_path):
+                raise RuntimeError(
+                    "Windows no ha podido proteger el nuevo almacén de secretos."
+                )
+            os.replace(temporary_path, self.secrets_path)
+            temporary_path = None
+            if not harden_authorization_file(self.secrets_path):
+                raise RuntimeError(
+                    "Windows no ha podido restringir el almacén local de secretos."
+                )
+        finally:
+            if temporary_path is not None:
+                try:
+                    temporary_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
     def public_config(self, config: CompanionConfig) -> dict[str, Any]:
         value = asdict(config)

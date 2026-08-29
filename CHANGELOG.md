@@ -6,6 +6,50 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+## [0.12.0] - 2026-08-30
+
+### Añadido
+
+- Lanzador permanente **🎮 Jugar en mi PC** en Expo Go, con preparación de
+  Sunshine, estado de Tailscale, host privado copiable y guía integrada para
+  Moonlight.
+- Emparejamiento desde Arfoxia mediante el PIN de cuatro cifras de Moonlight y
+  acceso a la app con un Atajo de iOS o su ficha oficial como alternativa.
+- Acceso directo a Moonlight también desde la pantalla offline de Arfoxia; un
+  equipo ya emparejado se abre con el primer toque en **Jugar en mi PC**.
+- Sunshine estable como servicio automático de Windows, captura de la pantalla
+  conectada a la RTX 5060 Ti de 8 GB y ViGEmBus para el mando virtual.
+
+### Cambiado
+
+- Separado el plano de control HTTPS de Expo del streaming: la app de Arfoxia
+  continúa por Tailscale Serve y Moonlight conecta directamente al host MagicDNS
+  o a la IP privada del PC.
+- Documentado el primer emparejamiento en la red local y la imposibilidad de
+  despertar el PC desde fuera sin un segundo nodo siempre encendido en casa.
+- Separados los estados de Sunshine local y conexión remota por Tailscale para
+  no anunciar «Listo» cuando la red privada está desconectada; la app refresca
+  el estado al volver desde Moonlight y usa áreas táctiles compactas de 44 pt.
+- Actualizados los parches compatibles de Expo SDK 54 y sus dependencias no
+  disruptivas; `expo-doctor` vuelve a superar todas sus comprobaciones.
+
+### Seguridad
+
+- Las credenciales aleatorias de Sunshine se guardan solo en el almacén local
+  con la contraseña cifrada mediante DPAPI y ACL restringida; el guardado falla
+  de forma cerrada si Windows no puede protegerlo. Nunca se envían a Expo,
+  Ollama, registros ni Git.
+- El puente solo puede iniciar el servicio exacto y llamar a la operación de PIN
+  en el loopback literal; no expone una consola ni la API administrativa general
+  de Sunshine y limita los intentos de emparejamiento a cinco por minuto.
+- Cada cliente Moonlight nuevo necesita una autorización local, exacta y de un
+  solo uso en el PC antes de que Arfoxia entregue el PIN a Sunshine.
+- El panel web de Sunshine queda limitado al PC, sin Funnel ni UPnP, y el estado
+  de emparejamiento solo refleja clientes realmente persistidos por Sunshine.
+- Las reglas de firewall de Sunshine ya no aceptan cualquier puerto y origen:
+  solo permiten sus puertos de streaming desde la LAN o la red privada de
+  Tailscale; el panel administrativo no se publica.
+
 ## [0.11.4] - 2026-08-29
 
 ### Añadido
@@ -120,3 +164,4 @@ y las versiones del proyecto siguen versionado semántico.
 [0.11.2]: https://github.com/IagoRV01/Arfoxia-Local-Ai-proyect-Spanish-/releases/tag/v0.11.2
 [0.11.3]: https://github.com/IagoRV01/Arfoxia-Local-Ai-proyect-Spanish-/releases/tag/v0.11.3
 [0.11.4]: https://github.com/IagoRV01/Arfoxia-Local-Ai-proyect-Spanish-/releases/tag/v0.11.4
+[0.12.0]: https://github.com/IagoRV01/Arfoxia-Local-Ai-proyect-Spanish-/releases/tag/v0.12.0
