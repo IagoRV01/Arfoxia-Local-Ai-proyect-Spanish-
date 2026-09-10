@@ -6,12 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#061522"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.iago.arfoxia",
@@ -27,7 +21,6 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#061522"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -54,6 +47,16 @@
         {
           "configureAndroidBackup": true,
           "faceIDPermission": "Arfoxia puede usar Face ID para proteger tu emparejamiento."
+        }
+      ],
+      "expo-image",
+      "expo-status-bar",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#061522"
         }
       ]
     ]

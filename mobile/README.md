@@ -6,17 +6,25 @@ Internet.
 
 ## Abrirla en el iPhone
 
-1. Mantén Tailscale conectado en el PC y en el iPhone.
-2. Abre Arfoxia en el PC. El servidor de Expo se iniciará automáticamente en
+1. Usa Expo Go compatible con **SDK 57** e inicia sesión en la app.
+2. En el PC, desde la carpeta `mobile`, ejecuta `npx expo login --browser` e
+   inicia sesión con **la misma cuenta**. Solo hace falta repetirlo si caduca
+   o se cierra la sesión. No guardes credenciales de Expo en el proyecto.
+3. Mantén Tailscale conectado en el PC y en el iPhone.
+4. Abre Arfoxia en el PC. El servidor de Expo se iniciará automáticamente en
    cuanto Tailscale esté listo.
-3. Abre el proyecto reciente de Arfoxia en Expo Go.
-4. Dentro de la app, pulsa **Escanear QR de Arfoxia**.
-5. En el PC, haz clic derecho sobre Arfoxia y elige **Emparejar iPhone**; escanea
+5. Abre el servidor de desarrollo de Arfoxia en Expo Go. Si ha desaparecido
+   de recientes, vuelve a abrir su enlace `exp://<MagicDNS-del-PC>:8081` o
+   escanea el QR de Expo con la Cámara del iPhone.
+6. Si la app aún no está emparejada, pulsa **Escanear QR de Arfoxia**.
+7. En el PC, haz clic derecho sobre Arfoxia y elige **Emparejar iPhone**; escanea
    ese segundo QR desde la app.
 
 Arfoxia anuncia Metro mediante el MagicDNS privado de Tailscale y lo reinicia si
-se cierra. `Iniciar Arfoxia movil.cmd` queda disponible como arranque manual de
-emergencia. El QR de emparejamiento conecta de forma privada la app con la API
+se cierra. Expo Go 57 en iOS exige autenticación en ambos dispositivos; el
+arranque ya no fuerza el modo `--offline`, para registrar la sesión de
+desarrollo con Expo. El tráfico de Arfoxia continúa por Tailscale, sin túnel
+público de Expo. El QR de emparejamiento conecta de forma privada la app con la API
 de Arfoxia. La clave solo se almacena en SecureStore, que utiliza el llavero
 cifrado de iOS.
 
@@ -73,6 +81,12 @@ npx expo-doctor@latest
 npx expo export --platform ios
 ```
 
-Expo SDK 54 se mantiene deliberadamente mientras sea la versión admitida por
-Expo Go en iPhone. Una app iOS independiente requerirá más adelante una cuenta
-del Apple Developer Program y una compilación EAS/TestFlight.
+La app utiliza Expo SDK 57, React Native 0.86 y React 19.2. Una actualización
+futura de Expo Go puede exigir otra migración de SDK; actualizar la app de
+Expo Go no actualiza automáticamente este proyecto. La migración no borra
+los chats del PC ni cambia el identificador de la app o sus claves SecureStore.
+Una app iOS independiente requerirá más adelante una cuenta del Apple Developer
+Program y una compilación EAS/TestFlight.
+
+Requisito oficial de sesión:
+https://expo.dev/changelog/expo-go-57-login

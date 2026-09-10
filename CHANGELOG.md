@@ -6,6 +6,22 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+## [0.12.1] - 2026-09-10
+
+### Corregido
+
+- Compatibilidad con Expo Go SDK 57 en iPhone: migración desde SDK 54 a Expo
+  57.0.21, React Native 0.86.3, React 19.2.3 y módulos nativos compatibles.
+- Actualizado el estilo de la máscara del escáner QR y los tipos de desarrollo
+  para las APIs actuales de React Native y TypeScript 6.
+- Arranque automático de Metro sin `--offline` ni `EXPO_OFFLINE` heredado, para
+  permitir el registro de la sesión exigida por Expo Go 57. Se mantiene el host
+  privado de Tailscale y la supervisión de reinicios.
+- Retiradas opciones nativas obsoletas y documentados el inicio de sesión con
+  la misma cuenta en PC/iPhone y la reapertura si el proyecto no sale en recientes.
+- Conservados identificador de app, claves de emparejamiento e historial local;
+  actualizada la evaluación de dependencias en la documentación de seguridad.
+
 ## [0.12.0] - 2026-08-30
 
 ### Añadido

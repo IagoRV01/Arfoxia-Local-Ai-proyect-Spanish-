@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: glaceon-companion
-Version: 0.12.0
+Version: 0.12.1
 Summary: Arfoxia, mascota Glaceon local con Tamagotchi, Ollama y control remoto seguro.
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown

@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   scannerShade: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     paddingHorizontal: 22,
     paddingTop: 58,
     paddingBottom: 45,

@@ -41,6 +41,7 @@ def runtime_files(tmp_path: Path) -> tuple[Path, Path, Path]:
 
 
 def test_starts_expo_with_private_tailscale_hostname(tmp_path, monkeypatch):
+    monkeypatch.setenv("EXPO_OFFLINE", "1")
     mobile, expo_cli, node = runtime_files(tmp_path)
     calls: list[tuple[list[str], dict[str, Any]]] = []
     process = FakeProcess()
@@ -72,13 +73,13 @@ def test_starts_expo_with_private_tailscale_hostname(tmp_path, monkeypatch):
         str(expo_cli),
         "start",
         "--go",
-        "--offline",
         "--port",
         "8081",
         "--max-workers",
         "2",
     ]
     assert options["cwd"] == str(mobile.resolve())
+    assert "EXPO_OFFLINE" not in options["env"]
     assert options["env"]["REACT_NATIVE_PACKAGER_HOSTNAME"] == (
         "pciagorv.tail122075.ts.net"
     )
