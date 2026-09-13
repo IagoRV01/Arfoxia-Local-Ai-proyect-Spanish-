@@ -243,7 +243,7 @@ export function SystemScreen({ api, onUnauthorized }: Props) {
   const currentMode = requestedModelMode(model);
   const gameProbeFailed = Boolean(model?.game?.error);
   const residentModels =
-    currentMode === 'gaming_gpu'
+    currentMode === 'dual' ? model?.dual_loaded_models : currentMode === 'gaming_gpu'
       ? model?.gaming_gpu_loaded_models
       : model?.loaded_models;
   const memoryUsed =
@@ -559,11 +559,12 @@ function ModeOption({
 }) {
   const modelName = modelForMode(status, mode);
   const blocked =
-    mode === 'gaming_gpu' && status?.gaming_gpu_blocked_by_game === true;
+    (mode === 'gaming_gpu' && status?.gaming_gpu_blocked_by_game === true) ||
+    (mode === 'dual' && status?.dual_blocked_by_game === true);
   const gameProbeFailed = blocked && Boolean(status?.game?.error);
   const available = modelModeAvailable(status, mode);
   const contextTokens =
-    mode === 'gaming_gpu'
+    mode === 'dual' ? status?.dual_context_tokens : mode === 'gaming_gpu'
       ? status?.gaming_gpu_context_tokens
       : mode === 'power'
         ? status?.power_context_tokens

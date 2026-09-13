@@ -1,7 +1,7 @@
 export type InteractionKind = 'feed' | 'pet' | 'play' | 'sleep' | 'wake';
 export type TabKey = 'companion' | 'chat' | 'system' | 'settings';
 export type ModelMode = 'small' | 'large' | 'direct' | string;
-export type RequestedModelMode = 'gaming_gpu' | 'normal' | 'power';
+export type RequestedModelMode = 'gaming_gpu' | 'normal' | 'power' | 'dual';
 
 export interface Credentials {
   version: 1;
@@ -254,7 +254,16 @@ export interface DetailedGpuStatus {
 export interface ModelStatus {
   adaptive_enabled?: boolean;
   model?: string;
-  model_mode?: 'small' | 'large' | 'power' | 'gaming_gpu';
+  model_mode?: 'small' | 'large' | 'power' | 'gaming_gpu' | 'dual';
+  dual_model?: string;
+  dual_model_installed?: boolean;
+  dual_context_tokens?: number;
+  dual_server_running?: boolean;
+  dual_blocked_by_game?: boolean;
+  dual_ai_limit_gb?: number;
+  dual_gaming_limit_gb?: number;
+  dual_last_error?: string;
+  dual_loaded_models?: Array<{ name: string; vram_gb: number; gpu_percent: number }>;
   requested_mode?: RequestedModelMode;
   reason?: string;
   small_model?: string;

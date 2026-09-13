@@ -49,6 +49,8 @@ EXCLUDED_GAME_PROCESSES = frozenset(
         "ealink.exe",
         "epicgameslauncher.exe",
         "epicwebhelper.exe",
+        "eosoverlayrenderer-win64-shipping.exe",
+        "eosoverlayrenderer-win32-shipping.exe",
         "gamebar.exe",
         "gamebarftserver.exe",
         "gameoverlayui.exe",
@@ -179,7 +181,7 @@ class RuntimeModel:
         return min(100.0, max(0.0, self.size_vram_bytes * 100.0 / total))
 
 
-SelectionTier = Literal["small", "large", "power", "gaming_gpu"]
+SelectionTier = Literal["small", "large", "power", "gaming_gpu", "dual"]
 SelectionReason = Literal[
     "adaptive_disabled",
     "config_invalid",
@@ -194,6 +196,8 @@ SelectionReason = Literal[
     "power_runtime_failed",
     "gaming_gpu_selected",
     "gaming_gpu_runtime_failed",
+    "dual_selected",
+    "dual_runtime_failed",
 ]
 
 

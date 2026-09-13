@@ -63,6 +63,7 @@ export function modeUsesGpu(
   mode: RequestedModelMode,
   gpu: Pick<DetailedGpuStatus, 'role'>,
 ): boolean {
+  if (mode === 'dual') return isAiGpu(gpu.role) || isGamingGpu(gpu.role);
   return mode === 'gaming_gpu' ? isGamingGpu(gpu.role) : isAiGpu(gpu.role);
 }
 

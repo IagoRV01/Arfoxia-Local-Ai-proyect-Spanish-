@@ -6,6 +6,31 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+## [0.13.0] - 2026-09-14
+
+### Añadido
+
+- Modo manual **Dual · Qwen3.8 27B** en el gestor de GPU de Windows y Expo Go,
+  manteniendo los perfiles Normal, Potencia y Ligero existentes.
+- Servidor Ollama privado en loopback (11436), separado de los modos anteriores,
+  que usa ambas GPU por UUID con reparto de capas 86:14, Q4_K_M, contexto 32K,
+  Flash Attention, caché KV Q8, razonamiento y residencia indefinida.
+- Desactivadas la caché de prompts en RAM y las copias de contexto del servidor
+  Dual, conservando el KV activo en GPU.
+- Presupuesto máximo conservador de 16 GiB en la GPU de IA y 5,5 GiB en la de
+  juego: incluye el consumo ajeno de Windows. Vigilancia durante carga y uso,
+  cancelación ante exceso, falta de telemetría, juego activo u offload a CPU.
+- Recuperación de procesos propios tras cierre inesperado, liberación manual
+  y pruebas de regresión para selección, límites, autenticación y uso de ambas GPU.
+- Prueba real reproducible `scripts/smoke_dual_gpu.py` para código, llamada de
+  herramienta e imagen, sin escribir chats ni ejecutar las herramientas propuestas.
+
+### Corregido
+
+- La superposición de Epic Online Services ya no se confunde con un juego activo.
+- Etiquetas del modelo Dual en chat y telemetría, adjuntos con el presupuesto
+  del modelo grande y plazos de espera móviles adecuados para razonamiento local.
+
 ## [0.12.1] - 2026-09-10
 
 ### Corregido

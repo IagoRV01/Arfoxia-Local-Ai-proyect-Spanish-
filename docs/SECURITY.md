@@ -87,6 +87,11 @@ Se reducen a un máximo de 1600×1000, se guardan como WebP con un identificador
 
 ## Riesgos restantes
 
+- El modo Dual usa solo un servidor propio en loopback y no expone Ollama al
+  móvil. Su reparto de VRAM es calibrado y vigilado, no una cuota dura de CUDA:
+  pueden existir picos entre comprobaciones, especialmente si otra app reserva
+  VRAM. Ante juego, exceso o pérdida de telemetría se detiene el proceso propio,
+  nunca el juego. Véase [Modo Dual](DUAL_GPU.md).
 - Cualquiera que obtenga el token puede usar las herramientas permitidas mientras tenga acceso de red al servicio.
 - El token remoto no basta para operaciones sensibles: estas necesitan interacción en el PC. Un proceso malicioso que ya ejecute código como el mismo usuario de Windows queda fuera de este límite y podría modificar el programa o capturar teclas.
 - Una contraseña corta continúa siendo susceptible a ataque offline si alguien roba el verificador. No reutilices una clave que hayas escrito en una conversación; cámbiala desde el menú local.

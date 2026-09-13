@@ -14,6 +14,18 @@ import {
 } from '../src/modelMode';
 import type { ModelStatus } from '../src/types';
 
+test('dual is manual, game-gated, and never offered by an older backend', () => {
+  assert.deepEqual(modelModeRequest('dual'), { mode: 'dual' });
+  assert.equal(modelModeAvailable(status(), 'dual'), false);
+  const dual = status({ requested_mode: 'dual', model_mode: 'dual', dual_model_installed: true });
+  assert.equal(requestedModelMode(dual), 'dual');
+  assert.equal(modelTierLabel(dual), 'DUAL');
+  assert.equal(nextRequestedModelMode(dual), 'normal');
+  assert.equal(modelModeAvailable(dual, 'dual'), true);
+  assert.equal(modelModeAvailable({ ...dual, dual_blocked_by_game: true }, 'dual'), false);
+  assert.equal(modelModeAvailable({ ...dual, game: { active: false, processes: [], error: 'probe failed' } }, 'dual'), false);
+});
+
 function status(overrides: Partial<ModelStatus> = {}): ModelStatus {
   return {
     requested_mode: 'normal',

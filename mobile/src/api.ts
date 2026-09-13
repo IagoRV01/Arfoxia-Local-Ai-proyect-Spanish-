@@ -161,7 +161,7 @@ export class ArfoxiaApi {
         client_message_id: options.clientMessageId,
         research_mode: options.researchMode,
       },
-      timeoutMs: 180_000,
+      timeoutMs: 900_000,
     });
   }
 
@@ -242,7 +242,7 @@ export class ArfoxiaApi {
     return this.request<ModelStatus>(MODEL_MODE_ENDPOINT, {
       method: 'POST',
       body: modelModeRequest(mode),
-      timeoutMs: 300_000,
+      timeoutMs: 900_000,
     });
   }
 

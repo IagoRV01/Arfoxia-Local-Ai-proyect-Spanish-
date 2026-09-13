@@ -9,6 +9,12 @@ import {
 } from '../src/gpuStatus';
 import type { ModelStatus, PcStatus } from '../src/types';
 
+test('dual assigns the model to both physical GPUs', () => {
+  assert.equal(modeUsesGpu('dual', { role: 'ai' }), true);
+  assert.equal(modeUsesGpu('dual', { role: 'gaming' }), true);
+  assert.equal(modeUsesGpu('dual', { role: 'unassigned' }), false);
+});
+
 const dualGpuStatus: ModelStatus = {
   requested_mode: 'gaming_gpu',
   model_mode: 'small',

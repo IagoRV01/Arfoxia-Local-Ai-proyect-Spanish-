@@ -619,9 +619,9 @@ class CompanionService:
         """Switch the runtime model profile atomically and warm power mode."""
 
         requested = str(mode or "").strip().casefold()
-        if requested not in {"normal", "power", "gaming_gpu"}:
+        if requested not in {"normal", "power", "gaming_gpu", "dual"}:
             raise ValueError(
-                "El modo debe ser «normal», «power» o «gaming_gpu»."
+                "El modo debe ser «normal», «power», «gaming_gpu» o «dual»."
             )
         with self._model_switch_lock:
             if getattr(self.ollama, "switching_to", None) is not None:
@@ -634,7 +634,35 @@ class CompanionService:
                 self.ollama.switching_to = None
             raise
         try:
-            if requested == "normal":
+            if hasattr(self.ollama, "dual"):
+                await self.ollama.dual.stop()
+                self.ollama.dual.last_error = ""
+                if self.ollama.requested_mode == "dual":
+                    self.ollama.use_normal_mode()
+            if requested == "dual":
+                game = await asyncio.to_thread(detect_game_processes, self.config.game_processes)
+                if game.active or game.error:
+                    raise RuntimeError("El modo Dual no está disponible mientras juegas o no se puede comprobar.")
+                installed = await self.ollama.installed_models()
+                if self.config.dual_model.casefold() not in {name.casefold() for name in installed}:
+                    raise RuntimeError(f"El modelo Dual {self.config.dual_model} no está instalado.")
+                self.ollama.use_normal_mode()
+                await self.ollama.stop_gaming_server()
+                configured = {self.config.model.casefold(), self.config.large_model.casefold(),
+                              self.config.power_model.casefold(), self.config.dual_model.casefold()}
+                for runtime in await self.ollama.running_models():
+                    if runtime.name.casefold() in configured:
+                        await self.ollama.unload(runtime.name)
+                await asyncio.sleep(1)
+                try:
+                    await self.ollama.dual.start(self.ollama._gaming_ollama_executable())
+                    await self.ollama.dual.preload()
+                    self.ollama.requested_mode = "dual"
+                except BaseException:
+                    self.ollama.dual.stop_sync()
+                    self.ollama.use_normal_mode()
+                    raise
+            elif requested == "normal":
                 self.ollama.use_normal_mode()
                 await self.ollama.stop_gaming_server()
                 try:
@@ -740,6 +768,8 @@ class CompanionService:
                     self.ollama.stop_gaming_server_sync()
                     raise
         except asyncio.CancelledError:
+            if hasattr(self.ollama, "dual"):
+                self.ollama.dual.stop_sync()
             self.ollama.use_normal_mode()
             self.ollama.stop_gaming_server_sync()
             try:
@@ -748,6 +778,8 @@ class CompanionService:
                 pass
             raise
         except (httpx.HTTPError, asyncio.TimeoutError, OSError) as exc:
+            if hasattr(self.ollama, "dual"):
+                self.ollama.dual.stop_sync()
             self.ollama.use_normal_mode()
             self.ollama.stop_gaming_server_sync()
             try:
@@ -771,6 +803,12 @@ class CompanionService:
         """Release the large model promptly when a real game payload appears."""
 
         while not self._guard_stop.wait(5.0):
+            dual = getattr(self.ollama, "dual", None)
+            if dual is not None and dual.owned:
+                reason = dual.guard()
+                if reason:
+                    self.ollama.use_normal_mode()
+                    dual.stop_sync(reason)
             game = detect_game_processes(self.config.game_processes)
             if not game.active and not game.error:
                 continue
@@ -2124,9 +2162,12 @@ class CompanionService:
                         "large",
                         "power",
                         "gaming_gpu",
+                        "dual",
                     }:
                         try:
-                            if browser_selection.tier == "gaming_gpu":
+                            if browser_selection.tier == "dual":
+                                await self.ollama.dual.stop()
+                            elif browser_selection.tier == "gaming_gpu":
                                 await self.ollama.stop_gaming_server()
                             else:
                                 await self.ollama.unload(browser_selection.model)
@@ -2255,7 +2296,7 @@ class CompanionService:
         if attachments:
             text_limit = (
                 self.config.large_attachment_text_chars
-                if selection.tier == "large"
+                if selection.tier in {"large", "power", "dual"}
                 else self.config.small_attachment_text_chars
             )
             history[-1] = build_ollama_message(
@@ -2284,7 +2325,7 @@ class CompanionService:
                 temporal_context=temporal_context,
             )
         except (httpx.HTTPError, asyncio.TimeoutError) as exc:
-            if selection.tier in {"large", "power", "gaming_gpu"}:
+            if selection.tier in {"large", "power", "gaming_gpu", "dual"}:
                 try:
                     if selection.tier == "gaming_gpu":
                         await self.ollama.stop_gaming_server()
@@ -2457,7 +2498,7 @@ class CompanionService:
                     or " ".join(result.message for _, result in completed)
                 )
             except (httpx.HTTPError, asyncio.TimeoutError):
-                if selection.tier in {"large", "power", "gaming_gpu"}:
+                if selection.tier in {"large", "power", "gaming_gpu", "dual"}:
                     if selection.tier == "gaming_gpu":
                         await self.ollama.stop_gaming_server()
                     selection = self._fallback_selection(selection)
@@ -2542,9 +2583,11 @@ class CompanionService:
     async def unload_model(self) -> None:
         await self._acquire_turn_lock()
         try:
+            if hasattr(self.ollama, "dual"):
+                await self.ollama.dual.stop()
             if hasattr(self.ollama, "stop_gaming_server"):
                 await self.ollama.stop_gaming_server()
-            if getattr(self.ollama, "requested_mode", "normal") == "gaming_gpu":
+            if getattr(self.ollama, "requested_mode", "normal") in {"gaming_gpu", "dual"}:
                 self.ollama.use_normal_mode()
             running = await self.ollama.running_models()
             configured = {
@@ -2561,6 +2604,8 @@ class CompanionService:
 
     def close(self) -> None:
         self._guard_stop.set()
+        if hasattr(self.ollama, "dual"):
+            self.ollama.dual.stop_sync()
         if self._model_guard.is_alive():
             self._model_guard.join(timeout=1.0)
         if getattr(self.ollama, "requested_mode", "normal") == "power":

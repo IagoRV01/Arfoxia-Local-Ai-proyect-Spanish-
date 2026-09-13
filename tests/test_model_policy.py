@@ -232,6 +232,10 @@ def test_game_probe_recognizes_supported_library_payloads(source, executable):
             r"C:\Program Files\Epic Games\Launcher\Portal\Binaries\Win64\EpicGamesLauncher.exe",
         ),
         (
+            "EOSOverlayRenderer-Win64-Shipping.exe",
+            r"C:\Program Files (x86)\Epic Games\Epic Online Services\ManagedArtifacts\test\EOSOverlayRenderer-Win64-Shipping.exe",
+        ),
+        (
             "RiotClientServices.exe",
             r"C:\Riot Games\Riot Client\RiotClientServices.exe",
         ),

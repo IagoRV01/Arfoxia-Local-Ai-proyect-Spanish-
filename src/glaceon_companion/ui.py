@@ -840,7 +840,7 @@ class ChatWindow(QDialog):
     def refresh_power_button(self) -> None:
         power = (
             getattr(getattr(self.service, "ollama", None), "requested_mode", "normal")
-            == "power"
+            in {"power", "dual"}
         )
         self.power_button.setEnabled(True)
         self.power_button.setText(
@@ -858,7 +858,7 @@ class ChatWindow(QDialog):
                 "requested_mode",
                 "normal",
             )
-            == "power"
+            in {"power", "dual"}
             else "power"
         )
         self.power_button.setEnabled(False)
@@ -1654,11 +1654,11 @@ class ChatWindow(QDialog):
         model = str(result.get("model") or "")
         if (
             conversation_id
-            and mode in {"small", "large", "power", "gaming_gpu"}
+            and mode in {"small", "large", "power", "gaming_gpu", "dual"}
             and model
         ):
             label = (
-                "modelo Potencia"
+                "modelo Dual" if mode == "dual" else "modelo Potencia"
                 if mode == "power"
                 else "modelo en GPU de 8 GB"
                 if mode == "gaming_gpu"
@@ -1973,6 +1973,7 @@ class GpuManagerDialog(QDialog):
 
         second_row = QHBoxLayout()
         self.power_button = QPushButton("⚡ Potencia · GPU 16 GB")
+        self.dual_button = QPushButton("✦ Dual · Qwen3.8 · 16 + 5,5 GB")
         self.unload_button = QPushButton("Liberar toda la VRAM")
         self.refresh_button = QPushButton("Actualizar")
         second_row.addWidget(self.power_button, 1)
@@ -1985,12 +1986,14 @@ class GpuManagerDialog(QDialog):
         layout.addWidget(self.telemetry, 1)
         layout.addLayout(first_row)
         layout.addLayout(second_row)
+        layout.addWidget(self.dual_button)
 
         self.gaming_button.clicked.connect(
             lambda: self._set_mode("gaming_gpu")
         )
         self.normal_button.clicked.connect(lambda: self._set_mode("normal"))
         self.power_button.clicked.connect(lambda: self._set_mode("power"))
+        self.dual_button.clicked.connect(lambda: self._set_mode("dual"))
         self.unload_button.clicked.connect(self._unload_models)
         self.refresh_button.clicked.connect(self.refresh)
 
@@ -2031,17 +2034,19 @@ class GpuManagerDialog(QDialog):
         mode_labels = {
             "normal": "Normal · GPU de IA",
             "power": "Potencia · GPU de IA",
+            "dual": "Dual · Qwen3.8 · ambas GPU",
             "gaming_gpu": "Modelo pequeño · GPU de juego",
         }
         model = html.escape(str(status.get("model") or "Sin modelo seleccionado"))
-        loaded = status.get("loaded_models")
+        loaded = status.get("dual_loaded_models") if mode == "dual" else status.get("loaded_models")
         loaded_count = len(loaded) if isinstance(loaded, list) else 0
+        loaded_label = "Modelos activos en modo Dual" if mode == "dual" else "Modelos activos en GPU de IA"
         sections = [
             (
                 "<div style='margin-bottom:12px'>"
                 f"<b>Perfil:</b> {html.escape(mode_labels.get(mode, mode))}<br>"
                 f"<b>Modelo seleccionado:</b> {model}<br>"
-                f"<b>Modelos activos en GPU de IA:</b> {loaded_count}"
+                f"<b>{loaded_label}:</b> {loaded_count}"
                 "</div>"
             )
         ]
@@ -2132,7 +2137,7 @@ class GpuManagerDialog(QDialog):
         if self.busy or self.refresh_pending:
             return
         game = self.last_status.get("game") or {}
-        if mode == "gaming_gpu" and (
+        if mode in {"gaming_gpu", "dual"} and (
             bool(game.get("active"))
             or bool(game.get("error"))
             or self.last_status.get("gaming_gpu_blocked_by_game") is True
@@ -2152,6 +2157,7 @@ class GpuManagerDialog(QDialog):
         labels = {
             "normal": "Volviendo al perfil normal…",
             "power": "Cargando Qwen3.6 en la GPU de 16 GB…",
+            "dual": "Cargando Qwen3.8 en ambas GPU; comprobando VRAM…",
             "gaming_gpu": "Iniciando Ollama privado en la GPU de 8 GB…",
         }
         self.state_label.setText(labels.get(mode, "Cambiando perfil…"))
@@ -2178,7 +2184,9 @@ class GpuManagerDialog(QDialog):
         self.last_status = dict(value) if isinstance(value, dict) else {}
         self.telemetry.setHtml(self.status_html(self.last_status))
         mode = str(self.last_status.get("requested_mode") or "normal")
-        if mode == "gaming_gpu":
+        if mode == "dual":
+            self.state_label.setText("Dual activo: Qwen3.8, ambas GPU, hasta 16 + 5,5 GB. Se detiene al jugar.")
+        elif mode == "gaming_gpu":
             self.state_label.setText(
                 "Modelo pequeño activo exclusivamente en la GPU de 8 GB."
             )
@@ -2237,6 +2245,10 @@ class GpuManagerDialog(QDialog):
             and mode != "gaming_gpu"
         )
         self.normal_button.setEnabled(controls_available and mode != "normal")
+        self.dual_button.setEnabled(controls_available and not game_active
+            and self.last_status.get("dual_model_installed") is True and mode != "dual")
+        self.dual_button.setText("✦ Dual activo · ambas GPU" if mode == "dual"
+            else "✦ Dual · Qwen3.8 · 16 + 5,5 GB")
         self.power_button.setEnabled(
             controls_available
             and power_installed is not False
@@ -3207,7 +3219,9 @@ class PetWindow(QWidget):
 
     def on_model_mode_ready(self, status: Any) -> None:
         payload = status if isinstance(status, dict) else {}
-        if payload.get("requested_mode") == "power":
+        if payload.get("requested_mode") == "dual":
+            self.show_speech("✦ ¡Modo Dual listo! Qwen3.8 está cargado en ambas GPU.")
+        elif payload.get("requested_mode") == "power":
             self.show_speech("⚡ ¡Modo Potencia listo! Qwen3.6 está cargado.")
         elif payload.get("requested_mode") == "gaming_gpu":
             self.show_speech("🎮 Modelo pequeño listo en la GPU de 8 GB.")

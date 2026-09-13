@@ -15,6 +15,7 @@ import httpx
 import psutil
 
 from .config import CompanionConfig
+from .dual_gpu import DualGpuRuntime
 from .model_policy import (
     GameSnapshot,
     GpuSnapshot,
@@ -607,6 +608,7 @@ class OllamaClient:
         runtime_dir: Path | None = None,
     ) -> None:
         self.config = config
+        self.dual = DualGpuRuntime(config, runtime_dir)
         self.last_selection: ModelSelection | None = None
         # Power mode is deliberately runtime-only. Arfoxia always starts in the
         # normal adaptive 4B/9B profile, even if the previous session ended in
@@ -993,12 +995,17 @@ class OllamaClient:
         )
 
     def fallback_small_selection(self, failed: ModelSelection) -> ModelSelection:
-        if failed.tier in {"power", "gaming_gpu"}:
+        if failed.tier in {"power", "gaming_gpu", "dual"}:
             self.requested_mode = "normal"
+        if failed.tier == "dual":
+            self.dual.stop_sync("El modelo Dual falló; volviendo al perfil normal.")
         return ModelSelection(
             model=self.config.model,
             tier="small",
             reason=(
+                "dual_runtime_failed"
+                if failed.tier == "dual"
+                else
                 "power_runtime_failed"
                 if failed.tier == "power"
                 else "gaming_gpu_runtime_failed"
@@ -1087,6 +1094,15 @@ class OllamaClient:
         return game
 
     async def select_for_turn(self) -> ModelSelection:
+        if self.requested_mode == "dual":
+            error = await asyncio.to_thread(self.dual.guard)
+            if error:
+                self.dual.stop_sync(error)
+                self.requested_mode = "normal"
+            else:
+                selection = self._dual_selection(await asyncio.to_thread(probe_nvidia_gpus))
+                self.last_selection = selection
+                return selection
         if self.requested_mode == "gaming_gpu":
             game = await asyncio.to_thread(
                 detect_game_processes,
@@ -1162,6 +1178,15 @@ class OllamaClient:
     async def model_status(self) -> dict[str, Any]:
         installed, running, gpu, game = await self._inspect_runtime()
         full_gpu = await asyncio.to_thread(probe_nvidia_gpus)
+        if self.requested_mode == "dual" and not self.dual.owned:
+            self.requested_mode = "normal"
+        dual_installed = self.config.dual_model.casefold() in {name.casefold() for name in installed}
+        dual_running: tuple[RuntimeModel, ...] = ()
+        if self.dual.owned:
+            try:
+                dual_running = await self.running_models(self.dual.url)
+            except httpx.HTTPError:
+                pass
         gaming_running: tuple[RuntimeModel, ...] = ()
         gaming_server_ready = await self._gaming_server_is_ready()
         gaming_server_owned = self.gaming_server_owned
@@ -1194,7 +1219,9 @@ class OllamaClient:
             gaming_server_ready = False
             gaming_server_owned = False
             gaming_running = ()
-        if (
+        if self.requested_mode == "dual" and self.dual.owned:
+            selection = self._dual_selection(full_gpu)
+        elif (
             self.requested_mode == "gaming_gpu"
             and gaming_server_ready
             and gaming_server_owned
@@ -1242,6 +1269,17 @@ class OllamaClient:
                 for name in installed
             ),
             "power_model": self.config.power_model,
+            "dual_model": self.config.dual_model,
+            "dual_model_installed": dual_installed,
+            "dual_context_tokens": self.dual.context_tokens,
+            "dual_server_running": self.dual.owned,
+            "dual_blocked_by_game": game.active or bool(game.error),
+            "dual_ai_limit_gb": 16,
+            "dual_gaming_limit_gb": 5.5,
+            "dual_last_error": self.dual.last_error,
+            "dual_loaded_models": [{"name": item.name,
+                "vram_gb": round(item.size_vram_bytes / 1024**3, 3),
+                "gpu_percent": round(item.gpu_percent, 1)} for item in dual_running],
             "power_model_installed": power_installed,
             "power_context_tokens": self._bounded_context(
                 self.config.power_context_tokens,
@@ -1283,6 +1321,8 @@ class OllamaClient:
                         == self.config.gaming_gpu_uuid.strip().casefold()
                         else "unassigned"
                     ),
+                    "model": self.config.dual_model if dual_running and self.requested_mode == "dual" else None,
+                    "active": bool(dual_running) if self.requested_mode == "dual" else None,
                     "total_gb": round(device.total_vram_mib / 1024, 2),
                     "used_gb": round(device.effective_used_vram_mib / 1024, 2),
                     "free_gb": round(device.free_vram_mib / 1024, 2),
@@ -1319,6 +1359,12 @@ class OllamaClient:
     @staticmethod
     def selection_metadata(selection: ModelSelection) -> dict[str, Any]:
         return asdict(selection)
+
+    def _dual_selection(self, gpu: GpuSnapshot) -> ModelSelection:
+        return ModelSelection(model=self.config.dual_model, tier="dual", reason="dual_selected",
+            gpu_free_vram_mib=gpu.free_vram_mib, effective_free_vram_mib=gpu.free_vram_mib,
+            reclaimable_large_vram_mib=0, large_required_vram_mib=21 * 1024 + 512,
+            game_active=False)
 
     @staticmethod
     def _bounded_context(value: Any, *, large: bool) -> int:
@@ -1462,7 +1508,8 @@ class OllamaClient:
         temporal_context: TemporalContext | None = None,
     ) -> dict[str, Any]:
         selected = selection or self._fixed_small_selection()
-        is_large = selected.tier in {"large", "power"}
+        is_large = selected.tier in {"large", "power", "dual"}
+        is_dual = selected.tier == "dual"
         is_power = selected.tier == "power"
         is_gaming_gpu = selected.tier == "gaming_gpu"
         system = {
@@ -1513,13 +1560,24 @@ class OllamaClient:
         }
         if is_power or is_gaming_gpu:
             payload["options"].update({"num_gpu": 999, "main_gpu": 0})
+        if is_dual:
+            error = await asyncio.to_thread(self.dual.guard)
+            if error:
+                self.dual.stop_sync(error)
+                raise httpx.ConnectError(error)
+            payload["options"] = self.dual.options()
+            payload["keep_alive"] = -1
+            payload["think"] = True
         tool_definitions = self._tool_definitions(tools)
         if tool_definitions:
             payload["tools"] = tool_definitions
         async with httpx.AsyncClient(
-            timeout=httpx.Timeout(300.0, connect=5.0)
+            timeout=httpx.Timeout(900.0 if is_dual else 300.0, connect=5.0)
         ) as client:
             target_url = (
+                self.dual.url
+                if is_dual
+                else
                 self.config.gaming_gpu_ollama_url
                 if is_gaming_gpu
                 else self.config.ollama_url

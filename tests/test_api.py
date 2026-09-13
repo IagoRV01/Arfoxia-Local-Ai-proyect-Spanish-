@@ -283,6 +283,9 @@ def test_model_mode_switch_is_authenticated_and_strict(tmp_path):
             )
             assert gaming.status_code == 200
             assert calls == ["power", "gaming_gpu"]
+            dual = client.post("/api/model/mode", headers=headers, json={"mode": "dual"})
+            assert dual.status_code == 200
+            assert calls == ["power", "gaming_gpu", "dual"]
             assert (
                 client.post(
                     "/api/model/mode",

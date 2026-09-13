@@ -720,6 +720,38 @@ def test_gaming_gpu_mode_starts_isolated_server_and_sets_mode(
         service.close()
 
 
+@pytest.mark.parametrize("game_active", [False, True])
+def test_dual_mode_is_manual_and_game_gated(monkeypatch, tmp_path, game_active):
+    from unittest.mock import AsyncMock, Mock
+
+    service = make_service(tmp_path)
+    runtime = service.ollama
+    runtime.dual = Mock(owned=False)
+    runtime.dual.stop = AsyncMock()
+    runtime.dual.start = AsyncMock()
+    runtime.dual.preload = AsyncMock()
+    runtime.installed_models = AsyncMock(return_value=(service.config.dual_model,))
+    runtime.running_models = AsyncMock(return_value=())
+    runtime.stop_gaming_server = AsyncMock()
+    runtime.model_status = AsyncMock(return_value={"requested_mode": "dual"})
+    monkeypatch.setattr("glaceon_companion.services.detect_game_processes",
+                        lambda *_: GameSnapshot(active=game_active))
+    try:
+        if game_active:
+            with pytest.raises(RuntimeError, match="mientras juegas"):
+                asyncio.run(service.set_model_mode("dual"))
+            runtime.dual.start.assert_not_called()
+            assert runtime.requested_mode == "normal"
+        else:
+            asyncio.run(service.set_model_mode("dual"))
+            runtime.dual.start.assert_awaited_once()
+            runtime.dual.preload.assert_awaited_once()
+            assert runtime.requested_mode == "dual"
+        assert runtime.switching_to is None
+    finally:
+        service.close()
+
+
 @pytest.mark.parametrize(
     ("requested_mode", "server_owned"),
     [

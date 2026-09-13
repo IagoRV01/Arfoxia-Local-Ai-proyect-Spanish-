@@ -5,6 +5,7 @@ export const MODEL_MODES: RequestedModelMode[] = [
   'gaming_gpu',
   'normal',
   'power',
+  'dual',
 ];
 
 export function modelModeRequest(mode: RequestedModelMode): {
@@ -18,7 +19,7 @@ export function requestedModelMode(
 ): RequestedModelMode {
   if (
     status?.requested_mode === 'gaming_gpu' ||
-    status?.requested_mode === 'power'
+    status?.requested_mode === 'power' || status?.requested_mode === 'dual'
   ) {
     return status.requested_mode;
   }
@@ -33,6 +34,7 @@ export function nextRequestedModelMode(
 }
 
 export function modelTierLabel(status: ModelStatus | null): string {
+  if (status?.model_mode === 'dual') return 'DUAL';
   if (
     requestedModelMode(status) === 'gaming_gpu' ||
     status?.model_mode === 'small'
@@ -53,6 +55,7 @@ export function modelModeTitle(mode: RequestedModelMode): string {
     gaming_gpu: 'Ligero · GPU de juego',
     normal: 'Normal · GPU de IA',
     power: 'Potencia · GPU de IA',
+    dual: 'Dual · Ambas GPU',
   };
   return labels[mode];
 }
@@ -62,6 +65,7 @@ export function modelModeDescription(mode: RequestedModelMode): string {
     gaming_gpu: 'Modelo pequeño en la gráfica de 8 GB',
     normal: 'Modelo habitual, rápido y equilibrado',
     power: 'Qwen3.6 para las tareas más exigentes',
+    dual: 'Qwen3.8 27B · hasta 16 + 5,5 GB · solo sin juegos',
   };
   return descriptions[mode];
 }
@@ -70,6 +74,7 @@ export function modelForMode(
   status: ModelStatus | null,
   mode: RequestedModelMode,
 ): string | undefined {
+  if (mode === 'dual') return status?.dual_model;
   if (mode === 'gaming_gpu') {
     return status?.gaming_gpu_model ?? status?.small_model;
   }
@@ -85,6 +90,10 @@ export function modelModeAvailable(
 ): boolean {
   if (!status) {
     return false;
+  }
+  if (mode === 'dual') {
+    return status.dual_model_installed === true && !status.dual_blocked_by_game &&
+      !status.game?.active && !status.game?.error;
   }
   if (mode === 'power') {
     return status.power_model_installed !== false;
@@ -116,7 +125,8 @@ export function modelModeActionLabel(
   if (requestedModelMode(status) === mode) {
     return 'Activo';
   }
-  if (mode === 'gaming_gpu' && status.gaming_gpu_blocked_by_game) {
+  if ((mode === 'gaming_gpu' && status.gaming_gpu_blocked_by_game) ||
+      (mode === 'dual' && (status.dual_blocked_by_game || status.game?.active || status.game?.error))) {
     return status.game?.error
       ? 'Esperando comprobación de juegos'
       : 'Bloqueado mientras juegas';
@@ -131,6 +141,7 @@ export function modelModeActionLabel(
   if (!modelModeAvailable(status, mode)) {
     return 'No instalado';
   }
+  if (mode === 'dual') return 'Activar Dual';
   if (mode === 'gaming_gpu') {
     return 'Usar GPU de 8 GB';
   }
@@ -147,6 +158,7 @@ export function modelModeButtonLabel(status: ModelStatus | null): string {
   if (status.switching) {
     const switchingTarget =
       status.switching_to ?? requestedModelMode(status);
+    if (switchingTarget === 'dual') return 'Cargando Qwen3.8 en ambas GPU…';
     if (switchingTarget === 'power') {
       return 'Cargando Potencia…';
     }
@@ -155,7 +167,7 @@ export function modelModeButtonLabel(status: ModelStatus | null): string {
     }
     return 'Cargando modo normal…';
   }
-  if (requestedModelMode(status) === 'power') {
+  if (['power', 'dual'].includes(requestedModelMode(status))) {
     return 'Volver al modo normal';
   }
   if (status.power_model_installed === false) {
@@ -165,6 +177,9 @@ export function modelModeButtonLabel(status: ModelStatus | null): string {
 }
 
 export function modelModeReason(status: ModelStatus | null): string {
+  if (status?.switching_to === 'dual') return 'Cargando el modo Dual sin offload a RAM';
+  if (status?.requested_mode === 'dual') return 'Qwen3.8 activo en ambas GPU; se libera al jugar';
+  if (status?.dual_last_error) return status.dual_last_error;
   if (status?.switching) {
     if (status.switching_to === 'power') {
       return 'Cargando Potencia en la GPU de IA';
@@ -178,6 +193,8 @@ export function modelModeReason(status: ModelStatus | null): string {
   const messages: Record<string, string> = {
     game_active: 'Modo ligero porque hay un juego activo',
     gaming_gpu_selected: 'Modelo ligero activo en la GPU de juego',
+    dual_selected: 'Qwen3.8 activo en ambas GPU',
+    dual_runtime_failed: 'El modo Dual se detuvo; Arfoxia vuelve al perfil normal',
     manual_gaming_gpu: 'GPU de juego seleccionada manualmente',
     gaming_gpu_runtime_failed:
       'El modelo ligero no pudo cargarse en la GPU de juego',

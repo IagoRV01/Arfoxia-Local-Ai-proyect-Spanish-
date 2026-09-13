@@ -136,6 +136,8 @@ class CompanionConfig:
     large_model: str = "qwen3.5:9b-q4_K_M"
     large_model_vram_threshold_gb: float = 12.0
     power_model: str = "qwen3.6:27b-q4_K_M"
+    dual_model: str = "qwen3.8:27b-q4_K_M"
+    dual_context_tokens: int = 32768
     power_context_tokens: int = 8192
     power_keep_alive: str = "-1"
     ai_gpu_uuid: str = "GPU-1ad4d697-126f-1101-233d-e079c4eb6f3b"
@@ -296,6 +298,8 @@ class ConfigStore:
             "large_context_tokens",
             "large_keep_alive",
             "power_model",
+            "dual_model",
+            "dual_context_tokens",
             "power_context_tokens",
             "power_keep_alive",
             "ai_gpu_uuid",

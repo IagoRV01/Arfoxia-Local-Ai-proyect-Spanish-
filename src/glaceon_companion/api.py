@@ -77,7 +77,7 @@ class ActionRequest(BaseModel):
 class ModelModeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    mode: str = Field(pattern=r"^(normal|power|gaming_gpu)$")
+    mode: str = Field(pattern=r"^(normal|power|gaming_gpu|dual)$")
 
 
 class GameStreamingPairRequest(BaseModel):
@@ -90,7 +90,7 @@ class GameStreamingPairRequest(BaseModel):
 def create_api(service: CompanionService, token: str, static_dir: Path) -> FastAPI:
     app = FastAPI(
         title=f"{service.config.name} Companion",
-        version="0.12.1",
+        version="0.13.0",
         docs_url=None,
         redoc_url=None,
     )
@@ -150,7 +150,7 @@ def create_api(service: CompanionService, token: str, static_dir: Path) -> FastA
                 float(service.config.chat_storage_limit_gb),
                 150.0,
             ),
-            "version": "0.12.1",
+            "version": "0.13.0",
         }
 
     @app.get("/api/state", dependencies=[auth])

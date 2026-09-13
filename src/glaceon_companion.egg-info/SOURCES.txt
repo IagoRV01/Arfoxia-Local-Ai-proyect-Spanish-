@@ -13,6 +13,7 @@ src/glaceon_companion/config.py
 src/glaceon_companion/conversation_storage.py
 src/glaceon_companion/database.py
 src/glaceon_companion/desktop_interactions.py
+src/glaceon_companion/dual_gpu.py
 src/glaceon_companion/game_streaming.py
 src/glaceon_companion/icons.py
 src/glaceon_companion/link_availability.py
@@ -49,6 +50,7 @@ tests/test_conversation_api.py
 tests/test_conversation_storage.py
 tests/test_database_conversations.py
 tests/test_desktop_interactions.py
+tests/test_dual_gpu.py
 tests/test_game_streaming.py
 tests/test_link_availability.py
 tests/test_mobile_runtime.py

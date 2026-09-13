@@ -62,6 +62,27 @@ def test_gpu_manager_status_renders_both_cards_and_active_profile():
     assert "GPU-16GB" in rendered
 
 
+def test_gpu_manager_dual_button_is_manual_and_game_gated(app):
+    calls = []
+    bridge = SimpleNamespace(set_model_mode=calls.append)
+    dialog = GpuManagerDialog(SimpleNamespace(), bridge)
+    try:
+        dialog._on_status({"requested_mode": "normal", "dual_model_installed": True,
+                           "game": {"active": False}, "gpus": []})
+        assert dialog.dual_button.isEnabled()
+        dialog.dual_button.click()
+        assert calls == ["dual"]
+        dialog._on_mode_ready({"requested_mode": "dual", "dual_model_installed": True,
+                              "game": {"active": False}, "gpus": []})
+        assert not dialog.dual_button.isEnabled()
+        assert "Dual activo" in dialog.state_label.text()
+        dialog._on_mode_ready({"requested_mode": "normal", "dual_model_installed": True,
+                              "game": {"active": True}, "gpus": []})
+        assert not dialog.dual_button.isEnabled()
+    finally:
+        dialog.close()
+
+
 def test_gpu_manager_coalesces_periodic_status_requests(app):
     del app
 
