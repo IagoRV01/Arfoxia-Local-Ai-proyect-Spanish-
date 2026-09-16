@@ -54,6 +54,8 @@ export interface PetState extends PetVitals {
   bed_enabled?: boolean;
   authorization_configured?: boolean;
   authorization_available?: boolean;
+  action_password_required?: boolean;
+  pc_command_enabled?: boolean;
 }
 
 export interface Source {
@@ -263,6 +265,13 @@ export interface ModelStatus {
   dual_ai_limit_gb?: number;
   dual_gaming_limit_gb?: number;
   dual_last_error?: string;
+  dual_warning?: string;
+  dual_reasoning_effort?: string;
+  pc_administrator?: boolean;
+  dual_guard_interval_seconds?: number;
+  dual_manual_unload_only?: boolean;
+  action_password_required?: boolean;
+  pc_command_enabled?: boolean;
   dual_loaded_models?: Array<{ name: string; vram_gb: number; gpu_percent: number }>;
   requested_mode?: RequestedModelMode;
   reason?: string;

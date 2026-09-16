@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: glaceon-companion
-Version: 0.13.0
+Version: 0.14.0
 Summary: Arfoxia, mascota Glaceon local con Tamagotchi, Ollama y control remoto seguro.
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
@@ -54,7 +54,8 @@ Este proyecto está pensado para uso personal y no comercial. Glaceon, Pokémon 
 - Apertura fiable de apps y navegador: las conocidas como Steam usan su ruta configurada y un enrutador determinista evita que el modelo responda por error que no puede abrirlas. Las órdenes de YouTube abren URLs escritas por Gori, búsquedas canónicas o vídeos que continúan reproducibles al comprobarlos en ese turno; nunca se inventan IDs `watch`. «Búscalos y ábrelos» recupera el tema del último mensaje de Gori, no de una URL sugerida por el asistente. Con autorización local también puede abrir otros ejecutables instalados, rutas absolutas y ventanas/protocolos admitidos de Windows.
 - Operaciones de archivos tipadas: crear carpetas, escribir o añadir texto, copiar, mover, renombrar y enviar una ruta exacta a la Papelera. No existe borrado permanente ni una consola genérica.
 - Apagado y reinicio habilitados con 30 segundos de margen; `cancel` permite abortar el temporizador.
-- Contraseña local obligatoria para cerrar programas, bloquear Windows, ejecutar destinos arbitrarios, modificar archivos, apagar/reiniciar o pausar Codex. Cada autorización queda ligada a una sola acción, caduca a los 90 segundos y se bloquea temporalmente tras cinco fallos.
+- Contraseña local para acciones sensibles por defecto. Perfil privado opcional sin contraseña, PowerShell y ejecución como administrador por decisión explícita del propietario; el móvil sigue necesitando emparejamiento privado. Véase [seguridad y cómo revertirlo](docs/SECURITY.md).
+- Modo **Dual · Qwen3.8 27B Extra High** en ambas GPU, avisos de límites cada 20 segundos y descarga solo manual: conserva el modelo al cerrar/reiniciar la interfaz. Libera la VRAM antes de jugar. [Detalles y excepciones](docs/DUAL_GPU.md).
 - API autenticada con token y capturas temporales.
 - App móvil para iPhone compatible con Expo Go, con sincronización periódica y al volver a primer plano.
 - Lanzador permanente **🎮 Jugar en mi PC** en Expo Go: prepara el servicio de Sunshine, muestra el host privado de Tailscale, permite confirmar el PIN de Moonlight y abre la app mediante un Atajo de iOS o su ficha oficial.
@@ -133,13 +134,20 @@ Pi siempre activo en la red local que envíe el paquete Wake-on-LAN.
 
 ## Acciones y seguridad
 
+Las reglas siguientes describen el perfil predeterminado con contraseña. Desde
+0.14 el propietario puede activar localmente `require_action_password=false`,
+`pc_command_enabled=true` y, de forma independiente, `run_as_administrator=true`.
+PowerShell entonces permite acciones generales con los permisos reales de
+Arfoxia; no se desactiva UAC. El móvil emparejado hereda esos permisos.
+Consulta [el alcance, riesgos, instalación y reversión](docs/SECURITY.md).
+
 Las aplicaciones conocidas viven en `%LOCALAPPDATA%\GlaceonCompanion\config.json`. Cada entrada contiene una ruta exacta y una lista exacta de procesos que pueden cerrarse. `open_target` puede resolver, tras autorización, un ejecutable del `PATH` o del menú Inicio, una ruta absoluta y protocolos concretos como `ms-settings:` o `steam:`. Nunca concatena una línea de comandos ni usa `shell=True`.
 
 La primera acción importante abre en el PC un campo enmascarado para configurar la contraseña local. Después, cada operación sensible crea un desafío aleatorio de un solo uso, ligado en memoria a sus argumentos exactos y con 90 segundos de validez. En escrituras se muestran ruta, bytes, vista previa, sobrescritura y una huella SHA-256; si un archivo cambia antes de ejecutar, la autorización queda invalidada. La contraseña se deriva con scrypt, se compara en tiempo constante y nunca entra en el chat, Ollama, la API, los eventos ni SQLite. Puede cambiarse con clic derecho sobre Arfoxia → **Contraseña de seguridad…**.
 
 Apagar y reiniciar están habilitados y siempre requieren ese desafío; Windows concede 30 segundos para cancelar. La API del iPhone puede solicitar la acción, pero solo muestra en el PC un botón pendiente: Gori debe pulsarlo antes de que aparezca el campo privado. Se admiten como máximo tres solicitudes sensibles remotas por minuto. Enviar `confirmed=true` no autoriza nada.
 
-Las modificaciones de archivos siguen un vocabulario cerrado y una ruta exacta. Las escrituras de texto son atómicas y están limitadas a 1 MiB, no sobrescriben salvo que la orden lo indique, y `trash` usa la Papelera. Se rechazan rutas relativas, dispositivos, nombres reservados, carpetas personales completas y los propios archivos de código/configuración/credenciales de Arfoxia. Arfoxia no lee archivos arbitrarios ni dispone de parche libre: puede escribir contenido indicado, añadirlo y mover/copiar/renombrar rutas. Continúan sin existir PowerShell/CMD genéricos, elevación, cambios de antivirus/firewall, instalación automática ni borrado permanente.
+La herramienta tipada `file_operation` conserva un vocabulario cerrado y rutas exactas. Sus escrituras son atómicas y limitadas a 1 MiB; no sobrescriben salvo orden explícita y `trash` usa la Papelera. Rechaza rutas relativas, dispositivos, nombres reservados, carpetas personales completas y archivos internos de Arfoxia. Estas restricciones no limitan PowerShell cuando el propietario lo habilita: ese es un perfil de ejecución general, no un sandbox.
 
 La búsqueda online utiliza `ddgs` para recuperar títulos, extractos y enlaces HTTPS. Antes de confiar en un resultado, Arfoxia comprueba su disponibilidad con peticiones acotadas, sin ejecutar contenido ni descargar archivos; las páginas generales se validan solo mediante cabeceras y YouTube mediante endpoints oficiales y metadatos limitados. Todo texto web sigue tratándose como contenido no confiable. Las URLs escritas literalmente por Gori no se sondean automáticamente, por lo que los servicios privados de Tailscale o de la red local no se filtran hacia una conexión inesperada. Puede desactivarse con `online_search_enabled=false`. En una conversación con adjuntos, una búsqueda solo puede activarse si el texto escrito por Gori pide explícitamente buscar, verificar, investigar o solicitar enlaces: una instrucción incrustada en el archivo nunca habilita herramientas.
 

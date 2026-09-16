@@ -322,6 +322,14 @@ export function SystemScreen({ api, onUnauthorized }: Props) {
             </View>
           }
         />
+        {model?.action_password_required === false ? (
+          <Text style={sharedStyles.muted}>
+            Control privado sin contraseña de Arfoxia
+            {model.pc_command_enabled ? ' · PowerShell habilitado' : ''}.
+            {model.pc_administrator ? ' Administrador de Windows.' : ' Usuario de Windows.'}
+            {' '}Se mantiene la clave de emparejamiento.
+          </Text>
+        ) : null}
         <View style={styles.currentModel}>
           <Text style={styles.currentModelLabel}>Modelo actual</Text>
           <Text style={styles.modelName}>

@@ -191,9 +191,12 @@ class CompanionConfig:
     online_search_enabled: bool = True
     online_search_max_results: int = 5
     codex_bridge_enabled: bool = True
-    # Power changes are available, but shutdown/restart are still gated by the
-    # local one-use authorization challenge in CompanionService.
+    # Password checks remain the default; only an explicit local opt-in removes
+    # the challenge. The remote API cannot change these policies.
     allow_power_actions: bool = True
+    require_action_password: bool = True
+    pc_command_enabled: bool = False
+    run_as_administrator: bool = False
     privileged_actions_version: int = 1
     screenshot_retention_hours: int = 24
     apps: dict[str, AppEntry] = field(default_factory=dict)
@@ -281,6 +284,9 @@ class ConfigStore:
             migrated = True
         for key in (
             "online_search_enabled",
+            "require_action_password",
+            "pc_command_enabled",
+            "run_as_administrator",
             "online_search_max_results",
             "codex_bridge_enabled",
             "quick_chat_inactivity_ms",
@@ -353,6 +359,10 @@ class ConfigStore:
         raw["apps"] = configured_apps
         defaults = asdict(default_config)
         defaults.update(raw)
+        # Fail closed for malformed local values; these fields are not API-writable.
+        defaults["require_action_password"] = defaults["require_action_password"] is not False
+        defaults["pc_command_enabled"] = defaults["pc_command_enabled"] is True
+        defaults["run_as_administrator"] = defaults["run_as_administrator"] is True
         config = CompanionConfig(**defaults)
         if migrated:
             self.save(config)

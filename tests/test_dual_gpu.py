@@ -76,6 +76,7 @@ def test_dual_preload_rejects_cpu_layers_and_keeps_residency(monkeypatch, percen
     original = httpx.AsyncClient
     monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: original(transport=httpx.MockTransport(respond), **kw))
     monkeypatch.setattr(runtime, "guard", lambda: "")
+    monkeypatch.setattr(runtime, "cpu_offload_error", lambda: "")
     if accepted:
         asyncio.run(runtime.preload())
     else:
@@ -94,15 +95,80 @@ def test_dual_game_guard_blocks_before_gpu_probe(monkeypatch):
     assert "Juego detectado" in runtime.guard()
 
 
-def test_dual_failure_stops_sidecar_and_returns_normal(monkeypatch):
+def test_dual_failure_preserves_residency_and_selection(monkeypatch):
     client = OllamaClient(CompanionConfig())
     stopped = []
     monkeypatch.setattr(client.dual, "stop_sync", lambda *args: stopped.append(args))
     client.requested_mode = "dual"
     fallback = client.fallback_small_selection(client._dual_selection(snapshot(client.config)))
-    assert client.requested_mode == "normal"
-    assert fallback.reason == "dual_runtime_failed"
-    assert stopped
+    assert client.requested_mode == "dual"
+    assert fallback.reason == "dual_selected"
+    assert not stopped
+
+
+def test_guard_samples_at_most_every_twenty_seconds(monkeypatch):
+    runtime = DualGpuRuntime(CompanionConfig(), None)
+    now = [100.0]
+    calls = []
+    monkeypatch.setattr("glaceon_companion.dual_gpu.time.monotonic", lambda: now[0])
+    monkeypatch.setattr(runtime, "_check_guard", lambda: calls.append(now[0]) or "warning")
+    assert runtime.guard() == "warning"
+    for increment in (1, 2, 10, 19.99):
+        now[0] = 100 + increment
+        assert runtime.guard() == "warning"
+    assert calls == [100]
+    now[0] = 120
+    runtime.guard()
+    assert calls == [100, 120]
+
+
+def test_dual_chat_uses_official_extra_high_and_never_evicts_on_warning(monkeypatch):
+    import json
+    client = OllamaClient(CompanionConfig())
+    monkeypatch.setattr(DualGpuRuntime, "owned", property(lambda _: True))
+    monkeypatch.setattr(client.dual, "stop_sync", lambda *_: pytest.fail("Unexpected eviction"))
+    client.dual.last_warning = "VRAM excedida"
+    requests = []
+    def respond(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(200, json={"message": {"content": "OK"}})
+    original = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: original(transport=httpx.MockTransport(respond), **kw))
+    asyncio.run(client.chat([{"role": "user", "content": "Hola"}], "bien",
+                           selection=client._dual_selection(snapshot(client.config))))
+    assert requests[0]["think"] == "high"  # Native Ollama maps high to Qwen xhigh.
+    assert requests[0]["keep_alive"] == -1
+    assert requests[0]["options"]["num_predict"] == 16384
+    assert requests[0]["options"]["temperature"] == 1.0
+
+
+def test_recovery_adopts_only_verified_server_without_terminating(tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace
+    import glaceon_companion.dual_gpu as module
+    (tmp_path / "dual_ollama_process.json").write_text(json.dumps(
+        {"pid": 44, "created": 123, "exe": "C:/ollama.exe"}))
+    process = SimpleNamespace(pid=44, create_time=lambda: 123, exe=lambda: "C:/ollama.exe",
+        name=lambda: "ollama.exe", cmdline=lambda: ["ollama.exe", "serve"],
+        environ=lambda: {"OLLAMA_HOST": "http://127.0.0.1:11436"}, is_running=lambda: True)
+    monkeypatch.setattr(module.psutil, "Process", lambda _: process)
+    monkeypatch.setattr(DualGpuRuntime, "_terminate_tree", lambda *_: pytest.fail("Unexpected stop"))
+    runtime = DualGpuRuntime(CompanionConfig(), tmp_path)
+    assert runtime.owned
+    assert runtime.process.pid == 44
+    assert runtime.marker.exists()
+
+
+def test_recovery_does_not_adopt_reused_pid(tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace
+    import glaceon_companion.dual_gpu as module
+    (tmp_path / "dual_ollama_process.json").write_text(json.dumps(
+        {"pid": 44, "created": 123, "exe": "C:/ollama.exe"}))
+    monkeypatch.setattr(module.psutil, "Process", lambda _: SimpleNamespace(create_time=lambda: 999))
+    runtime = DualGpuRuntime(CompanionConfig(), tmp_path)
+    assert not runtime.owned
+    assert not runtime.marker.exists()
 
 
 def test_dual_start_refuses_game_without_starting_process(monkeypatch):

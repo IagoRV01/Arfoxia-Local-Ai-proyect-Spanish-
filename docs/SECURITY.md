@@ -11,6 +11,53 @@
 
 ## Herramientas
 
+### Control privado sin contraseña (opcional, desde 0.14)
+
+La configuración local permite `require_action_password: false` y
+`pc_command_enabled: true`. El propietario ha elegido este perfil en su PC.
+**El repositorio mantiene por defecto contraseña obligatoria y PowerShell
+desactivado**. No existe un endpoint para cambiar estas opciones. Para revertir
+el perfil, usa `true` y `false`, respectivamente, en el `config.json` del directorio
+de datos local y reinicia Arfoxia. El verificador de contraseña no se borra.
+
+Sin contraseña, las acciones siguen validando argumentos pero no crean desafíos;
+PC y móvil autenticado usan la misma política. `run_powershell` ofrece ejecución
+general con los permisos del proceso: consultar/editar archivos, programar,
+ejecutar scripts y gestionar programas. Cada ejecución tiene un máximo de 120
+segundos y 24000 bytes de salida capturada; se interrumpe su árbol al agotar el
+plazo y se redacta el script del registro de auditoría. La salida sí se entrega
+al modelo/chat; no deben solicitarse secretos.
+
+**Este perfil amplía mucho la confianza**: quien posea el token y acceso al
+tailnet puede ejecutar comandos sin interacción local. Un error del modelo
+puede afectar archivos/programas. Las instrucciones contra inyección desde
+webs/adjuntos no garantizan inmunidad; las restricciones de la herramienta tipada
+de archivos no son un sandbox para PowerShell. Protege el token, el móvil y tus
+copias de seguridad; no publiques el servicio.
+
+### Administrador de Windows (opcional)
+
+`run_as_administrator: true` solicita ejecución elevada del proceso completo.
+El instalador `scripts/install_admin.ps1`, ejecutado mediante el aviso normal de
+UAC, registra **Arfoxia Companion (Administrador)**: tarea interactiva del usuario
+actual, al iniciar sesión, con nivel `Highest` y sin contraseña guardada.
+Solo retira la entrada antigua de inicio de Arfoxia si coincide exactamente.
+El lanzador reutiliza esa tarea si su ejecutable/argumentos corresponden al
+proyecto; en caso contrario solicita UAC. Cancelarlo no inicia una falsa sesión
+de administrador. No se desactiva UAC, Defender ni el firewall.
+
+Las herramientas y procesos hijos heredan la elevación: combinada con el modo
+sin contraseña, el móvil emparejado dispone de ejecución administrativa. La API
+sigue en loopback/Tailscale con Bearer; este es un perfil de alta confianza.
+Windows mantiene restricciones adicionales como TrustedInstaller y procesos
+protegidos: «administrador» no significa acceso ilimitado a todo.
+
+Para revertirlo, cambia `run_as_administrator` a `false`, ejecuta el instalador
+elevado con `-Disable` y reinicia Arfoxia. Esto elimina solo su tarea y restaura
+su inicio normal por usuario. No cambia ninguna cuenta ni pertenencia a grupos.
+
+### Política predeterminada con contraseña
+
 `ActionDispatcher` acepta únicamente nombres y argumentos tipados. `open_app` ejecuta una ruta exacta de configuración y `close_app` solo termina nombres exactos de proceso asociados. `open_target` permite HTTPS de forma inmediata; un ejecutable instalado, una ruta ejecutable o un protocolo de Windows requieren antes una autorización local. Todos se abren con una lista de argumentos exacta u `os.startfile`, nunca con `shell=True`.
 
 Los enlaces HTTPS escritos literalmente por Gori se entregan al navegador predeterminado de Windows. Se rechazan credenciales embebidas, puertos malformados, espacios, barras invertidas y escapes `%` inválidos; las rutas de vídeo conocidas de YouTube también deben contener un identificador con sintaxis válida. Los destinos sugeridos por el modelo solo pueden abrirse si coinciden exactamente con una fuente comprobada durante ese turno. `os.startfile` confirma únicamente que Windows aceptó la solicitud: no permite comprobar que la página terminó de cargar ni imponer si el navegador reutiliza una pestaña o crea otra.
@@ -19,7 +66,7 @@ Cerrar aplicaciones, bloquear Windows, apagar/reiniciar, pausar Codex y cualquie
 
 El verificador usa scrypt con sal aleatoria y comparación constante. La contraseña nunca se guarda en claro, pasa a Ollama, forma parte de argumentos, se publica en eventos ni se registra en SQLite. Cinco fallos dentro de la ventana aplican 60 segundos de bloqueo. Cambiar la contraseña exige la anterior e invalida desafíos pendientes.
 
-`file_operation` limita el contenido UTF-8 a 1 MiB y ofrece solo crear carpeta, escribir, añadir, copiar, mover, renombrar y enviar a la Papelera. Las escrituras son atómicas, no sobrescriben por defecto y vinculan la versión existente mediante SHA-256 para detectar cambios entre autorización y ejecución. Se rechazan raíces amplias, rutas relativas, dispositivos, flujos alternativos, inicio automático y los archivos internos/código de Arfoxia. No existen lectura arbitraria, shell, PowerShell, CMD, ejecución con argumentos arbitrarios, elevación, instalación, descarga automática, cambios de firewall/antivirus ni borrado permanente.
+`file_operation` limita el contenido UTF-8 a 1 MiB y ofrece solo crear carpeta, escribir, añadir, copiar, mover, renombrar y enviar a la Papelera. Las escrituras son atómicas, no sobrescriben por defecto y vinculan la versión existente mediante SHA-256 para detectar cambios entre autorización y ejecución. Se rechazan raíces amplias, rutas relativas, dispositivos, flujos alternativos, inicio automático y los archivos internos/código de Arfoxia. PowerShell general y el inicio elevado están desactivados por defecto y se rigen por las opciones locales descritas arriba.
 
 ## Streaming de juegos
 
@@ -90,10 +137,10 @@ Se reducen a un máximo de 1600×1000, se guardan como WebP con un identificador
 - El modo Dual usa solo un servidor propio en loopback y no expone Ollama al
   móvil. Su reparto de VRAM es calibrado y vigilado, no una cuota dura de CUDA:
   pueden existir picos entre comprobaciones, especialmente si otra app reserva
-  VRAM. Ante juego, exceso o pérdida de telemetría se detiene el proceso propio,
-  nunca el juego. Véase [Modo Dual](DUAL_GPU.md).
+  VRAM. Ante juego, exceso o pérdida de telemetría se avisa cada 20 segundos;
+  el propietario debe liberar el modelo manualmente. Véase [Modo Dual](DUAL_GPU.md).
 - Cualquiera que obtenga el token puede usar las herramientas permitidas mientras tenga acceso de red al servicio.
-- El token remoto no basta para operaciones sensibles: estas necesitan interacción en el PC. Un proceso malicioso que ya ejecute código como el mismo usuario de Windows queda fuera de este límite y podría modificar el programa o capturar teclas.
+- Con la política predeterminada, el token remoto no basta para operaciones sensibles: necesitan interacción en el PC. En el perfil sin contraseña **sí basta**. Un proceso malicioso del mismo usuario queda fuera de este límite.
 - Una contraseña corta continúa siendo susceptible a ataque offline si alguien roba el verificador. No reutilices una clave que hayas escrito en una conversación; cámbiala desde el menú local.
 - Una captura puede contener información sensible visible en pantalla.
 - Terminar un proceso puede perder cambios sin guardar; por eso necesita confirmación.

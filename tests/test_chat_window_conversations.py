@@ -75,7 +75,9 @@ def test_gpu_manager_dual_button_is_manual_and_game_gated(app):
         dialog._on_mode_ready({"requested_mode": "dual", "dual_model_installed": True,
                               "game": {"active": False}, "gpus": []})
         assert not dialog.dual_button.isEnabled()
-        assert "Dual activo" in dialog.state_label.text()
+        assert "Dual Extra High activo" in dialog.state_label.text()
+        assert "20 s" in dialog.state_label.text()
+        assert "manualmente" in dialog.state_label.text()
         dialog._on_mode_ready({"requested_mode": "normal", "dual_model_installed": True,
                               "game": {"active": True}, "gpus": []})
         assert not dialog.dual_button.isEnabled()

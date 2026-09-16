@@ -42,9 +42,12 @@ cifrado de iOS.
   las imágenes históricas se abren con autenticación privada.
 - Conversión de imágenes de iPhone a JPEG compatible antes de subirlas.
 - Estado de CPU, RAM, GPU, VRAM, juego detectado y modelo adaptativo.
-- Modo manual **Dual · Qwen3.8 27B** desde la pestaña PC, usando ambas GPU sin
-  juegos activos: hasta 16 + 5,5 GiB, contexto 32K y liberación automática al jugar.
+- Modo manual **Dual · Qwen3.8 27B Extra High** desde la pestaña PC, usando ambas
+  GPU: presupuesto de 16 + 5,5 GiB, contexto 32K y avisos cada 20 segundos.
+  Hay que liberar el modelo manualmente antes de jugar; no se descarga solo.
   Conserva los otros tres perfiles. Consulta [la configuración Dual](../docs/DUAL_GPU.md).
+- Estado de control privado sin contraseña, herramienta PowerShell y permisos
+  reales de administrador cuando el propietario los habilita localmente.
 - Captura autenticada del monitor, apertura de aplicaciones permitidas y
   liberación manual de VRAM.
 - Botón fijo **🎮 Jugar en mi PC** con estado de Sunshine y Tailscale, copia del

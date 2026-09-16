@@ -6,6 +6,37 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+## [0.14.0] - 2026-09-17
+
+### Cambiado
+
+- Modo Dual Qwen3.8 27B en Extra High (`think: high` en Ollama 0.34, equivalente
+  oficial a `xhigh`), muestreo recomendado y hasta 16384 tokens de generación.
+- Vigilancia compartida de límites cada 20 segundos, con avisos en PC y Expo Go;
+  no descarga automática por juego, telemetría, timeout o error de respuesta.
+- Residencia indefinida y recuperación del servidor propio tras reiniciar/cerrar
+  la interfaz; descarga mediante Liberar VRAM o cambio manual de perfil. Una
+  carga inicial inválida se revierte y los cierres de Windows/driver no son evitables.
+- PC y móvil muestran Extra High, descarga manual y política privada de acciones.
+  El plazo de respuesta Dual aumenta a 30 minutos para razonamiento prolongado.
+
+### Añadido
+
+- Política local opcional para ejecutar acciones sin contraseña de Arfoxia,
+  sin retirar el token de emparejamiento ni Tailscale privado.
+- Herramienta PowerShell opcional para tareas del PC, con validación, salida
+  acotada, plazo máximo y redacción del script en auditoría.
+- Inicio como administrador solicitado por el propietario: instalador mediante
+  UAC y tarea interactiva `Highest`, sin guardar contraseñas ni desactivar UAC;
+  estado real de elevación en PC y móvil y retirada reversible del inicio elevado.
+- Valores seguros por defecto en el repositorio (contraseña activa, PowerShell
+  y administrador desactivados); el perfil privado se activa solo localmente.
+- Pruebas de residencia, muestreo, razonamiento, recuperación de procesos,
+  autenticación, permisos, comandos Unicode, salida limitada, timeout y elevación.
+- Verificación real: Arfoxia y su herramienta ejecutan como administrador; las
+  peticiones sin Bearer siguen devolviendo 401. Qwen3.8 acepta Extra High y
+  propone una llamada válida; mantiene los mismos procesos/modelo al reiniciar.
+
 ## [0.13.0] - 2026-09-14
 
 ### Añadido

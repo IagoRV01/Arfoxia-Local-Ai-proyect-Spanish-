@@ -1955,8 +1955,8 @@ class GpuManagerDialog(QDialog):
         title = QLabel("Control completo de las GPU")
         title.setStyleSheet("font-size:20px;font-weight:700;color:#dff8ff;")
         subtitle = QLabel(
-            "Cada servidor de Ollama queda aislado por UUID. La GPU de juego "
-            "se bloquea automáticamente cuando Arfoxia detecta un juego."
+            "Cada servidor usa sus GPU por UUID. El modo Ligero libera la GPU al jugar; "
+            "Dual solo avisa cada 20 s y debes descargarlo manualmente."
         )
         subtitle.setWordWrap(True)
         self.state_label = QLabel("Consultando las GPU…")
@@ -1973,7 +1973,7 @@ class GpuManagerDialog(QDialog):
 
         second_row = QHBoxLayout()
         self.power_button = QPushButton("⚡ Potencia · GPU 16 GB")
-        self.dual_button = QPushButton("✦ Dual · Qwen3.8 · 16 + 5,5 GB")
+        self.dual_button = QPushButton("✦ Dual · Qwen3.8 Extra High · 16 + 5,5 GB")
         self.unload_button = QPushButton("Liberar toda la VRAM")
         self.refresh_button = QPushButton("Actualizar")
         second_row.addWidget(self.power_button, 1)
@@ -2034,7 +2034,7 @@ class GpuManagerDialog(QDialog):
         mode_labels = {
             "normal": "Normal · GPU de IA",
             "power": "Potencia · GPU de IA",
-            "dual": "Dual · Qwen3.8 · ambas GPU",
+            "dual": "Dual · Qwen3.8 Extra High · ambas GPU",
             "gaming_gpu": "Modelo pequeño · GPU de juego",
         }
         model = html.escape(str(status.get("model") or "Sin modelo seleccionado"))
@@ -2046,10 +2046,15 @@ class GpuManagerDialog(QDialog):
                 "<div style='margin-bottom:12px'>"
                 f"<b>Perfil:</b> {html.escape(mode_labels.get(mode, mode))}<br>"
                 f"<b>Modelo seleccionado:</b> {model}<br>"
+                f"<b>Permisos del PC:</b> {'Administrador' if status.get('pc_administrator') else 'Usuario'}<br>"
                 f"<b>{loaded_label}:</b> {loaded_count}"
                 "</div>"
             )
         ]
+        if mode == "dual":
+            sections.append("<div><b>Razonamiento:</b> Extra High · vigilancia cada 20 s · descarga manual</div>")
+            if status.get("dual_warning"):
+                sections.append(f"<div style='color:#ffc56b'>{html.escape(str(status['dual_warning']))}</div>")
         gpus = status.get("gpus")
         if not isinstance(gpus, list) or not gpus:
             sections.append(
@@ -2185,7 +2190,8 @@ class GpuManagerDialog(QDialog):
         self.telemetry.setHtml(self.status_html(self.last_status))
         mode = str(self.last_status.get("requested_mode") or "normal")
         if mode == "dual":
-            self.state_label.setText("Dual activo: Qwen3.8, ambas GPU, hasta 16 + 5,5 GB. Se detiene al jugar.")
+            self.state_label.setText(str(self.last_status.get("dual_warning") or
+                "Dual Extra High activo. Avisos cada 20 s; libera la VRAM manualmente antes de jugar."))
         elif mode == "gaming_gpu":
             self.state_label.setText(
                 "Modelo pequeño activo exclusivamente en la GPU de 8 GB."
@@ -2248,7 +2254,7 @@ class GpuManagerDialog(QDialog):
         self.dual_button.setEnabled(controls_available and not game_active
             and self.last_status.get("dual_model_installed") is True and mode != "dual")
         self.dual_button.setText("✦ Dual activo · ambas GPU" if mode == "dual"
-            else "✦ Dual · Qwen3.8 · 16 + 5,5 GB")
+            else "✦ Dual · Qwen3.8 Extra High · 16 + 5,5 GB")
         self.power_button.setEnabled(
             controls_available
             and power_installed is not False

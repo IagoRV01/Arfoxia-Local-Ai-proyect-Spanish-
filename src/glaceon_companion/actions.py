@@ -31,6 +31,7 @@ from PIL import Image
 
 from .config import PROJECT_ROOT, CompanionConfig
 from .database import Database
+from .pc_commands import run_command, validate_command
 
 try:
     from send2trash import send2trash
@@ -97,8 +98,8 @@ class ActionResult:
 class ActionDispatcher:
     """Executes only a closed set of typed operations.
 
-    There is intentionally no generic command, shell, PowerShell, permanent file
-    deletion, package installation or arbitrary argument execution endpoint.
+    Generic PowerShell is disabled unless explicitly enabled in local config.
+    It runs as the current Windows user, never with automatic elevation.
 
     ``execute_validated`` is the boundary used after the service has completed
     any required authorization. ``execute`` remains as a compatibility wrapper
@@ -106,7 +107,7 @@ class ActionDispatcher:
     """
 
     IMMEDIATE = {"open_app", "open_target", "take_screenshot", "pc_status", "volume"}
-    SENSITIVE = {"close_app", "lock_computer", "power", "file_operation"}
+    SENSITIVE = {"close_app", "lock_computer", "power", "file_operation", "run_powershell"}
     CONFIRM = SENSITIVE  # Compatibility for older callers and documentation.
 
     def __init__(
@@ -176,6 +177,7 @@ class ActionDispatcher:
             "lock_computer": self._lock_computer,
             "power": self._power,
             "file_operation": self._file_operation,
+            "run_powershell": self._run_powershell,
         }
         handler = handlers.get(action)
         if handler is None:
@@ -250,6 +252,14 @@ class ActionDispatcher:
     def validate_for_authorization(
         self, action: str, arguments: dict[str, Any]
     ) -> None:
+        if action == "run_powershell":
+            if self.config.pc_command_enabled is not True:
+                raise ActionValidationError("PowerShell está desactivado en la configuración local.")
+            try:
+                validate_command(arguments)
+            except ValueError as exc:
+                raise ActionValidationError(str(exc)) from exc
+            return
         if action == "open_target":
             self._validated_open_target(arguments)
             return
@@ -356,6 +366,10 @@ class ActionDispatcher:
     @staticmethod
     def _redact_arguments(action: str, arguments: dict[str, Any]) -> dict[str, Any]:
         redacted = dict(arguments)
+        if action == "run_powershell" and "command" in redacted:
+            command = str(redacted.pop("command"))
+            redacted["command"] = {"redacted": True, "length": len(command),
+                                   "sha256": hashlib.sha256(command.encode("utf-8")).hexdigest()}
         if action == "file_operation" and "content" in redacted:
             content = redacted.pop("content")
             replacement: dict[str, Any] = {"redacted": True}
@@ -367,6 +381,15 @@ class ActionDispatcher:
                     replacement["length_characters"] = len(content)
             redacted["content"] = replacement
         return redacted
+
+    def _run_powershell(self, args: dict[str, Any]) -> ActionResult:
+        self.validate_for_authorization("run_powershell", args)
+        data = run_command(args)
+        success = data["exit_code"] == 0 and not data["timed_out"]
+        message = ("Comando completado." if success else
+                   "Tiempo agotado; comando interrumpido." if data["timed_out"] else
+                   f"El comando terminó con código {data['exit_code']}.")
+        return ActionResult(success, "run_powershell", message, data=data)
 
     def _open_app(self, args: dict[str, Any]) -> ActionResult:
         self._require_keys(args, required={"app"}, allowed={"app"})

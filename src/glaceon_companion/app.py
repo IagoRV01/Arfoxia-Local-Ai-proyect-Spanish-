@@ -12,6 +12,7 @@ from .api import ApiServerThread, create_api
 from .config import PROJECT_ROOT, ConfigStore
 from .icons import snowflake_icon
 from .mobile_runtime import MobileRuntimeManager
+from .privileges import is_administrator, launch_as_administrator
 from .services import CompanionService
 from .ui import DesktopController
 
@@ -27,6 +28,13 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    store = ConfigStore(args.data_dir)
+    config = store.load()
+    if config.run_as_administrator is True and not is_administrator():
+        if launch_as_administrator(PROJECT_ROOT, sys.argv[1:]):
+            return 0
+        # UAC cancellation does not silently start a supposedly elevated app.
+        return 3
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
             "Iago.GlaceonCompanion.0.1"
@@ -38,8 +46,6 @@ def main() -> int:
     app.setApplicationName("Arfoxia Companion")
     app.setWindowIcon(snowflake_icon())
     app.setQuitOnLastWindowClosed(False)
-    store = ConfigStore(args.data_dir)
-    config = store.load()
     if args.api_host:
         config.api_host = args.api_host
     if args.api_port:

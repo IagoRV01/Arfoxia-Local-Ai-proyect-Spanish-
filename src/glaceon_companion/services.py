@@ -56,6 +56,7 @@ from .ollama_client import (
 )
 from .model_policy import ModelSelection, detect_game_processes
 from .online_search import OnlineSearchClient, OnlineSearchError
+from .privileges import is_administrator
 from .temporal import (
     TemporalContext,
     TemporalGrounding,
@@ -604,7 +605,11 @@ class CompanionService:
         return self.attachments.add_path(path)
 
     async def model_status(self) -> dict[str, Any]:
-        return await self.ollama.model_status()
+        status = await self.ollama.model_status()
+        status["action_password_required"] = self.config.require_action_password
+        status["pc_command_enabled"] = self.config.pc_command_enabled
+        status["pc_administrator"] = is_administrator()
+        return status
 
     def game_streaming_status(self) -> dict[str, Any]:
         return self.game_streaming.status()
@@ -626,7 +631,12 @@ class CompanionService:
         with self._model_switch_lock:
             if getattr(self.ollama, "switching_to", None) is not None:
                 raise RuntimeError("Ya hay un cambio de GPU o modelo en curso.")
-            self.ollama.switching_to = requested
+            already_active = (requested == "dual" and self.ollama.requested_mode == "dual"
+                              and self.ollama.dual.owned)
+            if not already_active:
+                self.ollama.switching_to = requested
+        if already_active:
+            return await self.model_status()
         try:
             await self._acquire_turn_lock()
         except BaseException:
@@ -793,22 +803,20 @@ class CompanionService:
             self._turn_lock.release()
             with self._model_switch_lock:
                 self.ollama.switching_to = None
-        return await self.ollama.model_status()
+        return await self.model_status()
 
     async def _acquire_turn_lock(self) -> None:
         while not self._turn_lock.acquire(blocking=False):
             await asyncio.sleep(0.05)
 
     def _model_guard_loop(self) -> None:
-        """Release the large model promptly when a real game payload appears."""
+        """Sample every 20s. Dual warnings never evict its resident model."""
 
-        while not self._guard_stop.wait(5.0):
+        while not self._guard_stop.wait(20.0):
             dual = getattr(self.ollama, "dual", None)
             if dual is not None and dual.owned:
-                reason = dual.guard()
-                if reason:
-                    self.ollama.use_normal_mode()
-                    dual.stop_sync(reason)
+                dual.guard()
+                continue
             game = detect_game_processes(self.config.game_processes)
             if not game.active and not game.error:
                 continue
@@ -867,6 +875,9 @@ class CompanionService:
                     "bed_enabled": self.config.bed_enabled,
                     "authorization_configured": self.authorization.is_configured,
                     "authorization_available": self.authorization.is_available,
+                    "action_password_required": self.config.require_action_password,
+                    "pc_command_enabled": self.config.pc_command_enabled,
+                    "pc_administrator": is_administrator(),
                 }
             )
             return value
@@ -1135,12 +1146,13 @@ class CompanionService:
                     args = self.actions.canonicalize_authorization_args(action, args)
                 except ActionValidationError as exc:
                     return self.actions.validation_failure(action, args, str(exc))
-            return self._request_authorization(
-                action,
-                args,
-                origin=origin,
-                conversation_id=conversation_id,
-            )
+            if self.config.require_action_password is not False:
+                return self._request_authorization(
+                    action,
+                    args,
+                    origin=origin,
+                    conversation_id=conversation_id,
+                )
         return self._execute_validated_action(action, args)
 
     def _execute_validated_action(
@@ -1213,6 +1225,8 @@ class CompanionService:
         return " ".join(str(value or "").split())[:limit]
 
     def _authorization_summary(self, action: str, args: dict[str, Any]) -> str:
+        if action == "run_powershell":
+            return "Ejecutar un comando de PowerShell con los permisos de tu usuario"
         if action == "power":
             operation = str(args.get("operation") or "").casefold()
             return {
@@ -2162,12 +2176,9 @@ class CompanionService:
                         "large",
                         "power",
                         "gaming_gpu",
-                        "dual",
                     }:
                         try:
-                            if browser_selection.tier == "dual":
-                                await self.ollama.dual.stop()
-                            elif browser_selection.tier == "gaming_gpu":
+                            if browser_selection.tier == "gaming_gpu":
                                 await self.ollama.stop_gaming_server()
                             else:
                                 await self.ollama.unload(browser_selection.model)
@@ -2325,7 +2336,7 @@ class CompanionService:
                 temporal_context=temporal_context,
             )
         except (httpx.HTTPError, asyncio.TimeoutError) as exc:
-            if selection.tier in {"large", "power", "gaming_gpu", "dual"}:
+            if selection.tier in {"large", "power", "gaming_gpu"}:
                 try:
                     if selection.tier == "gaming_gpu":
                         await self.ollama.stop_gaming_server()
@@ -2498,7 +2509,7 @@ class CompanionService:
                     or " ".join(result.message for _, result in completed)
                 )
             except (httpx.HTTPError, asyncio.TimeoutError):
-                if selection.tier in {"large", "power", "gaming_gpu", "dual"}:
+                if selection.tier in {"large", "power", "gaming_gpu"}:
                     if selection.tier == "gaming_gpu":
                         await self.ollama.stop_gaming_server()
                     selection = self._fallback_selection(selection)
@@ -2604,8 +2615,8 @@ class CompanionService:
 
     def close(self) -> None:
         self._guard_stop.set()
-        if hasattr(self.ollama, "dual"):
-            self.ollama.dual.stop_sync()
+        # Dual is intentionally left resident. Its identity-checked marker
+        # lets the next UI instance adopt it; only manual release stops it.
         if self._model_guard.is_alive():
             self._model_guard.join(timeout=1.0)
         if getattr(self.ollama, "requested_mode", "normal") == "power":

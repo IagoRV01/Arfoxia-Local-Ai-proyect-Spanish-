@@ -13,6 +13,7 @@ secrets.json
 authorization.json
 mobile/node_modules/
 mobile/.expo/
+mobile/.expo-validation-export/
 work/
 NUL
 expo-mobile.log

@@ -55,7 +55,7 @@ export function modelModeTitle(mode: RequestedModelMode): string {
     gaming_gpu: 'Ligero · GPU de juego',
     normal: 'Normal · GPU de IA',
     power: 'Potencia · GPU de IA',
-    dual: 'Dual · Ambas GPU',
+    dual: 'Dual · Extra High',
   };
   return labels[mode];
 }
@@ -65,7 +65,7 @@ export function modelModeDescription(mode: RequestedModelMode): string {
     gaming_gpu: 'Modelo pequeño en la gráfica de 8 GB',
     normal: 'Modelo habitual, rápido y equilibrado',
     power: 'Qwen3.6 para las tareas más exigentes',
-    dual: 'Qwen3.8 27B · hasta 16 + 5,5 GB · solo sin juegos',
+    dual: 'Qwen3.8 27B Extra High · 16 + 5,5 GB · descarga manual',
   };
   return descriptions[mode];
 }
@@ -178,7 +178,8 @@ export function modelModeButtonLabel(status: ModelStatus | null): string {
 
 export function modelModeReason(status: ModelStatus | null): string {
   if (status?.switching_to === 'dual') return 'Cargando el modo Dual sin offload a RAM';
-  if (status?.requested_mode === 'dual') return 'Qwen3.8 activo en ambas GPU; se libera al jugar';
+  if (status?.requested_mode === 'dual') return status.dual_warning ||
+    'Extra High en ambas GPU · vigilancia cada 20 s · libera la VRAM manualmente antes de jugar';
   if (status?.dual_last_error) return status.dual_last_error;
   if (status?.switching) {
     if (status.switching_to === 'power') {

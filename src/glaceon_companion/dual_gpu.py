@@ -7,6 +7,7 @@ import os
 import socket
 import subprocess
 import threading
+import time
 from pathlib import Path
 
 import httpx
@@ -16,12 +17,27 @@ from .config import CompanionConfig
 from .model_policy import GpuSnapshot, detect_game_processes, probe_nvidia_gpus
 
 
+class _AdoptedProcess:
+    """Minimal Popen interface for an identity-checked server from a prior UI."""
+
+    def __init__(self, process: psutil.Process) -> None:
+        self.process = process
+        self.pid = process.pid
+
+    def poll(self):
+        return None if self.process.is_running() else 1
+
+
 class DualGpuRuntime:
+    GUARD_INTERVAL_SECONDS = 20.0
+
     def __init__(self, config: CompanionConfig, runtime_dir: Path | None) -> None:
         self.config = config
-        self.process: subprocess.Popen | None = None
+        self.process: subprocess.Popen | _AdoptedProcess | None = None
         self._lock = threading.RLock()
         self.last_error = ""
+        self.last_warning = ""
+        self._last_guard_at = float("-inf")
         self.marker = runtime_dir / "dual_ollama_process.json" if runtime_dir else None
         self.log_path = runtime_dir / "dual-ollama.log" if runtime_dir else None
         self._recover()
@@ -61,9 +77,9 @@ class DualGpuRuntime:
             # This is deliberately stricter than counting only Arfoxia's allocation.
             if device.effective_used_vram_mib > min(limit, device.total_vram_mib):
                 return (f"Límite de VRAM excedido en GPU {device.index}: "
-                        f"{device.effective_used_vram_mib}/{limit} MiB; modo Dual detenido.")
+                        f"{device.effective_used_vram_mib}/{limit} MiB; libera el modo Dual manualmente.")
             if device.free_vram_mib < 128:
-                return f"Sin margen de VRAM en GPU {device.index}; modo Dual detenido."
+                return f"Sin margen de VRAM en GPU {device.index}; libera el modo Dual manualmente."
         return ""
 
     def environment(self, snapshot: GpuSnapshot) -> dict[str, str]:
@@ -98,8 +114,9 @@ class DualGpuRuntime:
 
     def options(self) -> dict:
         return {"num_ctx": self.context_tokens, "num_gpu": 999,
-                "num_batch": 256, "temperature": 0.6, "top_p": 0.95,
-                "top_k": 20, "repeat_penalty": 1.0, "num_predict": 8192}
+                "num_batch": 256, "temperature": 1.0, "top_p": 0.95,
+                "top_k": 20, "min_p": 0.0, "presence_penalty": 0.0,
+                "repeat_penalty": 1.0, "num_predict": 16384}
 
     @property
     def context_tokens(self) -> int:
@@ -116,7 +133,10 @@ class DualGpuRuntime:
                     and process.name().casefold() == "ollama.exe"
                     and process.cmdline()[1:] == ["serve"]
                     and process.environ().get("OLLAMA_HOST") == self.url):
-                self._terminate_tree(process)
+                # Keep a successfully loaded model resident across UI restarts.
+                # A PID alone is never enough to adopt or terminate a process.
+                self.process = _AdoptedProcess(process)
+                return
         except (OSError, ValueError, KeyError, psutil.Error):
             pass
         self.marker.unlink(missing_ok=True)
@@ -176,6 +196,8 @@ class DualGpuRuntime:
                 log = self.log_path.open("a", encoding="utf-8")
             with self._lock:
                 self.last_error = ""
+                self.last_warning = ""
+                self._last_guard_at = float("-inf")
                 self.process = subprocess.Popen(
                     [executable, "serve"], env=environment, stdin=subprocess.DEVNULL,
                     stdout=log or subprocess.DEVNULL, stderr=subprocess.STDOUT,
@@ -205,14 +227,27 @@ class DualGpuRuntime:
                 log.close()
 
     def guard(self) -> str:
+        """Advisory, shared 20-second sampling window, even during chat/loading."""
+        with self._lock:
+            now = time.monotonic()
+            if now - self._last_guard_at < self.GUARD_INTERVAL_SECONDS:
+                return self.last_warning
+            self._last_guard_at = now
+            self.last_warning = self._check_guard()
+            return self.last_warning
+
+    def _check_guard(self) -> str:
         if not self.owned:
             return "El servidor Dual no está activo."
         game = detect_game_processes(self.config.game_processes)
         if game.active or game.error:
-            return "Juego detectado o comprobación no disponible; GPU de juego liberada."
+            return "Juego detectado o comprobación no disponible; libera Dual manualmente antes de jugar."
         error = self.budget_error(probe_nvidia_gpus())
         if error:
             return error
+        return self.cpu_offload_error()
+
+    def cpu_offload_error(self) -> str:
         # Ollama may retry a vision projector on CPU. Reject that fallback too.
         try:
             with self._lock:
@@ -220,7 +255,7 @@ class DualGpuRuntime:
                     return "El servidor Dual se ha detenido."
                 for child in psutil.Process(self.process.pid).children(recursive=True):
                     if "--no-mmproj-offload" in child.cmdline():
-                        return "El proyector visual intentó usar CPU; modo Dual cancelado."
+                        return "El proyector visual intentó usar CPU; revisa el modo Dual."
         except psutil.Error:
             return "No puedo verificar los procesos del modo Dual."
         return ""
@@ -233,16 +268,16 @@ class DualGpuRuntime:
             }))
             try:
                 while not loading.done():
-                    error = await asyncio.to_thread(self.guard)
-                    if error:
-                        raise RuntimeError(error)
-                    await asyncio.wait({loading}, timeout=1)
+                    await asyncio.to_thread(self.guard)
+                    await asyncio.wait({loading}, timeout=self.GUARD_INTERVAL_SECONDS)
                 (await loading).raise_for_status()
                 models = (await client.get(f"{self.url}/api/ps")).json().get("models", [])
                 model = next((item for item in models if item.get("name") == self.config.dual_model), {})
                 if not model.get("size") or model.get("size_vram", 0) < model["size"] * 0.995:
                     raise RuntimeError("Ollama no cargó el 100 % del modelo en GPU; no usaré RAM para las capas.")
-                error = await asyncio.to_thread(self.guard)
+                # Loading is transactional: never accept a CPU-offloaded model.
+                # Budget/game warnings, however, never evict a resident model.
+                error = await asyncio.to_thread(self.cpu_offload_error)
                 if error:
                     raise RuntimeError(error)
             except BaseException as exc:

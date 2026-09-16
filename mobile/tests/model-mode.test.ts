@@ -26,6 +26,15 @@ test('dual is manual, game-gated, and never offered by an older backend', () => 
   assert.equal(modelModeAvailable({ ...dual, game: { active: false, processes: [], error: 'probe failed' } }, 'dual'), false);
 });
 
+test('dual shows Extra High, manual release and advisory warnings', () => {
+  const dual = status({ requested_mode: 'dual' });
+  assert.match(modelModeReason(dual), /Extra High/);
+  assert.match(modelModeReason(dual), /20 s/);
+  assert.match(modelModeReason(dual), /manualmente/);
+  assert.equal(modelModeReason({ ...dual, dual_warning: 'Libera VRAM manualmente' }),
+    'Libera VRAM manualmente');
+});
+
 function status(overrides: Partial<ModelStatus> = {}): ModelStatus {
   return {
     requested_mode: 'normal',
