@@ -219,6 +219,20 @@ def test_youtube_results_are_deduplicated_by_video_id_before_probing():
     assert len(probed) == 1
 
 
+def test_redirects_to_same_live_article_are_deduplicated():
+    provider = FakeProvider([
+        {"title": "Antiguo", "href": "https://example.com/old", "body": "Dato"},
+        {"title": "Actual", "href": "https://example.com/current", "body": "Dato"},
+    ])
+    search = OnlineSearchClient(
+        provider_factory=lambda: provider,
+        availability_checker=lambda url: LinkAvailability("available", final_url="https://example.com/current"),
+    )
+    results = search.search("fuente", max_results=5)
+    assert len(results) == 1
+    assert results[0].url == "https://example.com/current"
+
+
 def test_alternative_provider_keeps_live_validation_enabled_by_default():
     provider = FakeProvider(
         [{"title": "Fuente", "href": "https://example.com/live", "body": "Dato"}]

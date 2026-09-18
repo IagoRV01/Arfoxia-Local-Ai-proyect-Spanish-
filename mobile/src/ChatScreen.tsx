@@ -28,6 +28,7 @@ import Markdown, {
 
 import { ApiError, ArfoxiaApi, findScreenshotId } from './api';
 import { ConversationListModal } from './ConversationListModal';
+import { MarkdownCodeBlock, codeFontFamily } from './MarkdownCodeBlock';
 import {
   chatMessageToEntry,
   conversationsAfterDelete,
@@ -916,13 +917,16 @@ export function ChatScreen({
       const mine = item.role === 'user';
       const system = item.role === 'system';
       const hasTable = containsMarkdownTable(item.text);
+      const hasCode = safeMarkdownIt.parse(item.text, {}).some(
+        (token: { type: string }) => token.type === 'fence' || token.type === 'code_block',
+      );
       return (
         <View
           style={[
             styles.bubble,
             mine && styles.bubbleMine,
             system && styles.bubbleSystem,
-            hasTable && styles.bubbleTable,
+            (hasTable || hasCode) && styles.bubbleTable,
           ]}
         >
           {!mine && !system ? (
@@ -1789,11 +1793,13 @@ function createMarkdownStyles(
       lineHeight: 22,
     },
     codeInline: {
+      fontFamily: codeFontFamily,
       color: textColor,
       backgroundColor: surfaceColor,
       fontSize: 13,
     },
     codeBlock: {
+      fontFamily: codeFontFamily,
       color: textColor,
       backgroundColor: surfaceColor,
       borderColor,
@@ -1862,6 +1868,8 @@ const safeMarkdownIt = new MarkdownIt({
 safeMarkdownIt.validateLink = isSafeSourceUrl;
 
 const safeMarkdownRules: RenderRules = {
+  fence: (node) => <MarkdownCodeBlock key={node.key} content={node.content} language={node.sourceInfo} />,
+  code_block: (node) => <MarkdownCodeBlock key={node.key} content={node.content} />,
   image: (node) => (
     <Text key={node.key}>
       {node.attributes.alt

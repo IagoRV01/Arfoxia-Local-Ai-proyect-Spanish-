@@ -6,6 +6,34 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+## [0.14.1] - 2026-09-18
+
+### Corregido
+
+- El filtro de fuentes conserva literalmente bloques y fragmentos de código
+  CommonMark, incluidos imports HTTPS, sangría, cercas anidadas y saltos de línea.
+  Las citas fuera del código siguen limitadas a destinos comprobados o escritos
+  por el usuario; no se ejecuta ni se abre automáticamente el código mostrado.
+- Los enlaces verificados con paréntesis equilibrados ya no se recortan; los
+  resultados que redirigen al mismo artículo se muestran una sola vez.
+- «Vuelve a intentarlo», «los enlaces no funcionan» y seguimientos sobre máximas
+  y mínimas retoman el tema del mismo chat y consultan fuentes de nuevo. Se
+  eliminan saludos y relleno de la consulta; no se buscan literalmente las
+  frases de reintento ni se recuperan temas de otro chat.
+- Los resultados recuerdan al modelo que una página accesible y un extracto
+  indexado no garantizan actualidad ni justifican inventar datos meteorológicos.
+- En Windows, tablas/listas/código no contaminan el formato del siguiente
+  mensaje; los enlaces tienen contraste sobre el fondo oscuro.
+- En Expo Go, código monoespaciado seleccionable, desplazamiento horizontal y
+  botón Copiar; las cercas de código largas no se confunden con tablas.
+
+### Pruebas
+
+- Regresiones de código literal, enlaces, contenedores Markdown, contexto de
+  búsquedas, redirecciones y consultas meteorológicas encadenadas; comprobación
+  Qt, pruebas móviles y exportación iOS de Expo. Los historiales existentes no
+  se reescriben: el código ya dañado debe regenerarse.
+
 ## [0.14.0] - 2026-09-17
 
 ### Cambiado

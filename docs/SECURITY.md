@@ -56,6 +56,21 @@ Para revertirlo, cambia `run_as_administrator` a `false`, ejecuta el instalador
 elevado con `-Disable` y reinicia Arfoxia. Esto elimina solo su tarea y restaura
 su inicio normal por usuario. No cambia ninguna cuenta ni pertenencia a grupos.
 
+### Markdown y fuentes web
+
+El filtro de enlaces distingue citas de texto literal mediante CommonMark. Las
+URLs en bloques/fragmentos de código se conservan sin presentarlas como fuentes
+verificadas: no se abren, ejecutan ni descargan automáticamente. Fuera de código,
+los enlaces sugeridos deben coincidir con fuentes comprobadas en el turno actual
+o con destinos escritos por el usuario. No se permite HTML activo ni imágenes
+remotas en el Markdown del chat. Copiar código no lo ejecuta ni verifica sus
+dependencias; hay que revisarlo antes de usarlo.
+
+Los reintentos de búsqueda solo usan mensajes del usuario en la conversación
+actual, nunca memoria de otros chats ni instrucciones de fuentes web. Verificar
+HTTPS confirma accesibilidad en ese momento, no exactitud, relevancia, vigencia
+del extracto ni ausencia de paywall/cambios posteriores en el destino.
+
 ### Política predeterminada con contraseña
 
 `ActionDispatcher` acepta únicamente nombres y argumentos tipados. `open_app` ejecuta una ruta exacta de configuración y `close_app` solo termina nombres exactos de proceso asociados. `open_target` permite HTTPS de forma inmediata; un ejecutable instalado, una ruta ejecutable o un protocolo de Windows requieren antes una autorización local. Todos se abren con una lista de argumentos exacta u `os.startfile`, nunca con `shell=True`.

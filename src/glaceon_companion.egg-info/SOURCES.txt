@@ -17,12 +17,14 @@ src/glaceon_companion/dual_gpu.py
 src/glaceon_companion/game_streaming.py
 src/glaceon_companion/icons.py
 src/glaceon_companion/link_availability.py
+src/glaceon_companion/markdown_regions.py
 src/glaceon_companion/mobile_runtime.py
 src/glaceon_companion/model_policy.py
 src/glaceon_companion/ollama_client.py
 src/glaceon_companion/online_search.py
 src/glaceon_companion/pc_commands.py
 src/glaceon_companion/privileges.py
+src/glaceon_companion/search_context.py
 src/glaceon_companion/services.py
 src/glaceon_companion/sprites.py
 src/glaceon_companion/state.py
@@ -55,6 +57,7 @@ tests/test_desktop_interactions.py
 tests/test_dual_gpu.py
 tests/test_game_streaming.py
 tests/test_link_availability.py
+tests/test_markdown_regions.py
 tests/test_mobile_runtime.py
 tests/test_model_policy.py
 tests/test_ollama.py
@@ -64,6 +67,7 @@ tests/test_personality_and_dialogue.py
 tests/test_physical_pet_ui.py
 tests/test_privileges.py
 tests/test_quick_chat_popup.py
+tests/test_search_context.py
 tests/test_search_routing.py
 tests/test_service_tools.py
 tests/test_snowflake_icon.py

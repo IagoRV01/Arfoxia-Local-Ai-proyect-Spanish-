@@ -56,6 +56,7 @@ class TrackingSearch:
                     "title": "Predición horaria segura",
                     "url": "https://example.com/allariz-horas",
                     "snippet": "Temperatura prevista por horas.",
+                    "availability": "verified",
                 }
             ],
         }
@@ -74,6 +75,7 @@ class TrackingSearch:
                     "title": "Investigación contrastada",
                     "url": "https://example.com/investigacion",
                     "snippet": "Información contrastada entre varias fuentes.",
+                    "availability": "verified",
                 }
             ],
         }
@@ -82,6 +84,35 @@ class TrackingSearch:
 def make_service(tmp_path: Path) -> CompanionService:
     store = ConfigStore(tmp_path)
     return CompanionService(store, store.load())
+
+
+@pytest.mark.parametrize("message,prior_details", [
+    ("¿Cuánto van a ser las máximas y mínimas?", []),
+    ("Vuelve a intetar buscar", ["¿Cuánto van a ser las máximas y mínimas?"]),
+    ("Vuelve a intentarlo", ["¿Cuánto van a ser las máximas y mínimas?", "Vuelve a intetar buscar"]),
+])
+def test_weather_followups_refresh_verified_sources_for_same_topic(tmp_path, message, prior_details):
+    service = make_service(tmp_path)
+    search = TrackingSearch()
+    service.online_search = search
+    service.ollama = FakeOllama([
+        {"message": {"content": "Consultaré las fuentes."}},
+        {"message": {"content": "[Fuente](https://example.com/allariz-horas)"}},
+    ])
+    try:
+        conversation = service.create_conversation("Tiempo")
+        for prior in ["Hola Arfoxia, busca el tiempo para mañana en Ourense por favor", *prior_details]:
+            service.database.add_message("user", prior, conversation_id=conversation["id"])
+        result = asyncio.run(service.chat(message, conversation_id=conversation["id"]))
+        query = search.search_calls[0][0].casefold()
+        assert "ourense" in query
+        assert "máximas" in query
+        assert "vuelve" not in query
+        assert not query.startswith("hola")
+        assert "https://example.com/allariz-horas" in result["message"]
+        assert [item["action"] for item in result["action_results"]] == ["web_search"]
+    finally:
+        service.close()
 
 
 def chat_in_new_conversation(
@@ -342,6 +373,7 @@ def test_galician_weather_fallback_searches_and_returns_sources(
             "title": "Predición horaria segura",
             "url": "https://example.com/allariz-horas",
             "snippet": "Temperatura prevista por horas.",
+            "availability": "verified",
         }
     ]
     assert ollama.options[0]["tools"] == {"web_search"}

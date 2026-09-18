@@ -7,6 +7,8 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from urllib.parse import quote_plus, urlsplit
 
+from .markdown_regions import protect_code, restore_code
+
 
 _HTTPS_URL = re.compile(r"https://[^\s<>{}\[\]\"']+", re.IGNORECASE)
 _MARKDOWN_AUTOLINK = re.compile(r"<([^<>\r\n]+)>")
@@ -132,13 +134,23 @@ def has_open_intent(text: str) -> bool:
     return _OPEN_WORD.search(_fold(normalized)) is not None
 
 
+def _trim_url_punctuation(value: str) -> str:
+    value = value.rstrip(".,;!¡¿")
+    while value and value[-1] in ")]}":
+        opening = {")": "(", "]": "[", "}": "{"}[value[-1]]
+        if value.count(value[-1]) <= value.count(opening):
+            break
+        value = value[:-1].rstrip(".,;!¡¿")
+    return value
+
+
 def extract_explicit_https_urls(text: str, *, limit: int = 6) -> tuple[str, ...]:
     """Extract exact HTTPS destinations without manufacturing or rewriting them."""
 
     output: list[str] = []
     seen: set[str] = set()
     for match in _HTTPS_URL.finditer(str(text or "")):
-        target = match.group(0).rstrip(".,;!¡¿)]}")
+        target = _trim_url_punctuation(match.group(0))
         key = target.casefold()
         if target and key not in seen:
             output.append(target)
@@ -174,7 +186,9 @@ def filter_untrusted_https_urls(
     *,
     replacement: str = "enlace no verificado omitido",
 ) -> str:
-    """Remove model-written links that were not verified or user supplied."""
+    """Filter clickable prose links without corrupting literal source code."""
+
+    text, code = protect_code(str(text or ""))
 
     allowed = {
         key
@@ -251,11 +265,13 @@ def filter_untrusted_https_urls(
 
     def raw(match: re.Match[str]) -> str:
         value = match.group(0)
-        target = value.rstrip(".,;!¡¿)]}")
+        if trusted_target(value) is not None:
+            return value
+        target = _trim_url_punctuation(value)
         suffix = value[len(target) :]
         return value if trusted_target(target) is not None else f"{replacement}{suffix}"
 
-    return _HTTPS_URL.sub(raw, filtered)
+    return restore_code(_HTTPS_URL.sub(raw, filtered), code)
 
 
 def _markdown_destination(value: str) -> tuple[str, str]:

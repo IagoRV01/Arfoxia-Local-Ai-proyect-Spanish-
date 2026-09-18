@@ -84,3 +84,10 @@ test('detects Markdown tables but ignores lookalikes inside code fences', () => 
   );
   assert.equal(containsMarkdownTable('Texto normal | con una barra'), false);
 });
+
+test('a shorter or nonempty fence cannot close a literal code block', () => {
+  const tableSource = '| Modelo | VRAM |\n| --- | --- |\n| RTX | 12 GB |';
+  assert.equal(containsMarkdownTable(`\`\`\`\`md\n\`\`\`\n${tableSource}\n\`\`\`\``), false);
+  assert.equal(containsMarkdownTable(`~~~md\n~~~still code\n${tableSource}\n~~~`), false);
+  assert.equal(containsMarkdownTable(`\`\`\`\`md\n\`\`\`\`\n${tableSource}`), true);
+});

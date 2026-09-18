@@ -24,13 +24,22 @@ function tableCells(line: string): string[] {
 export function containsMarkdownTable(source: string): boolean {
   const lines = source.split(/\r?\n/);
   let fenceMarker: '`' | '~' | null = null;
+  let fenceLength = 0;
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    const fence = line.match(/^\s*(`{3,}|~{3,})/);
+    const fence = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
     if (fence) {
       const marker = fence[1][0] as '`' | '~';
-      fenceMarker = fenceMarker === marker ? null : fenceMarker ?? marker;
+      if (fenceMarker) {
+        if (marker === fenceMarker && fence[1].length >= fenceLength && !fence[2].trim()) {
+          fenceMarker = null;
+          fenceLength = 0;
+        }
+      } else if (marker !== '`' || !fence[2].includes('`')) {
+        fenceMarker = marker;
+        fenceLength = fence[1].length;
+      }
       continue;
     }
     if (fenceMarker || index === 0 || !line.includes('|')) {

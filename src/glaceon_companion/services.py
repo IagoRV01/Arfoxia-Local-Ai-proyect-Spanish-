@@ -57,6 +57,7 @@ from .ollama_client import (
 from .model_policy import ModelSelection, detect_game_processes
 from .online_search import OnlineSearchClient, OnlineSearchError
 from .privileges import is_administrator
+from .search_context import compact_search_query, resolve_web_followup
 from .temporal import (
     TemporalContext,
     TemporalGrounding,
@@ -449,7 +450,7 @@ def _web_action_arguments(
     search_text = (
         _news_search_subject(text)
         if news
-        else _link_search_subject(text) if link_request else text
+        else _link_search_subject(text) if link_request else compact_search_query(text)
     )
     if research:
         base = " ".join(str(search_text or "").split()).strip()[:160].rstrip()
@@ -2315,8 +2316,14 @@ class CompanionService:
                 attachments,
                 max_text_chars=text_limit,
             )
+        contextual_web_text = resolve_web_followup(
+            turn_text, previous_user_messages,
+            lambda candidate: required_web_action(candidate, temporal_context=temporal_context) is not None,
+        )
+        if research_mode and contextual_web_text:
+            contextual_web_text = f"Haz una investigación intensiva sobre: {contextual_web_text}"
         required_web = required_web_action(
-            routing_text,
+            contextual_web_text,
             temporal_context=temporal_context,
         )
         if required_web is not None:

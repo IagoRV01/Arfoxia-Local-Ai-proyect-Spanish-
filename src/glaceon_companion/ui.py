@@ -42,6 +42,7 @@ from PySide6.QtGui import (
     QPixmap,
     QRegion,
     QTextCharFormat,
+    QTextBlockFormat,
     QTextCursor,
     QTextDocument,
 )
@@ -1460,10 +1461,10 @@ class ChatWindow(QDialog):
         if is_safe_https_url(url):
             QDesktopServices.openUrl(url)
 
-    def _remove_unsafe_markdown_links(self, start: int, end: int) -> None:
+    def _style_markdown_links(self, start: int, end: int) -> None:
         document = self.transcript.document()
         block = document.findBlock(start)
-        unsafe_ranges: list[tuple[int, int, QTextCharFormat]] = []
+        link_ranges: list[tuple[int, int, QTextCharFormat]] = []
         while block.isValid() and block.position() <= end:
             iterator = block.begin()
             while not iterator.atEnd():
@@ -1476,14 +1477,13 @@ class ChatWindow(QDialog):
                     and fragment_end > start
                     and fragment_start < end
                     and char_format.isAnchor()
-                    and not is_safe_https_url(char_format.anchorHref())
                 ):
-                    unsafe_ranges.append(
+                    link_ranges.append(
                         (fragment_start, fragment.length(), char_format)
                     )
                 iterator += 1
             block = block.next()
-        for position, length, char_format in unsafe_ranges:
+        for position, length, char_format in link_ranges:
             selection = QTextCursor(document)
             selection.setPosition(position)
             selection.setPosition(
@@ -1491,9 +1491,16 @@ class ChatWindow(QDialog):
                 QTextCursor.MoveMode.KeepAnchor,
             )
             safe_format = QTextCharFormat(char_format)
-            safe_format.setAnchor(False)
-            safe_format.setAnchorHref("")
-            safe_format.setAnchorNames([])
+            if is_safe_https_url(char_format.anchorHref()):
+                # Qt's Markdown importer ignores the HTML anchor stylesheet.
+                safe_format.setForeground(QColor("#91e8ff"))
+                safe_format.setFontUnderline(True)
+            else:
+                safe_format.setAnchor(False)
+                safe_format.setAnchorHref("")
+                safe_format.setAnchorNames([])
+                safe_format.setForeground(QColor("#edfaff"))
+                safe_format.setFontUnderline(False)
             selection.setCharFormat(safe_format)
 
     def append(self, who: str, text: str) -> None:
@@ -1501,21 +1508,25 @@ class ChatWindow(QDialog):
         cursor = self.transcript.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         if not self.transcript.document().isEmpty():
-            cursor.insertBlock()
+            cursor.insertBlock(QTextBlockFormat(), QTextCharFormat())
+        cursor.setBlockFormat(QTextBlockFormat())
+        cursor.setCharFormat(QTextCharFormat())
 
         speaker_format = QTextCharFormat()
         speaker_format.setForeground(QColor(color))
         speaker_format.setFontWeight(QFont.Weight.Bold)
         cursor.insertText(who, speaker_format)
-        cursor.insertBlock()
+        cursor.insertBlock(QTextBlockFormat(), QTextCharFormat())
         cursor.setCharFormat(QTextCharFormat())
 
         markdown_start = cursor.position()
         cursor.insertMarkdown(text, SAFE_MARKDOWN_FEATURES)
         markdown_end = cursor.position()
-        self._remove_unsafe_markdown_links(markdown_start, markdown_end)
-        cursor.setPosition(markdown_end)
-        cursor.insertBlock()
+        self._style_markdown_links(markdown_start, markdown_end)
+        # insertMarkdown may leave the cursor in the last table cell/list/code
+        # block. Exit the fragment before creating the next message boundary.
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.insertBlock(QTextBlockFormat(), QTextCharFormat())
         self.transcript.setTextCursor(cursor)
         self.transcript.ensureCursorVisible()
 

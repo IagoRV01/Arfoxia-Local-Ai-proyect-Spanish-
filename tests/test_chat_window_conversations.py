@@ -605,6 +605,42 @@ def test_transcript_disables_html_unsafe_links_and_image_resources(
     )
     assert isinstance(blocked, QImage)
     assert blocked.isNull()
+    safe_link = window.transcript.document().find("seguro")
+    assert safe_link.charFormat().foreground().color().name() == "#91e8ff"
+
+
+def test_literal_code_urls_are_not_clickable(conversation_window):
+    window, _, _ = conversation_window
+    window.transcript.clear()
+    window.append("Arfoxia", '```js\nimport "https://cdn.example/module.js";\n```')
+    cursor = window.transcript.document().find("https://cdn.example/module.js")
+    assert not cursor.isNull()
+    assert not cursor.charFormat().isAnchor()
+
+
+@pytest.mark.parametrize("ending", [
+    "| Campo | Valor |\n| --- | --- |\n| estado | bien |",
+    "```python\nprint('hola')\n```",
+    "- primero\n- segundo",
+    "> una cita",
+    "# Un título",
+])
+def test_next_message_does_not_inherit_previous_markdown_container(conversation_window, ending):
+    window, _, _ = conversation_window
+    window.transcript.clear()
+    window.append("Arfoxia", ending)
+    window.append("Usuario nuevo", "Texto normal posterior")
+    document = window.transcript.document()
+    for text in ("Usuario nuevo", "Texto normal posterior"):
+        cursor = document.find(text)
+        assert not cursor.isNull()
+        assert cursor.currentTable() is None
+        assert cursor.currentList() is None
+        assert cursor.blockFormat().headingLevel() == 0
+        assert cursor.blockFormat().indent() == 0
+    cursor = document.find("Texto normal posterior")
+    assert not cursor.charFormat().fontFixedPitch()
+    assert cursor.charFormat().fontWeight() < QFont.Weight.Bold
 
 
 @pytest.mark.parametrize(
