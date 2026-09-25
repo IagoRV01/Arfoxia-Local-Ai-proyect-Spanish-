@@ -11,6 +11,14 @@ Internet.
    inicia sesión con **la misma cuenta**. Solo hace falta repetirlo si caduca
    o se cierra la sesión. No guardes credenciales de Expo en el proyecto.
 3. Mantén Tailscale conectado en el PC y en el iPhone.
+   Si Expo da tiempo agotado aunque ambos estén conectados, ejecuta una vez
+   `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/configure_expo_firewall.ps1`
+   desde PowerShell como administrador
+   en la raíz del proyecto. Crea una regla TCP 8081 limitada a Node.js, la
+   interfaz Tailscale y sus direcciones privadas, independientemente del perfil
+   público/privado de Windows. No abre el puerto en Ethernet/Wi-Fi. Admite
+   `-WhatIf`, `-Port` si cambias el puerto y `-Disable` para retirar solo esa regla.
+   La política de ejecución se aplica solo a ese proceso; no cambia la de Windows.
 4. Abre Arfoxia en el PC. El servidor de Expo se iniciará automáticamente en
    cuanto Tailscale esté listo.
 5. Abre el servidor de desarrollo de Arfoxia en Expo Go. Si ha desaparecido

@@ -8,6 +8,15 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [0.15.0] - 2026-09-25
 
+### Corregido
+
+- Acceso de Expo Go por Tailscale cuando Windows clasifica la VPN como privada
+  y las reglas existentes de Node.js solo admiten redes públicas. Nuevo script
+  idempotente `configure_expo_firewall.ps1`: TCP 8081, ejecutable Node.js exacto,
+  interfaz Tailscale y rangos privados de la VPN; no desactiva el firewall ni
+  modifica otras reglas. Incluye simulación `-WhatIf` y retirada `-Disable`.
+- Guía de diagnóstico del tiempo agotado sin borrar el emparejamiento móvil.
+
 ### Añadido
 
 - Modo manual «Quedarse sentado (sin dormir)» en el menú de Arfoxia, la bandeja
