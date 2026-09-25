@@ -58,6 +58,7 @@ from .model_policy import ModelSelection, detect_game_processes
 from .online_search import OnlineSearchClient, OnlineSearchError
 from .privileges import is_administrator
 from .search_context import compact_search_query, resolve_web_followup
+from .pet_commands import posture_command
 from .temporal import (
     TemporalContext,
     TemporalGrounding,
@@ -890,6 +891,8 @@ class CompanionService:
             "play": "Hop",
             "sleep": "Sleep",
             "wake": "Wake",
+            "sit": "Sit",
+            "resume": "Idle",
         }
         with self._state_lock:
             operation = getattr(self.state, kind, None)
@@ -2101,6 +2104,22 @@ class CompanionService:
             if item.get("role") == "user"
             and item.get("id") != user_message.get("id")
         )
+        posture = posture_command(request_text) if not attachments and not research_mode else None
+        if posture is not None:
+            self.interact(posture)
+            message = (
+                "¡Gla! Me quedo sentado y despierto. Cuando quieras, dime «vuelve a pasear»."
+                if posture == "sit" else "¡Gla! Ya puedo volver a pasear."
+            )
+            metadata = {"model": None, "model_mode": "direct", "interaction": posture}
+            assistant_message = self._record_assistant_message(
+                message, conversation_id=conversation_id, origin=origin,
+                metadata=metadata, client_message_id=reply_client_id,
+            )
+            return self._chat_response(
+                conversation_id=conversation_id, user_message=user_message,
+                assistant_message=assistant_message, payload=metadata,
+            )
         browser_plan = (
             plan_browser_request(
                 request_text,

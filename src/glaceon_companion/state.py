@@ -19,6 +19,7 @@ class PetState:
     trust: float = 55.0
     curiosity: float = 72.0
     asleep: bool = False
+    seated: bool = False
     last_interaction: str = ""
     updated_at: str = ""
 
@@ -26,11 +27,15 @@ class PetState:
         now = datetime.now(UTC).isoformat()
         self.last_interaction = self.last_interaction or now
         self.updated_at = self.updated_at or now
+        if self.seated:
+            self.asleep = False
 
     @property
     def mood(self) -> str:
         if self.asleep:
             return "dormido"
+        if self.seated:
+            return "sentado"
         if self.energy < 18:
             return "agotado"
         if self.hunger > 78:
@@ -54,6 +59,9 @@ class PetState:
             self.energy = _clamp(self.energy + 10.0 * hours)
             if self.energy >= 96:
                 self.asleep = False
+        elif self.seated:
+            # Quiet, awake rest: do not force sleep during the owner's game.
+            self.energy = _clamp(self.energy + 2.0 * hours)
         else:
             self.energy = _clamp(self.energy - 1.8 * hours)
             if self.energy <= 4:
@@ -77,6 +85,7 @@ class PetState:
         self._touch()
 
     def play(self) -> None:
+        self.seated = False
         self.happiness = _clamp(self.happiness + 13)
         self.curiosity = _clamp(self.curiosity - 18)
         self.energy = _clamp(self.energy - 8)
@@ -84,10 +93,20 @@ class PetState:
         self._touch()
 
     def sleep(self) -> None:
+        self.seated = False
         self.asleep = True
         self._touch(wake=False)
 
     def wake(self) -> None:
+        self._touch()
+
+    def sit(self) -> None:
+        self.seated = True
+        self._touch()
+
+    def resume(self) -> None:
+        self.seated = False
+        self.energy = _clamp(max(self.energy, WAKE_ENERGY_FLOOR))
         self._touch()
 
     def _touch(self, *, wake: bool = True) -> None:

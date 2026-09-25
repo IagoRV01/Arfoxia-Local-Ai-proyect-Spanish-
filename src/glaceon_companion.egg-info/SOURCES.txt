@@ -23,6 +23,7 @@ src/glaceon_companion/model_policy.py
 src/glaceon_companion/ollama_client.py
 src/glaceon_companion/online_search.py
 src/glaceon_companion/pc_commands.py
+src/glaceon_companion/pet_commands.py
 src/glaceon_companion/privileges.py
 src/glaceon_companion/search_context.py
 src/glaceon_companion/services.py
@@ -64,6 +65,7 @@ tests/test_ollama.py
 tests/test_online_search.py
 tests/test_pc_commands.py
 tests/test_personality_and_dialogue.py
+tests/test_pet_commands.py
 tests/test_physical_pet_ui.py
 tests/test_privileges.py
 tests/test_quick_chat_popup.py

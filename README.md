@@ -9,6 +9,12 @@ Este proyecto está pensado para uso personal y no comercial. Glaceon, Pokémon 
 - Ventana transparente, sin bordes y siempre visible.
 - Animaciones PMD de 8 direcciones: reposo, caminar, dormir, comer, despertar, sentarse y reacciones.
 - Paseos autónomos por la parte inferior del escritorio.
+- Modo **Quedarse sentado (sin dormir)** para acompañarte mientras juegas: clic
+  derecho en Arfoxia, bandeja de Windows o botón en Expo Go. También puedes decir
+  «siéntate mientras juego» y «vuelve a pasear» por chat, sin usar el modelo.
+  Permanece despierto, sin paseos ni interacciones autónomas con Eevee, hasta que
+  elijas volver a pasear, jugar o dormir; el modo se conserva al reiniciar y no
+  modifica las GPU. Comer, acariciar y hablar siguen disponibles.
 - Arrastrar la mascota y acariciarla con movimiento mantenido.
 - Comida visible: **Dar una Baya Aranja** coloca el objeto delante de Arfoxia, activa su animación `Eat` y reduce la baya por etapas hasta que termina de comerla.
 - Juego de traer: **Jugar con el limón** muestra un limón que sigue el puntero; un clic lo lanza con un arco, Arfoxia corre a recogerlo y vuelve con él hacia el cursor. **Esc** o el botón derecho cancelan sin conceder la recompensa de juego.

@@ -6,6 +6,22 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+## [0.15.0] - 2026-09-25
+
+### Añadido
+
+- Modo manual «Quedarse sentado (sin dormir)» en el menú de Arfoxia, la bandeja
+  de Windows y Expo Go. Detiene paseos, acercamientos a Eevee y juegos físicos
+  activos; mantiene a Arfoxia sentado y despierto incluso con energía baja.
+- Órdenes de chat «siéntate», «quédate sentado mientras juego» y «vuelve a
+  pasear», ejecutadas directamente sin cargar ni consultar el modelo.
+- Estado sentado persistente en SQLite y compartido entre PC/móvil. Descansa
+  despierto recuperando energía lentamente; no cambia modelos ni gestión de GPU.
+  Comer, acariciar o conversar conservan el modo; jugar, dormir o «Volver a
+  pasear» lo desactivan. Se puede seguir arrastrando sin dormirse al pasar por la cama.
+- Pruebas de persistencia, compatibilidad con estados antiguos, API autenticada,
+  órdenes explícitas sin Ollama, energía baja, animaciones, comida y limón.
+
 ## [0.14.1] - 2026-09-18
 
 ### Corregido

@@ -1,4 +1,4 @@
-export type InteractionKind = 'feed' | 'pet' | 'play' | 'sleep' | 'wake';
+export type InteractionKind = 'feed' | 'pet' | 'play' | 'sleep' | 'wake' | 'sit' | 'resume';
 export type TabKey = 'companion' | 'chat' | 'system' | 'settings';
 export type ModelMode = 'small' | 'large' | 'direct' | string;
 export type RequestedModelMode = 'gaming_gpu' | 'normal' | 'power' | 'dual';
@@ -37,6 +37,7 @@ export interface PetVitals {
   trust: number;
   curiosity: number;
   asleep: boolean;
+  seated?: boolean;
   last_interaction: string;
   updated_at: string;
   mood: string;

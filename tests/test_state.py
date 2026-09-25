@@ -36,3 +36,31 @@ def test_sleep_interaction_remains_asleep():
     state.sleep()
 
     assert state.asleep is True
+
+
+def test_seated_mode_stays_awake_and_recovers_slowly_even_when_exhausted():
+    state = PetState(energy=1)
+    state.sit()
+    start = datetime.fromisoformat(state.updated_at)
+    state.advance(start + timedelta(hours=8))
+    assert state.seated and not state.asleep
+    assert state.energy == 17
+    assert state.mood == "sentado"
+
+
+def test_sitting_wakes_and_explicit_sleep_play_or_resume_exit_mode():
+    for command in ('sleep', 'play', 'resume'):
+        state = PetState(asleep=True, energy=3)
+        state.sit()
+        assert state.seated and not state.asleep
+        getattr(state, command)()
+        assert not state.seated
+        assert state.asleep == (command == 'sleep')
+
+
+def test_food_pet_and_chat_wake_do_not_cancel_sitting():
+    state = PetState()
+    state.sit()
+    for command in ('feed', 'pet', 'wake'):
+        getattr(state, command)()
+        assert state.seated and not state.asleep

@@ -57,6 +57,116 @@ def test_feed_event_shows_and_consumes_one_berry_without_double_counting(physica
     assert service.state.hunger == hunger_after_event
 
 
+def test_sit_stops_movement_and_blocks_automatic_sleep_and_animations(physical_pet):
+    pet, service = physical_pet
+    pet.start_wander()
+    service.interact('sit')
+    pet.poll_events()
+    position = pet.pos()
+    service.state.energy = 1
+    pet.autonomous_behavior()
+    pet.start_wander()
+    pet.move_next_to_eevee()
+    pet.move_step()
+    service.events.put({'type': 'chat_received', 'has_attachments': True})
+    service.events.put({'type': 'action', 'action': 'web_search'})
+    pet.poll_events()
+    pet.frame_index = len(pet.frames) - 1
+    pet.next_frame()
+    assert pet.pos() == position
+    assert not pet.movement_timer.isActive()
+    assert pet.wander_target is None
+    assert pet.current_animation == 'Sit'
+    assert not service.state.asleep
+    service.interact('resume')
+    pet.poll_events()
+    pet.start_wander()
+    assert pet.movement_timer.isActive()
+
+
+@pytest.mark.parametrize('activity', ['food', 'lemon'])
+def test_sit_cancels_active_props_and_keeps_awake(physical_pet, activity):
+    pet, service = physical_pet
+    if activity == 'food':
+        pet.request_feed()
+        pet.poll_events()
+    else:
+        pet.begin_fetch_game()
+    service.interact('sit')
+    pet.poll_events()
+    assert pet.interaction_mode == 'idle'
+    assert not pet.berry_prop.isVisible()
+    assert not pet.lemon_prop.isVisible()
+    assert not pet.placement_overlay.isVisible()
+    assert not pet.feed_timer.isActive()
+    assert pet.current_animation == 'Sit'
+
+
+def test_food_finishes_seated_but_explicit_lemon_exits_mode(physical_pet):
+    pet, service = physical_pet
+    service.interact('sit')
+    pet.poll_events()
+    pet.request_feed()
+    pet.poll_events()
+    for _ in range(4):
+        pet.advance_feed_sequence()
+    assert pet.current_animation == 'Sit'
+    assert service.state.seated
+    pet.begin_fetch_game()
+    pet.poll_events()
+    assert not service.state.seated
+    assert pet.interaction_mode == 'aiming_lemon'
+
+
+def test_seated_sprite_restored_on_restart(app, tmp_path):
+    store = ConfigStore(tmp_path)
+    config = store.load()
+    config.eevee_companion_enabled = False
+    service = CompanionService(store, config)
+    service.interact('sit')
+    pet = PetWindow(service, 'token')
+    try:
+        assert pet.current_animation == 'Sit'
+        assert not service.state.asleep
+    finally:
+        pet.close()
+        service.close()
+
+
+def test_dragging_seated_pet_over_bed_does_not_make_it_sleep(physical_pet, monkeypatch):
+    pet, service = physical_pet
+    service.interact('sit')
+    pet.poll_events()
+    pet.bed_prop.show()
+    pet.pet_distance = 20
+    monkeypatch.setattr('glaceon_companion.ui.foot_is_over_bed', lambda *args: True)
+    pet.mouseReleaseEvent(None)
+    assert service.state.seated and not service.state.asleep
+    assert not pet.sleeping_on_bed
+
+
+def test_desktop_menu_can_toggle_sitting(physical_pet, monkeypatch):
+    from PySide6.QtWidgets import QMenu
+    pet, service = physical_pet
+    selected_labels = []
+    def choose(menu, position):
+        label = 'Volver a pasear' if service.state.seated else 'Quedarse sentado (sin dormir)'
+        action = next(item for item in menu.actions() if item.text() == label)
+        selected_labels.append(label)
+        action.trigger()
+    class TestMenu(QMenu):
+        def exec(self, position):
+            choose(self, position)
+    monkeypatch.setattr('glaceon_companion.ui.QMenu', TestMenu)
+    pet.open_menu(QPoint(20, 20))
+    pet.poll_events()
+    assert service.state.seated
+    pet.open_menu(QPoint(20, 20))
+    pet.poll_events()
+    assert not service.state.seated
+    assert len(selected_labels) == 2
+
+
 def test_lemon_is_returned_before_play_reward_is_applied(app, physical_pet, monkeypatch):
     pet, service = physical_pet
     fake_cursor = type("FakeCursor", (), {"pos": staticmethod(lambda: QPoint(740, 400))})

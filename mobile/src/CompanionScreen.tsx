@@ -161,7 +161,9 @@ export function CompanionScreen({ api, onUnauthorized }: Props) {
           <View>
             <Text style={styles.mood}>{mood}</Text>
             <Text style={styles.moodHint}>
-              {state?.asleep
+              {state?.seated
+                ? 'Sentado y despierto. No paseará mientras juegas.'
+                : state?.asleep
                 ? 'Está descansando. Puedes despertarla cuando quieras.'
                 : 'Toca a Arfoxia para acariciarla.'}
             </Text>
@@ -195,6 +197,16 @@ export function CompanionScreen({ api, onUnauthorized }: Props) {
         ))}
       </View>
 
+      {typeof state?.seated === 'boolean' ? (
+        <Button
+          label={state.seated ? 'Volver a pasear' : 'Quedarse sentado (sin dormir)'}
+          icon="❄"
+          variant={state.seated ? 'primary' : 'secondary'}
+          busy={interaction === (state.seated ? 'resume' : 'sit')}
+          disabled={Boolean(interaction)}
+          onPress={() => void interact(state.seated ? 'resume' : 'sit')}
+        />
+      ) : null}
       <Button
         label={state?.asleep ? 'Despertar a Arfoxia' : 'Ir a dormir'}
         icon={state?.asleep ? '☀' : '☾'}

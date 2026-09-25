@@ -2408,6 +2408,8 @@ class PetWindow(QWidget):
                 self.snap_to_bed()
                 self.sleeping_on_bed = True
             self.play("Sleep", loop=True)
+        elif self.service.state_dict().get("seated"):
+            self.play("Sit", loop=True)
         if service.config.eevee_companion_enabled:
             self.eevee_presence_timer.start()
             QTimer.singleShot(900, self.update_eevee_presence)
@@ -2681,6 +2683,8 @@ class PetWindow(QWidget):
         if self.interaction_mode != "idle":
             self.show_speech("Gla… termina primero lo que estamos haciendo.")
             return
+        if self.service.state_dict().get("seated"):
+            self.service.interact("resume")
         if self.service.state_dict()["asleep"]:
             self.sleeping_on_bed = False
             self.service.interact("wake")
@@ -2870,6 +2874,8 @@ class PetWindow(QWidget):
         return [(start - offset_x, end - offset_x) for start, end in ranges]
 
     def ensure_eevee_separation(self) -> None:
+        if self.service.state_dict().get("seated"):
+            return
         obstacle = self._eevee_rect()
         if obstacle is None or self.drag_origin is not None:
             return
@@ -2896,6 +2902,8 @@ class PetWindow(QWidget):
             self.move(safe_sprite_x - offset_x, self.y())
 
     def move_next_to_eevee(self) -> None:
+        if self.service.state_dict().get("seated"):
+            return
         obstacle = self._eevee_rect()
         ranges = self._safe_ranges_next_to_eevee()
         if obstacle is None or not ranges:
@@ -2931,6 +2939,9 @@ class PetWindow(QWidget):
 
         self.eevee_missed_polls = 0
         self.eevee_presence = detected
+        if self.service.state_dict().get("seated"):
+            self.eevee_interaction_timer.stop()
+            return
         self.ensure_bed_separation()
         if self.interaction_mode in {
             "aiming_lemon",
@@ -2971,6 +2982,7 @@ class PetWindow(QWidget):
         state = self.service.state_dict()
         busy = (
             state["asleep"]
+            or state.get("seated", False)
             or self.quick_chat.isVisible()
             or self.chat_window.isVisible()
             or self.speech_bubble.isVisible()
@@ -2989,6 +3001,8 @@ class PetWindow(QWidget):
         self._schedule_eevee_interaction()
 
     def play(self, name: str, direction: int | None = None, loop: bool = False) -> None:
+        if self.interaction_mode == "idle" and self.service.state_dict().get("seated"):
+            name, loop = "Sit", True
         if name not in self.library.available():
             name = "Idle"
         if direction is not None:
@@ -3070,6 +3084,7 @@ class PetWindow(QWidget):
         self.window_origin = None
         if (
             was_dragged
+            and not self.service.state_dict().get("seated")
             and self.bed_prop.isVisible()
             and foot_is_over_bed(self._arfoxia_rect(), self.bed_prop.screen_rect())
         ):
@@ -3105,6 +3120,7 @@ class PetWindow(QWidget):
             ("Jugar con el limón", self.begin_fetch_game),
             ("Colocar / mover cama", self.begin_bed_placement),
             ("Dormir / despertar", self.toggle_sleep),
+            ("Volver a pasear" if self.service.state_dict().get("seated") else "Quedarse sentado (sin dormir)", self.toggle_seated),
             ("Hacer captura", lambda: self.service.actions.execute("take_screenshot")),
             ("Emparejar iPhone", self.show_pairing),
         ]
@@ -3146,6 +3162,9 @@ class PetWindow(QWidget):
         if kind == "wake":
             self.sleeping_on_bed = False
         self.service.interact(kind)
+
+    def toggle_seated(self) -> None:
+        self.service.interact("resume" if self.service.state_dict().get("seated") else "sit")
 
     def show_chat(self) -> None:
         self.chat_window.refresh_state()
@@ -3295,6 +3314,9 @@ class PetWindow(QWidget):
         if state["asleep"]:
             self.play("Sleep", loop=True)
             return
+        if state.get("seated"):
+            self.play("Sit", loop=True)
+            return
         if state["energy"] < 15:
             self.service.interact("sleep")
             return
@@ -3307,7 +3329,8 @@ class PetWindow(QWidget):
             self.play(random.choice(["Idle", "LookUp", "Sit", "DeepBreath"]), loop=False)
 
     def start_wander(self) -> None:
-        if self.interaction_mode != "idle" or self.service.state_dict()["asleep"]:
+        state = self.service.state_dict()
+        if self.interaction_mode != "idle" or state["asleep"] or state.get("seated"):
             return
         screen_object = QApplication.screenAt(self.frameGeometry().center()) or QApplication.primaryScreen()
         screen = screen_object.availableGeometry()
@@ -3336,6 +3359,12 @@ class PetWindow(QWidget):
         self.movement_timer.start()
 
     def move_step(self) -> None:
+        if self.service.state_dict().get("seated"):
+            self.wander_target = None
+            self.movement_purpose = "idle"
+            self.movement_timer.stop()
+            self.play("Sit", loop=True)
+            return
         if self.wander_target is None:
             self.movement_timer.stop()
             self.movement_purpose = "idle"
@@ -3399,6 +3428,24 @@ class PetWindow(QWidget):
                 )
             elif event.get("type") == "interaction":
                 kind = str(event.get("kind", ""))
+                if kind == "sit":
+                    self.placement_overlay.cancel()
+                    self.cancel_fetch_game()
+                    self.feed_timer.stop()
+                    self.berry_prop.hide()
+                    self.interaction_mode = "idle"
+                    self.sleeping_on_bed = False
+                    self.wander_target = None
+                    self.movement_purpose = "idle"
+                    self.movement_timer.stop()
+                    self.eevee_interaction_timer.stop()
+                    self.play("Sit", loop=True)
+                    continue
+                if kind == "resume":
+                    self.sleeping_on_bed = False
+                    self.play("Idle", loop=True)
+                    self._schedule_eevee_interaction()
+                    continue
                 if kind in {"feed", "pet", "play", "wake"}:
                     self.sleeping_on_bed = False
                 if kind == "feed":
@@ -3491,12 +3538,16 @@ class DesktopController(QObject):
         full_chat_action = QAction("Conversación completa", tray_menu)
         gpu_action = QAction("Gestor de GPU", tray_menu)
         pair_action = QAction("Emparejar iPhone", tray_menu)
+        sit_action = QAction("Quedarse sentado (sin dormir)", tray_menu)
+        resume_action = QAction("Volver a pasear", tray_menu)
         quit_action = QAction("Salir", tray_menu)
         show_action.triggered.connect(self.pet.show)
         chat_action.triggered.connect(self.pet.show_quick_chat)
         full_chat_action.triggered.connect(self.pet.show_chat)
         gpu_action.triggered.connect(self.pet.chat_window.show_gpu_manager)
         pair_action.triggered.connect(self.pet.show_pairing)
+        sit_action.triggered.connect(lambda: service.interact("sit"))
+        resume_action.triggered.connect(lambda: service.interact("resume"))
         quit_action.triggered.connect(QApplication.quit)
         for action in (
             show_action,
@@ -3504,6 +3555,8 @@ class DesktopController(QObject):
             full_chat_action,
             gpu_action,
             pair_action,
+            sit_action,
+            resume_action,
         ):
             tray_menu.addAction(action)
         tray_menu.addSeparator()
