@@ -107,7 +107,7 @@ export function SettingsScreen({
         />
         <View style={styles.infoRows}>
           <InfoRow label="Servidor" value="pciagorv.tail122075.ts.net" />
-          <InfoRow label="Versión" value={health?.version || '0.15.0'} />
+          <InfoRow label="Versión" value={health?.version || '0.15.1'} />
           <InfoRow
             label="Búsqueda web"
             value={health?.online_search ? 'Disponible' : 'No disponible'}

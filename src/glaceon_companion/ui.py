@@ -19,6 +19,7 @@ import qrcode
 from PIL import Image
 from PySide6.QtCore import (
     QEvent,
+    QMimeData,
     QObject,
     QPoint,
     QRect,
@@ -45,6 +46,7 @@ from PySide6.QtGui import (
     QTextBlockFormat,
     QTextCursor,
     QTextDocument,
+    QTextImageFormat,
 )
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
@@ -68,6 +70,7 @@ from PySide6.QtWidgets import (
 )
 
 from .config import PROJECT_ROOT
+from .chat_math import prepare_math_markdown
 from .codex_presence import (
     CodexPresence,
     ReservedRect,
@@ -98,7 +101,7 @@ SAFE_MARKDOWN_FEATURES = (
     QTextDocument.MarkdownFeature.MarkdownDialectGitHub
     | QTextDocument.MarkdownFeature.MarkdownNoHTML
 )
-MARKDOWN_PUNCTUATION = frozenset(r"\`*_{}[]<>()#+-.!|>")
+MARKDOWN_PUNCTUATION = frozenset(r"\`*_{}[]<>()#+-.!|>$")
 
 
 CRY_PROFILES: dict[str, tuple[str, float, float]] = {
@@ -172,6 +175,31 @@ class SafeMarkdownBrowser(QTextBrowser):
         if resource_type == QTextDocument.ResourceType.ImageResource:
             return QImage()
         return super().loadResource(resource_type, name)
+
+    def createMimeDataFromSelection(self):
+        mime = super().createMimeDataFromSelection()
+        selected = self.textCursor()
+        if "\ufffc" not in selected.selectedText():
+            return mime
+        cursor = QTextCursor(self.document())
+        cursor.setPosition(selected.selectionStart())
+        end = selected.selectionEnd()
+        parts = []
+        has_math = False
+        while cursor.position() < end:
+            cursor.movePosition(QTextCursor.MoveOperation.NextCharacter, QTextCursor.MoveMode.KeepAnchor)
+            value = cursor.selectedText()
+            fmt = cursor.charFormat()
+            if value == "\ufffc" and fmt.isImageFormat() and fmt.toImageFormat().name().startswith("arfoxia-math:"):
+                value = fmt.toolTip()
+                has_math = True
+            parts.append(value.replace("\u2029", "\n").replace("\u2028", "\n"))
+            cursor.clearSelection()
+        if has_math:
+            # Qt's lazy selection MIME object overrides retrieveData; replace it.
+            mime = QMimeData()
+            mime.setText("".join(parts))
+        return mime
 
 
 def image_to_pixmap(image: Image.Image, scale: int = 1) -> QPixmap:
@@ -1520,9 +1548,36 @@ class ChatWindow(QDialog):
         cursor.setCharFormat(QTextCharFormat())
 
         markdown_start = cursor.position()
-        cursor.insertMarkdown(text, SAFE_MARKDOWN_FEATURES)
+        markdown, formulas = prepare_math_markdown(text)
+        cursor.insertMarkdown(markdown, SAFE_MARKDOWN_FEATURES)
         markdown_end = cursor.position()
         self._style_markdown_links(markdown_start, markdown_end)
+        document = self.transcript.document()
+        for marker, formula in formulas.items():
+            location = document.find(marker, markdown_start)
+            if location.isNull():
+                continue
+            resource = QUrl("arfoxia-math:" + uuid.uuid4().hex)
+            image = QImage.fromData(formula.png, "PNG")
+            # Match the screen's physical pixels with smooth resampling. Qt's
+            # default nearest-neighbour shrinking can erase thin radical bars.
+            ratio = self.transcript.devicePixelRatioF()
+            image = image.scaled(
+                max(1, round(formula.width * ratio)),
+                max(1, round(formula.height * ratio)),
+                Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            image.setDevicePixelRatio(ratio)
+            document.addResource(QTextDocument.ResourceType.ImageResource, resource, image)
+            image_format = QTextImageFormat()
+            image_format.setName(resource.toString())
+            image_format.setWidth(formula.width)
+            image_format.setHeight(formula.height)
+            image_format.setToolTip(formula.source)
+            image_format.setProperty(QTextCharFormat.Property.ImageAltText, formula.source)
+            image_format.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignMiddle)
+            location.insertImage(image_format)
         # insertMarkdown may leave the cursor in the last table cell/list/code
         # block. Exit the fragment before creating the next message boundary.
         cursor.movePosition(QTextCursor.MoveOperation.End)

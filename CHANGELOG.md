@@ -6,6 +6,24 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+## [0.15.1] - 2026-09-26
+
+### Corregido
+
+- Fórmulas LaTeX visibles como texto en «Hablar con Arfoxia» (PC): renderizado
+  local de raíces, fracciones, exponentes, operadores y resultados enmarcados
+  `\boxed{...}` de nivel superior, también dentro de tablas y chats antiguos.
+  Admite delimitadores `$...$`, `$$...$$`, `\(...\)` y `\[...\]`.
+- El portapapeles recupera el LaTeX original; no se modifica el historial.
+  Código, importes monetarios y nombres de adjuntos conservan su formato.
+- Recursos matemáticos generados en memoria con Matplotlib, sin procesos TeX,
+  descargas ni acceso a imágenes externas. Límites de tamaño, complejidad y
+  fórmulas por mensaje; caché acotada y texto de respaldo para sintaxis no
+  compatible. No se habilita HTML ni se altera el visor de Expo Go.
+- Pruebas de regresión de la captura original, tablas, copiado, delimitadores,
+  código literal, entradas inválidas, límites y seguridad de recursos. Revisión
+  visual de barras de raíces y escalado suave según los píxeles de la pantalla.
+
 ## [0.15.0] - 2026-09-25
 
 ### Corregido

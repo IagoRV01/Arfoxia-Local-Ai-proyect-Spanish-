@@ -7,6 +7,7 @@ src/glaceon_companion/app.py
 src/glaceon_companion/attachments.py
 src/glaceon_companion/auth.py
 src/glaceon_companion/browser_routing.py
+src/glaceon_companion/chat_math.py
 src/glaceon_companion/codex_bridge.py
 src/glaceon_companion/codex_presence.py
 src/glaceon_companion/config.py
@@ -47,6 +48,7 @@ tests/test_api.py
 tests/test_attachments.py
 tests/test_auth.py
 tests/test_authorization_ui.py
+tests/test_chat_math.py
 tests/test_chat_window_conversations.py
 tests/test_codex_bridge.py
 tests/test_codex_presence.py

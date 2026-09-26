@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: glaceon-companion
-Version: 0.15.0
+Version: 0.15.1
 Summary: Arfoxia, mascota Glaceon local con Tamagotchi, Ollama y control remoto seguro.
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
@@ -9,6 +9,7 @@ Requires-Dist: fastapi<1,>=0.116
 Requires-Dist: uvicorn[standard]<1,>=0.35
 Requires-Dist: httpx<1,>=0.28
 Requires-Dist: markdown-it-py<5,>=3
+Requires-Dist: matplotlib<4,>=3.10
 Requires-Dist: pydantic<3,>=2.11
 Requires-Dist: psutil<8,>=7
 Requires-Dist: mss<11,>=10
@@ -51,6 +52,7 @@ Este proyecto está pensado para uso personal y no comercial. Glaceon, Pokémon 
 - Conversaciones múltiples compartidas entre Windows y iPhone: crear, cambiar, renombrar y eliminar chats, recuperar el historial paginado y continuar en un dispositivo lo iniciado en el otro. Crear una conversación es siempre una acción explícita del botón **+ Nueva**; enviar, abrir Arfoxia, sincronizar o borrar el último chat nunca crea otro automáticamente. Los reintentos móviles son idempotentes y no duplican un turno ya guardado.
 - Memoria local entre chats: Arfoxia recupera fragmentos relevantes de conversaciones anteriores mediante el índice local de SQLite. Se introducen como contexto no confiable y nunca pueden activar herramientas ni repetir órdenes antiguas.
 - Markdown en PC y Expo Go: títulos, listas, tablas y código literal sin alterar imports/URLs. En móvil las tablas y el código se desplazan horizontalmente; el código se puede copiar. Los seguimientos de búsquedas recuperan el tema del mismo chat y vuelven a comprobar fuentes, sin buscar literalmente «vuelve a intentarlo».
+- Fórmulas matemáticas en el chat de **PC**, también en tablas e historial: `$...$`, `$$...$$`, `\(...\)` y `\[...\]`. Raíces, fracciones, potencias, sumatorios y resultados `\boxed{...}` de nivel superior se dibujan localmente, sin instalar TeX ni acceder a Internet. Al copiar se recupera el LaTeX original. Es un subconjunto de LaTeX (Mathtext), no un compilador completo: sintaxis no compatible se conserva como texto; código y precios no se interpretan como fórmulas. Este renderizado no verifica la exactitud matemática y no cambia aún el visor móvil.
 - Gestor independiente de dos GPU: el perfil Normal usa `qwen3.5:9b-q4_K_M` y Potencia usa `qwen3.6:27b-q4_K_M` en la gráfica de 16 GB. Ambos permanecen residentes tras cada respuesta (`keep_alive=-1`) hasta una descarga, un cambio manual de perfil o una salvaguarda por fallo. Con un clic puede iniciar un segundo Ollama privado y cargar `qwen3.5:4b` íntegramente en la gráfica de 8 GB. Cada proceso queda fijado por UUID, la telemetría muestra ambas tarjetas por separado y el servidor de 8 GB se descarga y detiene si aparece un juego de Steam, Epic, Xbox, GOG, Ubisoft, EA o Riot.
 - Adjuntos en el chat de escritorio y la app móvil: PNG, JPEG, WebP, PDF con texto extraíble, texto, código, JSON y CSV. Las imágenes se normalizan sin EXIF; tras enviar el mensaje se archivan fuera de SQLite en un almacén deduplicado por SHA-256 y pueden recuperarse desde el historial.
 - Convivencia con el Eevee de Codex: cuando su overlay está abierto, Arfoxia lo reconoce, se orienta hacia él, lo saluda y realiza interacciones ocasionales con animaciones y sonidos existentes. Sus paseos, arrastres y burbujas respetan una zona de separación para no taparlo.

@@ -3,6 +3,7 @@ fastapi<1,>=0.116
 uvicorn[standard]<1,>=0.35
 httpx<1,>=0.28
 markdown-it-py<5,>=3
+matplotlib<4,>=3.10
 pydantic<3,>=2.11
 psutil<8,>=7
 mss<11,>=10

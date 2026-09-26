@@ -694,3 +694,61 @@ def test_short_speech_bubble_keeps_html_as_plain_text(app):
 def test_markdown_browser_type_is_used(conversation_window):
     window, _, _ = conversation_window
     assert isinstance(window.transcript, SafeMarkdownBrowser)
+
+
+def test_math_in_table_and_paragraph_uses_only_local_images(conversation_window):
+    from test_chat_math import SCREENSHOT_MARKDOWN
+
+    window, _, _ = conversation_window
+    window.transcript.clear()
+    window.append("Arfoxia", SCREENSHOT_MARKDOWN)
+    document = window.transcript.document()
+    rendered = document.toHtml()
+    assert rendered.count('src="arfoxia-math:') == 7
+    assert "ARFOXIAMATH" not in window.transcript.toPlainText()
+    assert "\\sqrt" not in window.transcript.toPlainText()
+    assert "<table" in rendered
+    block = document.begin()
+    images = []
+    while block.isValid():
+        iterator = block.begin()
+        while not iterator.atEnd():
+            fragment = iterator.fragment()
+            if fragment.charFormat().isImageFormat():
+                fmt = fragment.charFormat().toImageFormat()
+                resource = document.resource(QTextDocument.ResourceType.ImageResource, QUrl(fmt.name()))
+                assert not resource.isNull()
+                assert fmt.toolTip().startswith("$")
+                images.append(fmt)
+            iterator += 1
+        block = block.next()
+    assert len(images) == 7
+    window.append("Usuario nuevo", "Texto normal posterior")
+    cursor = document.find("Texto normal posterior")
+    assert cursor.currentTable() is None
+    assert not cursor.charFormat().isImageFormat()
+
+
+def test_copy_math_restores_original_latex(conversation_window):
+    from PySide6.QtGui import QTextCursor
+
+    window, _, _ = conversation_window
+    window.transcript.clear()
+    source = r"Resultado $\sqrt{2}\approx\boxed{1.4142}$ y texto."
+    window.append("Arfoxia", source)
+    cursor = window.transcript.textCursor()
+    cursor.select(QTextCursor.SelectionType.Document)
+    window.transcript.setTextCursor(cursor)
+    mime = window.transcript.createMimeDataFromSelection()
+    assert source in mime.text()
+    assert "\ufffc" not in mime.text()
+    assert not mime.hasHtml()
+
+
+def test_invalid_math_remains_literal_and_code_is_not_rendered(conversation_window):
+    window, _, _ = conversation_window
+    window.transcript.clear()
+    window.append("Arfoxia", r"$\unknown{a_b}$ y `$\sqrt{2}$`")
+    assert r"$\unknown{a_b}$" in window.transcript.toPlainText()
+    assert r"$\sqrt{2}$" in window.transcript.toPlainText()
+    assert 'src="arfoxia-math:' not in window.transcript.document().toHtml()
