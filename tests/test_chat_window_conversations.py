@@ -123,10 +123,16 @@ class FakeBridge(QObject):
     chat_error = Signal(object)
     authorization_ready = Signal(object)
     authorization_error = Signal(str)
+    model_mode_ready = Signal(object)
+    model_mode_error = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
         self.calls: list[dict[str, Any]] = []
+        self.mode_calls: list[str] = []
+
+    def set_model_mode(self, mode: str) -> None:
+        self.mode_calls.append(mode)
 
     def chat(
         self,
@@ -289,6 +295,65 @@ def select_conversation(window: ChatWindow, conversation_id: str) -> None:
     window.conversation_list.setCurrentItem(
         window._conversation_items[conversation_id]
     )
+
+
+@pytest.mark.parametrize("initial_mode", ["normal", "power", "gaming_gpu"])
+def test_chat_dual_button_loads_manually_and_prevents_double_switch(conversation_window, initial_mode):
+    window, service, bridge = conversation_window
+    service.ollama = SimpleNamespace(requested_mode=initial_mode, switching_to=None)
+    window.refresh_state()
+    assert bridge.mode_calls == []
+    assert window.dual_button.isEnabled()
+    assert window.dual_button.text() == "✦ Activar Dual"
+    window.dual_button.click()
+    window.dual_button.click()
+    window.toggle_power_mode()
+    window.refresh_state()
+    assert bridge.mode_calls == ["dual"]
+    assert not window.dual_button.isEnabled()
+    assert not window.power_button.isEnabled()
+    assert window.dual_button.text() == "Cargando Dual…"
+    service.ollama.requested_mode = "dual"
+    bridge.model_mode_ready.emit({"requested_mode": "dual"})
+    assert window.dual_button.text() == "✦ Dual activo"
+    assert not window.dual_button.isEnabled()
+    assert window.power_button.isEnabled()
+    window.activate_dual_mode()
+    assert bridge.mode_calls == ["dual"]
+    window.power_button.click()
+    assert bridge.mode_calls == ["dual", "normal"]
+    service.ollama.requested_mode = "normal"
+    bridge.model_mode_ready.emit({"requested_mode": "normal"})
+    assert window.dual_button.isEnabled()
+    assert "Activar Potencia" in window.power_button.text()
+    assert service.create_calls == 0
+
+
+def test_chat_dual_error_restores_buttons_and_displays_reason(conversation_window, monkeypatch):
+    window, service, bridge = conversation_window
+    messages = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: messages.append(args[-1]))
+    window.dual_button.click()
+    bridge.model_mode_error.emit("El modo Dual no está disponible mientras juegas.")
+    assert window.dual_button.isEnabled()
+    assert window.power_button.isEnabled()
+    assert "mientras juegas" in messages[0]
+    assert service.create_calls == 0
+
+
+def test_chat_dual_tracks_external_mode_and_switching_state(conversation_window):
+    window, service, bridge = conversation_window
+    service.ollama = SimpleNamespace(requested_mode="normal", switching_to="dual")
+    window.refresh_state()
+    assert not window.dual_button.isEnabled()
+    assert not window.power_button.isEnabled()
+    window.activate_dual_mode()
+    assert bridge.mode_calls == []
+    service.ollama.switching_to = None
+    service.ollama.requested_mode = "dual"
+    window.refresh_state()
+    assert window.dual_button.text() == "✦ Dual activo"
+    assert "Volver a Normal" in window.power_button.text()
 
 
 def test_selector_loads_the_canonical_history_for_each_conversation(

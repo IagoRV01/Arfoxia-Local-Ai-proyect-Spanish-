@@ -6,6 +6,18 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Añadido — 2026-10-02
+
+- Botón «Activar Dual» junto a Potencia en la cabecera del chat de PC, conectado
+  al selector Dual existente: carga manual en ambas GPU con las mismas
+  comprobaciones de juego, instalación y VRAM. No cambia los límites ni la
+  permanencia del modelo en memoria.
+- Indicadores «Cargando Dual…» y «Dual activo», bloqueo de cambios simultáneos
+  y actualización del estado al cambiar desde otros controles. El botón
+  «Volver a Normal» permite salir de Dual; los errores se muestran sin crear chats.
+- Pruebas del botón, doble clic, regreso a Normal, errores y sincronización
+  del modo; comprobación visual de los tres controles en la cabecera.
+
 ## [0.15.1] - 2026-09-26
 
 ### Corregido

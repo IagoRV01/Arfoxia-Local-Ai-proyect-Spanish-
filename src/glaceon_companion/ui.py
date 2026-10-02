@@ -712,6 +712,7 @@ class ChatWindow(QDialog):
         self._authorization_draft_conversation_id: str | None = None
         self.pending_attachments: list[dict[str, Any]] = []
         self.model_labels: dict[str, str] = {}
+        self._model_switch_pending: str | None = None
         self.setWindowFlags(
             Qt.WindowType.Window
             | Qt.WindowType.WindowTitleHint
@@ -769,6 +770,12 @@ class ChatWindow(QDialog):
         self.power_button.setToolTip(
             "Carga Qwen3.6 27B en la GPU de 16 GB o vuelve al perfil normal."
         )
+        self.dual_button = QPushButton("✦ Activar Dual")
+        self.dual_button.setToolTip(
+            "Carga el perfil Dual Extra High en ambas GPU (16 + hasta 5,5 GB). "
+            "Antes de activarlo se comprueba que no estés jugando. "
+            "Permanece cargado hasta que cambies de modo o liberes la VRAM manualmente."
+        )
         self.gpu_button = QPushButton("GPU")
         self.gpu_button.setToolTip(
             "Abre el gestor de las dos GPU y del servidor Ollama de 8 GB."
@@ -812,6 +819,7 @@ class ChatWindow(QDialog):
         title_row.addWidget(self.conversation_title, 1)
         title_row.addWidget(self.gpu_button)
         title_row.addWidget(self.power_button)
+        title_row.addWidget(self.dual_button)
         layout.addLayout(title_row)
         layout.addWidget(self.status)
         layout.addWidget(self.load_older_button)
@@ -840,6 +848,7 @@ class ChatWindow(QDialog):
         self.input.returnPressed.connect(self.send)
         self.confirm_button.clicked.connect(self.authorize_pending)
         self.power_button.clicked.connect(self.toggle_power_mode)
+        self.dual_button.clicked.connect(self.activate_dual_mode)
         self.gpu_button.clicked.connect(self.show_gpu_manager)
         self.bridge.chat_ready.connect(self.on_reply)
         self.bridge.chat_error.connect(self.on_error)
@@ -865,19 +874,31 @@ class ChatWindow(QDialog):
             f"hambre {value['hunger']:.0f}  ·  "
             f"energía {value['energy']:.0f}  ·  felicidad {value['happiness']:.0f}{model}"
         )
+        self.refresh_power_button()
 
     def refresh_power_button(self) -> None:
-        power = (
-            getattr(getattr(self.service, "ollama", None), "requested_mode", "normal")
-            in {"power", "dual"}
-        )
-        self.power_button.setEnabled(True)
+        runtime = getattr(self.service, "ollama", None)
+        mode = getattr(runtime, "requested_mode", "normal")
+        pending = self._model_switch_pending or getattr(runtime, "switching_to", None)
+        power = mode in {"power", "dual"}
+        self.power_button.setEnabled(not pending)
         self.power_button.setText(
             "❄ Volver a Normal" if power else "⚡ Activar Potencia"
         )
         self.power_button.setStyleSheet(
             "background:#36536b;" if power else "background:#8a4ec2;font-weight:600;"
         )
+        self.dual_button.setEnabled(not pending and mode != "dual")
+        self.dual_button.setText("✦ Dual activo" if mode == "dual" else "✦ Activar Dual")
+        self.dual_button.setStyleSheet(
+            "background:#36536b;" if mode == "dual" else "background:#176c78;font-weight:600;"
+        )
+        if pending == "dual":
+            self.dual_button.setText("Cargando Dual…")
+        elif pending in {"normal", "power"}:
+            self.power_button.setText(
+                "Volviendo a Normal…" if pending == "normal" else "Cargando Qwen3.6…"
+            )
 
     def toggle_power_mode(self) -> None:
         target = (
@@ -890,21 +911,31 @@ class ChatWindow(QDialog):
             in {"power", "dual"}
             else "power"
         )
-        self.power_button.setEnabled(False)
-        self.power_button.setText(
-            "Volviendo a Normal…" if target == "normal" else "Cargando Qwen3.6…"
-        )
+        self._request_chat_model_mode(target)
+
+    def activate_dual_mode(self) -> None:
+        if getattr(getattr(self.service, "ollama", None), "requested_mode", "normal") == "dual":
+            return
+        self._request_chat_model_mode("dual")
+
+    def _request_chat_model_mode(self, target: str) -> None:
+        if self._model_switch_pending or getattr(getattr(self.service, "ollama", None), "switching_to", None):
+            return
         setter = getattr(self.bridge, "set_model_mode", None)
         if setter is None:
             self.on_model_mode_error("El selector de modelos no está disponible.")
             return
+        self._model_switch_pending = target
+        self.refresh_power_button()
         setter(target)
 
     def on_model_mode_ready(self, status: Any) -> None:
+        self._model_switch_pending = None
         self.refresh_power_button()
         self.refresh_state()
 
     def on_model_mode_error(self, message: str) -> None:
+        self._model_switch_pending = None
         self.refresh_power_button()
         QMessageBox.warning(self, "Modelo de Arfoxia", message)
 
