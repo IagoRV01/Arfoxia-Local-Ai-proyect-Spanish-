@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import ctypes
 import html
+import io
 import json
 import random
 import shutil
@@ -16,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import qrcode
-from PIL import Image
+from PIL import Image, ImageOps, UnidentifiedImageError
 from PySide6.QtCore import (
     QEvent,
     QMimeData,
@@ -70,6 +71,7 @@ from PySide6.QtWidgets import (
 )
 
 from .config import PROJECT_ROOT
+from .attachments import MAX_IMAGE_EDGE, MAX_IMAGE_PIXELS, MAX_TOTAL_UPLOAD_BYTES
 from .chat_math import prepare_math_markdown
 from .codex_presence import (
     CodexPresence,
@@ -190,7 +192,7 @@ class SafeMarkdownBrowser(QTextBrowser):
             cursor.movePosition(QTextCursor.MoveOperation.NextCharacter, QTextCursor.MoveMode.KeepAnchor)
             value = cursor.selectedText()
             fmt = cursor.charFormat()
-            if value == "\ufffc" and fmt.isImageFormat() and fmt.toImageFormat().name().startswith("arfoxia-math:"):
+            if value == "\ufffc" and fmt.isImageFormat() and fmt.toImageFormat().name().startswith(("arfoxia-math:", "arfoxia-attachment:")):
                 value = fmt.toolTip()
                 has_math = True
             parts.append(value.replace("\u2029", "\n").replace("\u2028", "\n"))
@@ -847,6 +849,11 @@ class ChatWindow(QDialog):
         self.clear_attachments_button.clicked.connect(self.clear_attachments)
         self.input.returnPressed.connect(self.send)
         self.confirm_button.clicked.connect(self.authorize_pending)
+        # QDialog otherwise activates its first auto-default button (+ Nueva)
+        # after QLineEdit.returnPressed has already sent the message.
+        for button in self.findChildren(QPushButton):
+            button.setAutoDefault(False)
+            button.setDefault(False)
         self.power_button.clicked.connect(self.toggle_power_mode)
         self.dual_button.clicked.connect(self.activate_dual_mode)
         self.gpu_button.clicked.connect(self.show_gpu_manager)
@@ -1461,7 +1468,7 @@ class ChatWindow(QDialog):
                         else attachment_line
                     )
             if content:
-                self.append(who, content)
+                self.append(who, content, image_attachments=self._historical_image_attachments(raw_attachments))
         scrollbar = self.transcript.verticalScrollBar()
         if scroll_to_bottom:
             scrollbar.setValue(scrollbar.maximum())
@@ -1562,7 +1569,57 @@ class ChatWindow(QDialog):
                 safe_format.setFontUnderline(False)
             selection.setCharFormat(safe_format)
 
-    def append(self, who: str, text: str) -> None:
+    def _historical_image_attachments(self, attachments: Any) -> list[tuple[str, bytes]]:
+        resolver = getattr(self.service, "conversation_attachment", None)
+        if not callable(resolver) or not self.current_conversation_id or not isinstance(attachments, list):
+            return []
+        images = []
+        for item in attachments[:4]:
+            if not isinstance(item, dict) or item.get("kind") != "image":
+                continue
+            identifier = str(item.get("attachment_id") or item.get("id") or "")
+            try:
+                # Resolve by ID AND selected chat; never trust a path/URL in a
+                # model reply or attachment metadata supplied by the renderer.
+                path, metadata = resolver(self.current_conversation_id, identifier)
+                if metadata.get("kind") != "image" or path.stat().st_size > MAX_TOTAL_UPLOAD_BYTES:
+                    continue
+                images.append((str(metadata.get("name") or "Imagen adjunta"), path.read_bytes()))
+            except (OSError, ValueError):
+                # The filename remains visible if an old file has disappeared.
+                continue
+        return images
+
+    def _insert_attachment_preview(self, cursor: QTextCursor, name: str, data: bytes) -> None:
+        if len(data) > MAX_TOTAL_UPLOAD_BYTES:
+            return
+        try:
+            with Image.open(io.BytesIO(data)) as source:
+                width, height = source.size
+                if source.format not in {"PNG", "JPEG", "WEBP"} or not (
+                    0 < width <= MAX_IMAGE_EDGE and 0 < height <= MAX_IMAGE_EDGE
+                    and width * height <= MAX_IMAGE_PIXELS
+                ):
+                    return
+                thumbnail = ImageOps.exif_transpose(source)
+                max_width = max(100, min(480, self.transcript.viewport().width() - 40))
+                thumbnail.thumbnail((max_width, 320), Image.Resampling.LANCZOS)
+                image = image_to_pixmap(thumbnail).toImage()
+        except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+            return
+        resource = QUrl("arfoxia-attachment:" + uuid.uuid4().hex)
+        self.transcript.document().addResource(QTextDocument.ResourceType.ImageResource, resource, image)
+        fmt = QTextImageFormat()
+        fmt.setName(resource.toString())
+        fmt.setWidth(image.width())
+        fmt.setHeight(image.height())
+        label = f"[Imagen adjunta: {name}]"
+        fmt.setToolTip(label)
+        fmt.setProperty(QTextCharFormat.Property.ImageAltText, label)
+        cursor.insertImage(fmt)
+        cursor.insertBlock(QTextBlockFormat(), QTextCharFormat())
+
+    def append(self, who: str, text: str, *, image_attachments: list[tuple[str, bytes]] | None = None) -> None:
         color = "#91e8ff" if who == self.service.config.name else "#b8c8d5"
         cursor = self.transcript.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
@@ -1613,6 +1670,8 @@ class ChatWindow(QDialog):
         # block. Exit the fragment before creating the next message boundary.
         cursor.movePosition(QTextCursor.MoveOperation.End)
         cursor.insertBlock(QTextBlockFormat(), QTextCharFormat())
+        for name, data in image_attachments or []:
+            self._insert_attachment_preview(cursor, name, data)
         self.transcript.setTextCursor(cursor)
         self.transcript.ensureCursorVisible()
 
@@ -1656,7 +1715,16 @@ class ChatWindow(QDialog):
             self._notify_no_conversation()
             return None
         self._drafts.pop(conversation_id, None)
-        self.append(self.service.config.owner_name, shown)
+        images = []
+        if attachment_ids:
+            claim = getattr(self.service.attachments, "claim", None)
+            if callable(claim):
+                try:
+                    images = [(item.name, item.image_bytes) for item in claim(attachment_ids, consume=False)
+                              if item.kind == "image" and item.image_bytes]
+                except ValueError:
+                    pass  # The normal send path reports expired/invalid uploads.
+        self.append(self.service.config.owner_name, shown, image_attachments=images)
         request_id = self.bridge.chat(
             text,
             attachment_ids,

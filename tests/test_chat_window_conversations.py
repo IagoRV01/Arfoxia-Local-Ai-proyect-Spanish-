@@ -817,3 +817,114 @@ def test_invalid_math_remains_literal_and_code_is_not_rendered(conversation_wind
     assert r"$\unknown{a_b}$" in window.transcript.toPlainText()
     assert r"$\sqrt{2}$" in window.transcript.toPlainText()
     assert 'src="arfoxia-math:' not in window.transcript.document().toHtml()
+
+
+@pytest.mark.parametrize("key", [Qt.Key.Key_Return, Qt.Key.Key_Enter])
+def test_enter_sends_once_without_activating_new_chat(conversation_window, app, key):
+    from PySide6.QtTest import QTest
+
+    window, service, bridge = conversation_window
+    window.show()
+    app.processEvents()
+    # Reproduce a previously focused '+ Nueva' button, too.
+    window.new_conversation_button.setFocus()
+    window.input.setFocus()
+    window.input.setText("No crees otro chat")
+    QTest.keyClick(window.input, key)
+    app.processEvents()
+    assert service.create_calls == 0
+    assert window.current_conversation_id == "c1"
+    assert len(bridge.calls) == 1
+    assert bridge.calls[0]["conversation_id"] == "c1"
+    assert not window.new_conversation_button.isDefault()
+    QTest.keyClick(window.input, key)
+    assert service.create_calls == 0
+    assert len(bridge.calls) == 1
+    window.new_conversation_button.click()
+    assert service.create_calls == 1
+
+
+def _preview_image_bytes():
+    from io import BytesIO
+    from PIL import Image
+
+    output = BytesIO()
+    Image.new("RGB", (900, 600), "#449dcc").save(output, "PNG")
+    return output.getvalue()
+
+
+def test_sent_image_is_visible_before_reply_without_consuming_upload(conversation_window):
+    from glaceon_companion.attachments import AttachmentStore
+
+    window, service, bridge = conversation_window
+    service.attachments = AttachmentStore()
+    info = service.attachments.add_bytes("foto.png", _preview_image_bytes(), "image/png")
+    window.pending_attachments = [info.to_dict()]
+    window.input.setText("Mira la imagen")
+    window.send()
+    assert 'src="arfoxia-attachment:' in window.transcript.document().toHtml()
+    assert bridge.calls[-1]["attachment_ids"] == [info.attachment_id]
+    assert bridge.calls[-1]["conversation_id"] == "c1"
+    assert service.attachments.claim([info.attachment_id], consume=False)[0].kind == "image"
+    assert service.create_calls == 0
+
+
+def test_archived_images_reload_and_do_not_leak_between_chats(conversation_window, tmp_path):
+    from glaceon_companion.attachments import prepare_attachment
+    from glaceon_companion.conversation_storage import ConversationStorage
+    from glaceon_companion.database import Database
+
+    window, service, _ = conversation_window
+    database = Database(tmp_path / "images.sqlite3")
+    storage = ConversationStorage(tmp_path / "images", database, min_free_bytes=0)
+    try:
+        conversation = database.create_conversation("Imágenes")
+        message = database.add_message("user", "Mira la foto", conversation_id=conversation["id"])
+        archived = storage.archive(message["id"], [prepare_attachment("foto.png", _preview_image_bytes(), "image/png")])
+        identifier = archived[0]["attachment_id"]
+        # Map fake UI chat c1 to a real persisted conversation for the resolver.
+        service.conversation_attachment = lambda cid, aid: storage.resolve(
+            conversation["id"] if cid == "c1" else cid, aid
+        )
+        service.messages["c1"][0]["attachments"] = archived
+        service.messages["c2"][0]["attachments"] = archived  # stale/cross-chat metadata
+        select_conversation(window, "c1")
+        window.load_conversation_messages()
+        assert 'src="arfoxia-attachment:' in window.transcript.document().toHtml()
+        select_conversation(window, "c2")
+        assert 'src="arfoxia-attachment:' not in window.transcript.document().toHtml()
+        select_conversation(window, "c1")
+        assert 'src="arfoxia-attachment:' in window.transcript.document().toHtml()
+        path, _ = storage.resolve(conversation["id"], identifier)
+        path.unlink()  # only the test's temporary attachment
+        window.load_conversation_messages()
+        assert 'src="arfoxia-attachment:' not in window.transcript.document().toHtml()
+        assert "foto.png" in window.transcript.toPlainText()
+    finally:
+        database.close()
+
+
+def test_image_preview_is_bounded_and_copies_as_attachment_label(conversation_window):
+    from PySide6.QtGui import QTextCursor
+
+    window, _, _ = conversation_window
+    window.transcript.clear()
+    window.append("Gori", "Foto", image_attachments=[("foto.png", _preview_image_bytes())])
+    document = window.transcript.document()
+    cursor = document.find("\ufffc")
+    fmt = cursor.charFormat().toImageFormat()
+    assert fmt.width() <= 480 and fmt.height() <= 320
+    assert not document.resource(QTextDocument.ResourceType.ImageResource, QUrl(fmt.name())).isNull()
+    cursor.select(QTextCursor.SelectionType.Document)
+    window.transcript.setTextCursor(cursor)
+    assert "[Imagen adjunta: foto.png]" in window.transcript.createMimeDataFromSelection().text()
+    window.append("Arfoxia", "Respuesta normal")
+    assert not document.find("Respuesta normal").charFormat().isImageFormat()
+
+
+@pytest.mark.parametrize("data", [b"broken", b'<svg xmlns="http://www.w3.org/2000/svg"/>'])
+def test_invalid_or_active_image_format_is_not_rendered(conversation_window, data):
+    window, _, _ = conversation_window
+    window.transcript.clear()
+    window.append("Gori", "adjunto", image_attachments=[("imagen", data)])
+    assert 'src="arfoxia-attachment:' not in window.transcript.document().toHtml()

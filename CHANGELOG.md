@@ -6,6 +6,23 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Corregido — 2026-10-02
+
+- Enter y Enter numérico envían una sola vez al chat seleccionado. Se desactiva
+  el botón predeterminado implícito de Qt que también pulsaba «+ Nueva» al enviar;
+  la creación sigue disponible únicamente mediante la acción manual.
+- Las imágenes adjuntas ahora se muestran como miniaturas dentro del chat de PC,
+  antes de recibir respuesta y al cargar mensajes guardados. Los adjuntos se
+  resuelven por identificador y conversación; no se habilitan imágenes remotas
+  ni rutas locales procedentes del texto del modelo.
+- Miniaturas con límites de tamaño, proporción y orientación conservadas;
+  los archivos ausentes o dañados conservan su nombre sin romper el historial.
+  Previsualizar no consume el adjunto destinado al modelo. Al copiar una imagen
+  del historial se incluye su nombre, no una referencia interna inservible.
+- Regresión reproducida con pulsaciones reales de Enter, prueba de creación
+  manual, aislamiento entre chats, almacenamiento real, copiado y formatos
+  inválidos; comprobación visual de las imágenes en la conversación.
+
 ### Añadido — 2026-10-02
 
 - Botón «Activar Dual» junto a Potencia en la cabecera del chat de PC, conectado
