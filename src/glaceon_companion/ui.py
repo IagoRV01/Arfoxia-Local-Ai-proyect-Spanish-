@@ -5,6 +5,7 @@ import ctypes
 import html
 import io
 import json
+import math
 import random
 import shutil
 import socket
@@ -95,6 +96,7 @@ from .desktop_interactions import (
 from .icons import snowflake_icon
 from .services import CompanionService
 from .sprites import SpriteLibrary
+from .pet_motion import EXPRESSION_LABELS, direction_for_delta, expression_choices, step_towards
 
 
 MOBILE_UI_REVISION = "10"
@@ -2472,6 +2474,9 @@ class PetWindow(QWidget):
         self.pet_distance = 0
         self.pet_triggered = False
         self.wander_target: int | None = None
+        self.wander_target_y: int | None = None
+        self.expression_cycles_left = 0
+        self.last_expression: str | None = None
         self.movement_purpose = "idle"
         self.interaction_mode = "idle"
         self.feed_stage = 0
@@ -2497,7 +2502,7 @@ class PetWindow(QWidget):
         self.movement_timer.setInterval(35)
         self.movement_timer.timeout.connect(self.move_step)
         self.behavior_timer = QTimer(self)
-        self.behavior_timer.setInterval(26000)
+        self.behavior_timer.setInterval(16000)
         self.behavior_timer.timeout.connect(self.autonomous_behavior)
         self.event_timer = QTimer(self)
         self.event_timer.setInterval(120)
@@ -3155,6 +3160,7 @@ class PetWindow(QWidget):
         self._schedule_eevee_interaction()
 
     def play(self, name: str, direction: int | None = None, loop: bool = False) -> None:
+        self.expression_cycles_left = 0
         if self.interaction_mode == "idle" and self.service.state_dict().get("seated"):
             name, loop = "Sit", True
         if name not in self.library.available():
@@ -3186,7 +3192,8 @@ class PetWindow(QWidget):
     def next_frame(self) -> None:
         self.frame_index += 1
         if self.frame_index >= len(self.frames):
-            if self.loop_animation:
+            if self.loop_animation or self.expression_cycles_left > 0:
+                self.expression_cycles_left = max(0, self.expression_cycles_left - 1)
                 self.frame_index = 0
             else:
                 self.play("Sleep" if self.service.state_dict()["asleep"] else "Idle", loop=True)
@@ -3281,6 +3288,17 @@ class PetWindow(QWidget):
         for label, callback in actions:
             action = menu.addAction(label)
             action.triggered.connect(callback)
+        expressions_menu = QMenu("Expresiones", menu)
+        menu.addMenu(expressions_menu)
+        state = self.service.state_dict()
+        expressions_menu.setEnabled(not state["asleep"] and not state.get("seated")
+                                    and self.interaction_mode == "idle")
+        for name, label in EXPRESSION_LABELS.items():
+            if name in self.library.available():
+                expression_action = expressions_menu.addAction(label)
+                expression_action.triggered.connect(
+                    lambda checked=False, value=name: self.play_expression(value)
+                )
         if self.bed_prop.isVisible():
             remove_bed_action = menu.addAction("Quitar cama")
             remove_bed_action.triggered.connect(self.remove_bed)
@@ -3462,7 +3480,8 @@ class PetWindow(QWidget):
         self.pair_dialog.show()
 
     def autonomous_behavior(self) -> None:
-        if self.interaction_mode != "idle" or self.drag_origin is not None:
+        self.behavior_timer.setInterval(random.randint(12_000, 22_000))
+        if self.interaction_mode != "idle" or self.drag_origin is not None or self.movement_timer.isActive():
             return
         state = self.service.state_dict()
         if state["asleep"]:
@@ -3475,49 +3494,101 @@ class PetWindow(QWidget):
             self.service.interact("sleep")
             return
         if state["hunger"] > 82:
-            self.play("Sit", loop=False)
+            self.play_expression()
             return
-        if random.random() < 0.62:
+        if random.random() < 0.50:
             self.start_wander()
         else:
-            self.play(random.choice(["Idle", "LookUp", "Sit", "DeepBreath"]), loop=False)
+            self.play_expression()
+
+    def play_expression(self, name: str | None = None) -> bool:
+        state = self.service.state_dict()
+        if (state["asleep"] or state.get("seated") or self.drag_origin is not None
+                or self.interaction_mode != "idle" or self.movement_purpose not in {"idle", "wander"}):
+            return False
+        available = set(self.library.available())
+        if name is None:
+            choices = [item for item in expression_choices(state["energy"], state["hunger"], state["happiness"])
+                       if item in available and item != self.last_expression]
+            name = random.choice(choices) if choices else "Idle"
+        if name not in EXPRESSION_LABELS or name not in available:
+            return False
+        self.wander_target = self.wander_target_y = None
+        self.movement_purpose = "idle"
+        self.movement_timer.stop()
+        self.play(name, direction=random.choice([0, 1, 7]), loop=False)
+        # Short PMD gestures such as Nod last < 0.4 s; let them be seen.
+        self.expression_cycles_left = max(0, min(5, math.ceil(1800 / sum(self.durations)) - 1))
+        self.last_expression = name
+        return True
+
+    def _wander_bounds(self) -> tuple[int, int, int, int]:
+        screen = self._screen_for_pet().availableGeometry()
+        # Reserve the largest normal gesture as well as Walk, so a jump or
+        # stretch at the end of a path does not disappear beyond the screen.
+        specs = [self.library.specs[name] for name in ("Walk", *EXPRESSION_LABELS)
+                 if name in self.library.specs]
+        width = min(self.width(), max(spec.width for spec in specs) * self.scale)
+        height = min(self.height() - 12, max(spec.height for spec in specs) * self.scale)
+        left = screen.left() + 8 - (self.width() - width) // 2
+        right = screen.right() - 7 - (self.width() + width) // 2
+        top = screen.top() + 8 - self.height() + height + 12
+        bottom = screen.bottom() - 7 - self.height() + 12
+        return left, max(left, right), top, max(top, bottom)
+
+    def _wander_obstacles(self) -> list[ReservedRect]:
+        obstacles = []
+        eevee = self._eevee_rect()
+        if eevee is not None:
+            obstacles.append(eevee)
+        if self.bed_prop.isVisible():
+            bed = self.bed_prop.screen_rect()
+            # An awake pet may start on its bed: allow it to step away.
+            if not rectangles_overlap(self._arfoxia_rect(), bed):
+                obstacles.append(bed)
+        return obstacles
 
     def start_wander(self) -> None:
         state = self.service.state_dict()
         if self.interaction_mode != "idle" or state["asleep"] or state.get("seated"):
             return
-        screen_object = QApplication.screenAt(self.frameGeometry().center()) or QApplication.primaryScreen()
-        screen = screen_object.availableGeometry()
-        left = screen.left() - self.width() // 3
-        right = screen.right() - self.width() * 2 // 3
-        ranges = self._safe_ranges_next_to_eevee()
-        if ranges:
-            containing = [bounds for bounds in ranges if bounds[0] <= self.x() <= bounds[1]]
-            if containing:
-                active_range = containing[0]
-            else:
-                active_range = min(
-                    ranges,
-                    key=lambda bounds: min(abs(self.x() - bounds[0]), abs(self.x() - bounds[1])),
-                )
-            target = random.randint(active_range[0], max(active_range))
-            left, right = active_range
-        else:
-            target = random.randint(left, max(left, right))
-        if abs(target - self.x()) < 140:
-            target = left if self.x() > (left + right) // 2 else right
-        self.wander_target = target
-        self.movement_purpose = "wander"
-        direction = 2 if target > self.x() else 6
-        self.play("Walk", direction=direction, loop=True)
-        self.movement_timer.start()
+        if self.drag_origin is not None or self.movement_timer.isActive():
+            return
+        left, right, top, bottom = self._wander_bounds()
+        directions = [(0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1)]
+        random.shuffle(directions)
+        obstacles = self._wander_obstacles()
+        padding = max(0, int(self.service.config.eevee_avoidance_padding))
+        for dx, dy in directions:
+            distance = random.randint(100, 260)
+            target_x = max(left, min(right, self.x() + dx * distance))
+            target_y = max(top, min(bottom, self.y() + dy * distance))
+            steps = max(abs(target_x - self.x()), abs(target_y - self.y()))
+            if steps < 40:
+                continue
+            # Check the whole straight route, not only the destination.
+            if any(rectangles_overlap(self._arfoxia_rect(
+                    round(self.x() + (target_x - self.x()) * step / steps),
+                    round(self.y() + (target_y - self.y()) * step / steps)), obstacle, padding=padding)
+                   for step in range(0, steps + 1, 3) for obstacle in obstacles):
+                continue
+            self.wander_target, self.wander_target_y = target_x, target_y
+            self.movement_purpose = "wander"
+            self.play("Walk", direction=direction_for_delta(target_x - self.x(), target_y - self.y()), loop=True)
+            self.movement_timer.start()
+            return
+        self.play_expression()
 
     def move_step(self) -> None:
-        if self.service.state_dict().get("seated"):
-            self.wander_target = None
+        state = self.service.state_dict()
+        if state.get("seated") or state["asleep"]:
+            self.wander_target = self.wander_target_y = None
             self.movement_purpose = "idle"
             self.movement_timer.stop()
-            self.play("Sit", loop=True)
+            self.play("Sleep" if state["asleep"] else "Sit", loop=True)
+            return
+        if self.movement_purpose == "wander" and self.wander_target is not None and self.wander_target_y is not None:
+            self._move_wander_step()
             return
         if self.wander_target is None:
             self.movement_timer.stop()
@@ -3554,6 +3625,25 @@ class PetWindow(QWidget):
             self.play("Idle", direction=0, loop=True)
             return
         self.move(next_x, self.y())
+
+    def _move_wander_step(self) -> None:
+        target_x, target_y = self.wander_target, self.wander_target_y
+        next_x, next_y = step_towards(self.x(), self.y(), target_x, target_y)
+        left, right, top, bottom = self._wander_bounds()
+        padding = max(0, int(self.service.config.eevee_avoidance_padding))
+        blocked = (self.drag_origin is not None or not (left <= next_x <= right and top <= next_y <= bottom)
+                   or any(rectangles_overlap(self._arfoxia_rect(next_x, next_y), obstacle, padding=padding)
+                          for obstacle in self._wander_obstacles()))
+        if not blocked:
+            direction = direction_for_delta(target_x - self.x(), target_y - self.y())
+            if direction != self.direction or self.current_animation != "Walk":
+                self.play("Walk", direction=direction, loop=True)
+            self.move(next_x, next_y)
+        if blocked or (next_x, next_y) == (target_x, target_y):
+            self.wander_target = self.wander_target_y = None
+            self.movement_purpose = "idle"
+            self.movement_timer.stop()
+            self.play("Idle", direction=0, loop=True)
 
     def poll_events(self) -> None:
         while not self.service.events.empty():
@@ -3664,6 +3754,10 @@ class PetWindow(QWidget):
                 self.show_chat()
 
     def closeEvent(self, event: Any) -> None:
+        self.animation_timer.stop()
+        self.movement_timer.stop()
+        self.behavior_timer.stop()
+        self.event_timer.stop()
         self.eevee_presence_timer.stop()
         self.eevee_interaction_timer.stop()
         self.feed_timer.stop()

@@ -57,6 +57,172 @@ def test_feed_event_shows_and_consumes_one_berry_without_double_counting(physica
     assert service.state.hunger == hunger_after_event
 
 
+@pytest.mark.parametrize("delta,direction", [((0, -70), 4), ((0, 70), 0), ((70, -70), 3), ((-70, 70), 7)])
+def test_two_dimensional_wander_uses_correct_facing_and_arrives(physical_pet, monkeypatch, delta, direction):
+    pet, service = physical_pet
+    service.state.asleep = False
+    pet.move(150, 150)
+    monkeypatch.setattr(pet, "_wander_bounds", lambda: (-500, 500, -500, 500))
+    monkeypatch.setattr(pet, "_wander_obstacles", lambda: [])
+    pet.wander_target, pet.wander_target_y = 150 + delta[0], 150 + delta[1]
+    pet.movement_purpose = "wander"
+    pet.movement_timer.start()
+    pet.move_step()
+    assert pet.direction == direction
+    assert pet.y() != 150
+    for _ in range(100):
+        if pet.wander_target is None:
+            break
+        pet.move_step()
+    assert pet.pos() == QPoint(150 + delta[0], 150 + delta[1])
+    assert not pet.movement_timer.isActive()
+
+
+def test_random_wander_can_choose_a_vertical_route(physical_pet, monkeypatch):
+    pet, service = physical_pet
+    service.state.asleep = False
+    pet.move(150, 150)
+    monkeypatch.setattr(pet, "_wander_bounds", lambda: (-500, 500, -500, 500))
+    monkeypatch.setattr(pet, "_wander_obstacles", lambda: [])
+    monkeypatch.setattr("glaceon_companion.ui.random.shuffle", lambda items: None)
+    pet.start_wander()
+    assert pet.wander_target == pet.x()
+    assert pet.wander_target_y > pet.y()
+    assert pet.direction == 0
+
+
+def test_wander_stops_before_new_obstacle_or_screen_edge(physical_pet, monkeypatch):
+    from glaceon_companion.codex_presence import ReservedRect
+
+    pet, service = physical_pet
+    service.state.asleep = False
+    pet.move(150, 150)
+    pet.play("Walk", direction=0, loop=True)
+    monkeypatch.setattr(pet, "_wander_bounds", lambda: (-500, 500, -500, 500))
+    sprite = pet._arfoxia_rect()
+    monkeypatch.setattr(pet, "_wander_obstacles", lambda: [ReservedRect(sprite.x, sprite.bottom + 1, 160, 80)])
+    pet.wander_target, pet.wander_target_y = 150, 220
+    pet.movement_purpose = "wander"
+    pet.move_step()
+    assert pet.pos() == QPoint(150, 150)
+    assert pet.wander_target is None
+    monkeypatch.setattr(pet, "_wander_obstacles", lambda: [])
+    monkeypatch.setattr(pet, "_wander_bounds", lambda: (0, 150, 0, 150))
+    pet.wander_target, pet.wander_target_y = 150, 220
+    pet.movement_purpose = "wander"
+    pet.move_step()
+    assert pet.pos() == QPoint(150, 150)
+    assert pet.wander_target_y is None
+
+
+def test_expressions_repeat_briefly_then_return_to_idle(physical_pet):
+    pet, service = physical_pet
+    service.state.asleep = False
+    assert pet.play_expression("Nod")
+    assert pet.expression_cycles_left > 0
+    for _ in range(10):
+        pet.frame_index = len(pet.frames) - 1
+        pet.next_frame()
+        if pet.current_animation == "Idle":
+            break
+    assert pet.current_animation == "Idle"
+    assert pet.expression_cycles_left == 0
+
+
+@pytest.mark.parametrize("mode", ["sleep", "sit", "fetch", "drag"])
+def test_expressions_do_not_interrupt_explicit_rest_or_tasks(physical_pet, mode):
+    pet, service = physical_pet
+    service.state.asleep = mode == "sleep"
+    service.state.seated = mode == "sit"
+    if mode == "fetch":
+        pet.movement_purpose = "fetch"
+    if mode == "drag":
+        pet.drag_origin = QPoint(10, 10)
+    animation = pet.current_animation
+    assert not pet.play_expression("Hop")
+    assert pet.current_animation == animation
+
+
+def test_sleep_stops_vertical_movement(physical_pet):
+    pet, service = physical_pet
+    start = pet.pos()
+    pet.wander_target, pet.wander_target_y = pet.x(), pet.y() - 80
+    pet.movement_purpose = "wander"
+    service.state.asleep = True
+    pet.move_step()
+    assert pet.pos() == start
+    assert pet.wander_target_y is None
+    assert pet.current_animation == "Sleep"
+
+
+def test_automatic_expressions_do_not_repeat_consecutively(physical_pet):
+    pet, service = physical_pet
+    service.state.asleep = False
+    previous = None
+    for _ in range(12):
+        assert pet.play_expression()
+        assert pet.current_animation != previous
+        previous = pet.current_animation
+
+
+def test_negative_monitor_bounds_keep_gestures_visible(physical_pet, monkeypatch):
+    from PySide6.QtCore import QRect
+    from types import SimpleNamespace
+
+    pet, _ = physical_pet
+    screen = QRect(-1920, -1080, 1920, 1040)
+    monkeypatch.setattr(pet, "_screen_for_pet", lambda: SimpleNamespace(availableGeometry=lambda: screen))
+    left, right, top, bottom = pet._wander_bounds()
+    assert left < right and top < bottom
+    for x, y in ((left, top), (right, bottom)):
+        pet.move(x, y)
+        for animation in ("Walk", "Hop", "Wake", "Pose"):
+            pet.play(animation, direction=0)
+            sprite = pet._arfoxia_rect()
+            assert sprite.x >= screen.left()
+            assert sprite.right <= screen.right() + 1
+            assert sprite.y >= screen.top()
+            assert sprite.bottom <= screen.bottom() + 1
+
+
+def test_expression_menu_has_all_gestures_and_runs_selected_one(physical_pet, monkeypatch):
+    from PySide6.QtWidgets import QMenu
+    from glaceon_companion.pet_motion import EXPRESSION_LABELS
+
+    pet, service = physical_pet
+    service.state.asleep = False
+    class TestMenu(QMenu):
+        def exec(self, position):
+            actions = self.actions()
+            submenu = next(action.menu() for action in actions if action.text() == "Expresiones")
+            assert submenu.isEnabled()
+            assert {action.text() for action in submenu.actions()} == set(EXPRESSION_LABELS.values())
+            next(action for action in submenu.actions() if action.text() == "Estirarse").trigger()
+    monkeypatch.setattr("glaceon_companion.ui.QMenu", TestMenu)
+    pet.open_menu(QPoint(20, 20))
+    assert pet.current_animation == "Wake"
+
+
+def test_lemon_route_ignores_old_vertical_wander_target(physical_pet, monkeypatch):
+    pet, service = physical_pet
+    service.state.asleep = False
+    monkeypatch.setattr(pet, "_eevee_rect", lambda: None)
+    pet.move(150, 150)
+    pet.wander_target, pet.wander_target_y = 250, 50
+    pet.movement_purpose = "fetch"
+    pet.move_step()
+    assert pet.pos() == QPoint(153, 150)
+
+
+def test_close_stops_autonomous_and_animation_timers(physical_pet):
+    pet, _ = physical_pet
+    pet.movement_timer.start()
+    pet.close()
+    assert not any(timer.isActive() for timer in (
+        pet.animation_timer, pet.movement_timer, pet.behavior_timer, pet.event_timer
+    ))
+
+
 def test_sit_stops_movement_and_blocks_automatic_sleep_and_animations(physical_pet):
     pet, service = physical_pet
     pet.start_wander()

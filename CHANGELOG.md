@@ -6,6 +6,24 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Añadido — 2026-10-04
+
+- Paseos de Arfoxia en ocho direcciones: arriba, abajo, laterales y diagonales,
+  con la fila de sprites orientada al desplazamiento y velocidad diagonal
+  normalizada. Trayectos cortos dentro del monitor actual, con margen para
+  saltos/gestos, comprobación de obstáculos y parada ante Eevee o los bordes.
+- Ocho gestos en el menú contextual «Expresiones»: curiosidad, saludo, cola
+  contenta, saltito, estiramiento, respiración, pose y giro. Reutilizan las
+  animaciones PMD incluidas; los gestos cortos se repiten brevemente para verse.
+- Más variedad automática cada 12–22 segundos, sin repetir el último gesto y
+  con reacciones tranquilas cuando tiene hambre o poca energía. Se mantienen
+  el modo sentado, sueño, arrastre, comida y las rutas horizontales del limón.
+- Pruebas de orientación, destinos 2D, velocidad, obstáculos, monitores con
+  coordenadas negativas, expresiones, descanso y compatibilidad con el limón;
+  revisión visual de los sprites existentes en las ocho direcciones.
+- Los temporizadores de paseo, comportamiento y animación se detienen al
+  cerrar la mascota, evitando llamadas a una base de datos ya cerrada.
+
 ### Corregido — 2026-10-02
 
 - Enter y Enter numérico envían una sola vez al chat seleccionado. Se desactiva
