@@ -37,3 +37,9 @@ def test_no_forced_search_for_negation_or_unrelated_question(text):
 
 def test_query_removes_conversational_wrapper_not_search_subject():
     assert compact_search_query(TOPIC) == "el tiempo para mañana en Ourense"
+
+
+def test_long_weather_request_keeps_topic_and_drops_presentation_instructions():
+    source = ("Por ahora está bien, ahora me gustaría que busques el tiempo para hoy en Allariz. "
+              "En vez de abrir la ventana busca tú y créame una tabla del tiempo y temperatura por horas")
+    assert compact_search_query(source) == "el tiempo para hoy en Allariz"

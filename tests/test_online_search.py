@@ -121,7 +121,9 @@ def test_provider_details_are_not_exposed_in_error_message():
         client(provider).search("consulta")
 
     assert "secret-provider-token" not in str(raised.value)
-    assert "no está disponible" in str(raised.value)
+    assert "no respondieron" in str(raised.value)
+    assert raised.value.diagnostics["status"] == "provider_failed"
+    assert "secret-provider-token" not in str(raised.value.diagnostics)
 
 
 def test_tool_payload_marks_results_as_untrusted():
@@ -137,6 +139,7 @@ def test_tool_payload_marks_results_as_untrusted():
         "results": [
             {"title": "Fuente", "url": "https://example.com", "snippet": "Dato"}
         ],
+        "diagnostics": {"raw_results": 1, "eligible_results": 1, "returned_results": 1, "status": "ok"},
     }
 
 
@@ -500,6 +503,10 @@ def test_research_payload_merges_safely_with_domain_and_url_limits():
         ],
         "partial": False,
         "failed_queries": [],
+        "diagnostics": {"queries": [
+            {"query": "primera perspectiva", "raw_results": 3, "eligible_results": 3, "returned_results": 3, "status": "ok"},
+            {"query": "segunda perspectiva", "raw_results": 2, "eligible_results": 2, "returned_results": 2, "status": "ok"},
+        ]},
     }
 
 
@@ -531,6 +538,7 @@ def test_research_returns_partial_results_without_provider_details():
         }
     ]
     assert "provider secret" not in str(payload)
+    assert payload["diagnostics"]["queries"][0]["status"] == "provider_failed"
 
 
 @pytest.mark.parametrize(

@@ -74,6 +74,23 @@ def make_service(tmp_path: Path) -> CompanionService:
     return CompanionService(store, store.load())
 
 
+def test_search_failure_diagnostics_reach_tool_result_without_provider_secrets(tmp_path):
+    from glaceon_companion.online_search import OnlineSearchError
+
+    service = make_service(tmp_path)
+    class FailedSearch:
+        def search_payload(self, *args, **kwargs):
+            raise OnlineSearchError("Los motores no respondieron.", diagnostics={"status": "provider_failed"})
+    service.online_search = FailedSearch()
+    try:
+        result = service.execute_action("web_search", {"query": "tiempo Allariz"})
+        assert not result.success
+        assert result.data["diagnostics"]["status"] == "provider_failed"
+        assert "provider_failed" in service._tool_message("web_search", result)["content"]
+    finally:
+        service.close()
+
+
 def chat_in_new_conversation(
     service: CompanionService,
     message: str,

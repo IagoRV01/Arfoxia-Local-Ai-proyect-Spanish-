@@ -61,9 +61,11 @@ def resolve_web_followup(text: str, previous: Sequence[str], is_web_request: Cal
 def compact_search_query(text: str) -> str:
     value = re.sub(r"^\s*(?:hola|buenas|hello|hey)[, ]+(?:arfoxia[, ]*)?", "", text, flags=re.I)
     value = re.sub(r"^\s*arfoxia[, ]+", "", value, flags=re.I)
+    value = re.sub(r"^.{0,140}?\b(?:me gustar[ií]a que|quiero que|puedes|podr[ií]as)\s+(?:busques?|buscar|consultes?|averig[uü]es?)\s+", "", value, flags=re.I)
     value = re.sub(r"^\s*(?:por favor[, ]+)?(?:busca(?:me)?|buscar|buscame|búscame|consulta|search(?: for)?|find)\s+(?:(?:en (?:internet|la web)|online|on the web)\s+)?", "", value, flags=re.I)
     value = re.sub(r"[, ]+(?:por favor|please)[.! ]*$", "", value, flags=re.I)
     value = re.sub(r"\bpor favor\b[, ]*[.?!]?", "", value, flags=re.I)
+    value = re.split(r"[.!]\s*(?:en vez de abrir|no abras|cr[eé]ame una tabla|hazme una tabla)\b", value, maxsplit=1, flags=re.I)[0]
     # Keep short weather refinements, not the question's conversational filler.
     value = re.sub(r"[¿?]*\bcu[aá]nt[oa]s?\s+(?:van a ser|ser[aá]n|son)\s+(?:las?\s+)?(?=m[aá]xim|m[ií]nim)", "", value, flags=re.I)
     return " ".join(value.split()).strip() or text

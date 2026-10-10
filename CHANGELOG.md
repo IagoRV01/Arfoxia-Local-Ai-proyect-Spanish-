@@ -6,6 +6,24 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Corregido — 2026-10-10
+
+- Fallos intermitentes de búsqueda: reintentos acotados con motores independientes
+  cuando la selección automática de DDGS falla, queda vacía o agota su tiempo.
+  La consulta, idioma, tipo de búsqueda y filtros temporales se conservan.
+- Diagnóstico por consulta: diferencia errores del proveedor, resultados vacíos,
+  filtrado por fechas y enlaces que no pudieron verificarse. Las investigaciones
+  conservan resultados parciales y no exponen detalles privados de excepciones.
+- Arfoxia recibe el diagnóstico real y la descripción de DDGS como búsqueda en
+  índices públicos, sin API key. Se le indica que un intento fallido no demuestra
+  una caída permanente; no debe inventar causas de red, claves o configuración.
+- Las consultas conversacionales largas eliminan introducciones y peticiones de
+  formato, conservando tema y fechas. Sigue activa la comprobación de enlaces y
+  el rechazo de URLs privadas, retiradas o no verificadas.
+- Regresiones de recuperación, límites de espera, noticias fechadas, protección
+  de excepciones y transmisión del diagnóstico a las herramientas. Pruebas reales
+  de texto e investigación con enlaces verificados, sin crear chats de prueba.
+
 ### Añadido — 2026-10-04
 
 - Paseos de Arfoxia en ocho direcciones: arriba, abajo, laterales y diagonales,

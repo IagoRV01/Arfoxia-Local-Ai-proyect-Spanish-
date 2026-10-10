@@ -11,6 +11,7 @@ from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime
 from email.utils import parsedate_to_datetime
+from itertools import islice
 from typing import Any, Protocol
 from urllib.parse import urlsplit, urlunsplit
 
@@ -29,6 +30,16 @@ UNTRUSTED_WEB_NOTICE = (
 
 class OnlineSearchError(RuntimeError):
     """Safe, user-facing failure raised by the online search boundary."""
+
+    def __init__(self, message: str, *, diagnostics: dict[str, Any] | None = None):
+        super().__init__(message)
+        self.diagnostics = diagnostics or {}
+
+
+class SearchBatch(list):
+    def __init__(self, results, diagnostics):
+        super().__init__(results)
+        self.diagnostics = diagnostics
 
 
 class SearchProvider(Protocol):
@@ -180,6 +191,8 @@ class OnlineSearchClient:
             "security_notice": UNTRUSTED_WEB_NOTICE,
             "results": [result.to_dict() for result in results],
         }
+        if hasattr(results, "diagnostics"):
+            payload["diagnostics"] = results.diagnostics
         if self._validate_result_urls:
             payload["link_validation"] = "live"
         self._add_temporal_metadata(
@@ -239,6 +252,7 @@ class OnlineSearchClient:
             for index, query in enumerate(normalized_queries)
         }
         results_by_query: dict[int, list[SearchResult]] = {}
+        query_diagnostics: dict[int, dict[str, Any]] = {}
         failed_indexes = set(range(len(normalized_queries)))
         try:
             done, pending = wait(
@@ -249,8 +263,13 @@ class OnlineSearchClient:
                 index = futures[future]
                 try:
                     results_by_query[index] = future.result()
+                except OnlineSearchError as exc:
+                    query_diagnostics[index] = exc.diagnostics
+                    continue
                 except Exception:
                     continue
+                if hasattr(results_by_query[index], "diagnostics"):
+                    query_diagnostics[index] = results_by_query[index].diagnostics
                 failed_indexes.discard(index)
             for future in pending:
                 future.cancel()
@@ -271,6 +290,10 @@ class OnlineSearchClient:
             "results": [result.to_dict() for result in results],
             "partial": bool(failed_queries),
             "failed_queries": failed_queries,
+        }
+        payload["diagnostics"] = {
+            "queries": [{"query": query, **query_diagnostics.get(index, {"status": "timeout"})}
+                        for index, query in enumerate(normalized_queries)]
         }
         if self._validate_result_urls:
             payload["link_validation"] = "live"
@@ -305,6 +328,8 @@ class OnlineSearchClient:
             else limit
         )
         region = self._REGIONS.get(str(language).casefold(), "es-es")
+        diagnostics: dict[str, Any] = {}
+        provider: SearchProvider | None = None
         try:
             provider = self._provider_factory()
             arguments: dict[str, Any] = {
@@ -319,6 +344,9 @@ class OnlineSearchClient:
                 if timelimit:
                     arguments["timelimit"] = timelimit
                 rows = provider.text(query, **arguments)
+            rows = list(islice(rows, self.MAX_RESULTS * 4))
+            diagnostics.update(getattr(provider, "diagnostics", {}))
+            diagnostics["raw_results"] = len(rows)
             candidates = self._sanitize_rows(
                 rows,
                 provider_limit,
@@ -326,12 +354,21 @@ class OnlineSearchClient:
                 date_from=date_from,
                 date_to=date_to,
             )
-            return self._available_results(candidates, limit)
+            diagnostics["eligible_results"] = len(candidates)
+            results = self._available_results(candidates, limit, diagnostics=diagnostics)
+            diagnostics["returned_results"] = len(results)
+            diagnostics["status"] = ("ok" if results else "no_results" if not rows
+                                     else "date_filtered" if not candidates and date_from is not None
+                                     else "filtered_results" if not candidates else "links_unverified")
+            return SearchBatch(results, diagnostics)
         except OnlineSearchError:
             raise
         except Exception as exc:
+            diagnostics.update(getattr(provider, "diagnostics", {}))
+            diagnostics["status"] = "provider_failed"
             raise OnlineSearchError(
-                "La búsqueda online no está disponible en este momento."
+                "Los motores de búsqueda no respondieron a esta consulta tras los intentos disponibles.",
+                diagnostics=diagnostics,
             ) from exc
 
     def check_url(self, url: str) -> LinkAvailability:
@@ -349,6 +386,7 @@ class OnlineSearchClient:
         self,
         candidates: list[SearchResult],
         limit: int,
+        *, diagnostics: dict[str, Any] | None = None,
     ) -> list[SearchResult]:
         if not self._validate_result_urls:
             return candidates[:limit]
@@ -393,6 +431,10 @@ class OnlineSearchClient:
                     future.cancel()
                 for index, original in enumerate(batch):
                     outcome = outcomes.get(index)
+                    if diagnostics is not None:
+                        status = outcome.status if outcome is not None else "unknown"
+                        key = "links_" + status
+                        diagnostics[key] = diagnostics.get(key, 0) + 1
                     if outcome is None or not outcome.available:
                         continue
                     final_url = outcome.final_url or original.url
@@ -492,12 +534,12 @@ class OnlineSearchClient:
 
     def _default_provider(self) -> SearchProvider:
         try:
-            from ddgs import DDGS
+            from .ddgs_provider import ResilientDDGSProvider
+            return ResilientDDGSProvider(self.timeout_seconds)
         except ImportError as exc:
             raise OnlineSearchError(
                 "La búsqueda online no está instalada. Falta la dependencia ddgs."
             ) from exc
-        return DDGS(timeout=self.timeout_seconds)
 
     @classmethod
     def _normalize_query(cls, value: str) -> str:

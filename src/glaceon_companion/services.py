@@ -1193,7 +1193,8 @@ class CompanionService:
             OnlineSearchError,
             CodexBridgeError,
         ) as exc:
-            result = ActionResult(False, action, str(exc))
+            result = ActionResult(False, action, str(exc),
+                                  data={"diagnostics": exc.diagnostics} if isinstance(exc, OnlineSearchError) else None)
         except Exception:
             # This boundary is user-facing: never expose provider, path or RPC internals.
             result = ActionResult(False, action, "No pude completar esa acción de forma segura.")
@@ -1408,6 +1409,9 @@ class CompanionService:
                 else "fuentes online de solo lectura"
             )
             message = f"He encontrado {count} {noun}."
+        elif (payload.get("diagnostics") or {}).get("status") == "links_unverified":
+            message = ("El buscador encontró enlaces, pero no pude confirmar que estén disponibles. "
+                       "Esto no significa que no haya resultados ni que el buscador esté caído.")
         elif payload.get("search_type") == "news":
             message = (
                 "No he encontrado noticias seguras con una fecha verificable "
@@ -1452,7 +1456,9 @@ class CompanionService:
                 f"He contrastado {count} fuentes online de solo lectura.{suffix}"
             )
         else:
-            message = "No he encontrado resultados online seguros para esa investigación."
+            message = ("Los motores no respondieron a las consultas de esta investigación. Puedes reintentarlo."
+                       if payload.get("queries") and len(payload.get("failed_queries", [])) == len(payload["queries"]) else
+                       "No he encontrado resultados online seguros para esa investigación.")
         return ActionResult(bool(count), "web_research", message, payload)
 
     def _list_codex_tasks(self, args: dict[str, Any]) -> ActionResult:
