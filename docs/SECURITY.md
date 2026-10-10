@@ -149,6 +149,17 @@ Se reducen a un máximo de 1600×1000, se guardan como WebP con un identificador
 
 ## Riesgos restantes
 
+- `run_python` usa exactamente la política de comandos de PowerShell: requiere
+  `pc_command_enabled`, mantiene los desafíos del perfil predeterminado y no es
+  un sandbox. No registra código literal en la auditoría; guarda longitud y hash.
+  Las herramientas de lectura local pueden devolver texto de la carpeta que
+  el propietario solicite. No se deben compartir tokens ni pedir al modelo que
+  examine indiscriminadamente carpetas con secretos.
+- Los flujos de herramientas están acotados a seis rondas/24 llamadas. Cada
+  llamada pasa por el mismo límite de permisos. La lectura de páginas usa HTTPS
+  público con IP fijada y no habilita ejecución de contenido web. El filtro de
+  enlaces y las restricciones de adjuntos siguen activos.
+
 - El modo Dual usa solo un servidor propio en loopback y no expone Ollama al
   móvil. Su reparto de VRAM es calibrado y vigilado, no una cuota dura de CUDA:
   pueden existir picos entre comprobaciones, especialmente si otra app reserva

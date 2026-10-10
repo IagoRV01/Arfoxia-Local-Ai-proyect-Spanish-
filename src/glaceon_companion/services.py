@@ -557,6 +557,9 @@ class CompanionService:
     }
     SENSITIVE_EXTERNAL_ACTIONS = {"codex_pause_task", "game_streaming_pair"}
     ATTACHMENT_TOOLS = {"web_search", "web_research"}
+    WORKFLOW_TOOLS = {"list_directory", "read_file", "search_files", "calculate",
+                      "run_python", "run_powershell", "file_operation", "read_webpage",
+                      "web_search", "web_research"}
 
     def __init__(self, store: ConfigStore, config: CompanionConfig) -> None:
         self.store = store
@@ -1230,8 +1233,8 @@ class CompanionService:
         return " ".join(str(value or "").split())[:limit]
 
     def _authorization_summary(self, action: str, args: dict[str, Any]) -> str:
-        if action == "run_powershell":
-            return "Ejecutar un comando de PowerShell con los permisos de tu usuario"
+        if action in {"run_powershell", "run_python"}:
+            return "Ejecutar código con los permisos de tu usuario"
         if action == "power":
             operation = str(args.get("operation") or "").casefold()
             return {
@@ -1544,7 +1547,7 @@ class CompanionService:
         trusted: set[str] = set()
         for action, result in completed:
             if (
-                action in {"web_search", "web_research"}
+                action in {"web_search", "web_research", "read_webpage"}
                 and result.success
                 and isinstance(result.data, dict)
             ):
@@ -2476,7 +2479,7 @@ class CompanionService:
                         conversation_id=conversation_id,
                     )
                 if (
-                    action in {"web_search", "web_research"}
+                    action in {"web_search", "web_research", "read_webpage"}
                     and action_result.success
                     and isinstance(action_result.data, dict)
                 ):
@@ -2527,11 +2530,15 @@ class CompanionService:
                 assistant_for_followup,
                 *tool_messages,
             ]
+            workflow_tools = (
+                self.WORKFLOW_TOOLS if enabled_tools is True and any(action in self.WORKFLOW_TOOLS for action, _ in completed) else
+                {"read_webpage"} if not attachments and required_action in {"web_search", "web_research"} else set()
+            )
             try:
                 followup = await self.ollama.chat(
                     followup_messages,
                     summary,
-                    tools=False,
+                    tools=workflow_tools or False,
                     selection=selection,
                     turn_text=turn_text,
                     temporal_context=temporal_context,
@@ -2540,6 +2547,13 @@ class CompanionService:
                     (followup.get("message") or {}).get("content")
                     or " ".join(result.message for _, result in completed)
                 )
+                if workflow_tools:
+                    followup, message = await self._continue_tool_workflow(
+                        followup, followup_messages, completed, workflow_tools,
+                        summary=summary, selection=selection, turn_text=turn_text,
+                        temporal_context=temporal_context, origin=origin,
+                        conversation_id=conversation_id,
+                    )
             except (httpx.HTTPError, asyncio.TimeoutError):
                 if selection.tier in {"large", "power", "gaming_gpu"}:
                     if selection.tier == "gaming_gpu":
@@ -2573,10 +2587,17 @@ class CompanionService:
             if completed:
                 payload["action_result"] = completed[0][1].to_dict()
                 payload["action_results"] = [result.to_dict() for _, result in completed]
+                pending = next((result for _, result in completed if result.requires_authorization), None)
+                if pending is not None:
+                    payload.update({"requires_authorization": True,
+                                    "challenge_id": pending.challenge_id,
+                                    "authorization_expires_at": pending.authorization_expires_at,
+                                    "authorization_summary": pending.authorization_summary,
+                                    "password_configured": pending.password_configured})
                 sources = [
                     source
                     for _, result in completed
-                    if result.action in {"web_search", "web_research"} and result.data
+                    if result.action in {"web_search", "web_research", "read_webpage"} and result.data
                     for source in result.data.get("results", [])
                 ]
                 if sources:
@@ -2600,15 +2621,26 @@ class CompanionService:
                 payload=payload,
             )
 
-        message = clean_model_text(
-            assistant_message.get("content") or "¡Gla! Estoy aquí contigo."
-        )
+        message = clean_model_text(assistant_message.get("content"))
+        empty_generation = not message
+        generation_limit = response.get("done_reason") == "length"
+        if empty_generation:
+            message = (
+                "Gla… el modelo agotó el límite de generación sin producir una respuesta "
+                "visible ni llamar a herramientas. La tarea no se ha completado."
+                if generation_limit else
+                "Gla… el modelo no produjo una respuesta visible ni llamó a herramientas. "
+                "La tarea no se ha completado."
+            )
         message = self._filter_response_links(
             message,
             request_text=request_text,
             completed=[],
         )
         model_metadata = self._model_metadata(selection)
+        if empty_generation:
+            model_metadata.update({"generation_empty": True,
+                                   "generation_limit_reached": generation_limit})
         assistant_stored = self._record_assistant_message(
             message,
             conversation_id=conversation_id,
@@ -2622,6 +2654,38 @@ class CompanionService:
             assistant_message=assistant_stored,
             payload=model_metadata,
         )
+
+    async def _continue_tool_workflow(
+        self, response, messages, completed, allowed, *, summary, selection,
+        turn_text, temporal_context, origin, conversation_id,
+    ):
+        """At most six rounds/24 calls; retain authorization and one chat turn."""
+        for round_index in range(5):
+            assistant = response.get("message") or {}
+            calls = parse_tool_calls(assistant)
+            if not calls:
+                return response, clean_model_text(assistant.get("content") or " ".join(r.message for _, r in completed))
+            if len(completed) + len(calls) > 24:
+                break
+            messages = [*messages, assistant]
+            for action, arguments in calls:
+                if action not in allowed:
+                    result = ActionResult(False, action, "Herramienta no habilitada para este flujo.")
+                else:
+                    result = await asyncio.to_thread(self._execute_chat_action, action, arguments,
+                                                     origin=origin, conversation_id=conversation_id)
+                completed.append((action, result))
+                messages.append(self._tool_message(action, result))
+                if result.requires_authorization:
+                    return response, self._authorization_chat_message(turn_text)
+            response = await self.ollama.chat(
+                messages, summary, tools=allowed if round_index < 4 else False,
+                selection=selection, turn_text=turn_text, temporal_context=temporal_context,
+            )
+        # Never claim completion when the model kept requesting actions.
+        if parse_tool_calls(response.get("message") or {}):
+            return response, "He alcanzado el límite de herramientas de este turno; la tarea puede estar incompleta."
+        return response, clean_model_text((response.get("message") or {}).get("content") or " ".join(r.message for _, r in completed))
 
     async def unload_model(self) -> None:
         await self._acquire_turn_lock()

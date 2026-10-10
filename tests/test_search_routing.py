@@ -289,7 +289,7 @@ def test_unambiguous_web_requests_are_routed_when_model_omits_tool_call(
         expected_action
     ]
     assert len(ollama.requests) == 2
-    assert ollama.options[1]["tools"] is False
+    assert ollama.options[1]["tools"] == {"read_webpage"}
     if expected_action == "web_search":
         assert len(search.search_calls) == 1
         assert search.research_calls == []
@@ -377,7 +377,7 @@ def test_galician_weather_fallback_searches_and_returns_sources(
         }
     ]
     assert ollama.options[0]["tools"] == {"web_search"}
-    assert ollama.options[1]["tools"] is False
+    assert ollama.options[1]["tools"] == {"read_webpage"}
     assistant_route = ollama.requests[1][-2]
     assert assistant_route["role"] == "assistant"
     assert assistant_route["tool_calls"][0]["function"]["name"] == "web_search"
@@ -427,7 +427,7 @@ def test_model_tool_call_is_not_duplicated_by_deterministic_routing(
     assert len(search.search_calls) == 1
     assert len(result["action_results"]) == 1
     assert len(ollama.requests) == 2
-    assert ollama.options[1]["tools"] is False
+    assert ollama.options[1]["tools"] == {"read_webpage"}
 
 
 def test_current_news_uses_trusted_date_even_if_model_proposes_an_old_query(

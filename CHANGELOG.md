@@ -6,6 +6,31 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Añadido — 2026-10-11
+
+- Seis herramientas útiles para trabajo local y programación: listar carpetas,
+  leer texto con números de línea, buscar texto en un árbol de trabajo acotado,
+  calculadora sin ejecución arbitraria, Python con salida/tiempo limitados y
+  lectura de páginas públicas con TLS, IP fijada y filtros de redirecciones.
+- Flujos de hasta seis rondas y 24 llamadas para crear, comprobar y corregir
+  archivos dentro del mismo chat. Mantienen permisos locales, autenticación,
+  protección de adjuntos y límites; Python sigue la política de PowerShell.
+- Script reproducible del reto de programación del jardín japonés 3D mediante
+  el modelo y herramientas reales de Arfoxia, con carpeta aislada y resultados
+  locales. No cambia ni descarga modelos; no asigna puntuaciones oficiales.
+- Pruebas de lectura, límites numéricos, Python desactivado, redacción de código,
+  páginas públicas/redirecciones privadas, autorización en rondas posteriores,
+  continuidad de conversaciones y límite de rondas.
+- Resultado real del jardín japonés con Dual/27B: 896,17 s, 16 384 tokens,
+  18,43 tokens/s de generación, ninguna llamada ni archivo creado. Se documenta
+  como reto no superado, sin atribuir una puntuación oficial ni esconder el
+  aviso de VRAM secundaria. Las generaciones vacías ya no simulan un saludo
+  satisfactorio: informan que la tarea no se completó.
+- Las seis herramientas nuevas se validaron por la API real; una prueba nativa
+  con Qwen/Dual invocó `calculate` y confirmó el resultado en 15,06 s. Suite
+  completa: 616 pruebas correctas. El servidor Dual se conservó durante ambas
+  recargas de interfaz, sin descargar el modelo residente.
+
 ### Corregido — 2026-10-10
 
 - Fallos intermitentes de búsqueda: reintentos acotados con motores independientes

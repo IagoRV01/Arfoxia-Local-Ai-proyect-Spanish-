@@ -32,6 +32,8 @@ from PIL import Image
 from .config import PROJECT_ROOT, CompanionConfig
 from .database import Database
 from .pc_commands import run_command, validate_command
+from .developer_tools import local_tool, run_python, validate_python
+from .web_reader import WebPageReader
 
 try:
     from send2trash import send2trash
@@ -106,8 +108,9 @@ class ActionDispatcher:
     for callers that still use the old confirmation boolean.
     """
 
-    IMMEDIATE = {"open_app", "open_target", "take_screenshot", "pc_status", "volume"}
-    SENSITIVE = {"close_app", "lock_computer", "power", "file_operation", "run_powershell"}
+    IMMEDIATE = {"open_app", "open_target", "take_screenshot", "pc_status", "volume",
+                 "list_directory", "read_file", "search_files", "calculate", "read_webpage"}
+    SENSITIVE = {"close_app", "lock_computer", "power", "file_operation", "run_powershell", "run_python"}
     CONFIRM = SENSITIVE  # Compatibility for older callers and documentation.
 
     def __init__(
@@ -178,6 +181,12 @@ class ActionDispatcher:
             "power": self._power,
             "file_operation": self._file_operation,
             "run_powershell": self._run_powershell,
+            "run_python": self._run_python,
+            "list_directory": lambda args: self._developer_tool("list_directory", args),
+            "read_file": lambda args: self._developer_tool("read_file", args),
+            "search_files": lambda args: self._developer_tool("search_files", args),
+            "calculate": lambda args: self._developer_tool("calculate", args),
+            "read_webpage": self._read_webpage,
         }
         handler = handlers.get(action)
         if handler is None:
@@ -252,11 +261,11 @@ class ActionDispatcher:
     def validate_for_authorization(
         self, action: str, arguments: dict[str, Any]
     ) -> None:
-        if action == "run_powershell":
+        if action in {"run_powershell", "run_python"}:
             if self.config.pc_command_enabled is not True:
                 raise ActionValidationError("PowerShell está desactivado en la configuración local.")
             try:
-                validate_command(arguments)
+                (validate_python if action == "run_python" else validate_command)(arguments)
             except ValueError as exc:
                 raise ActionValidationError(str(exc)) from exc
             return
@@ -366,9 +375,10 @@ class ActionDispatcher:
     @staticmethod
     def _redact_arguments(action: str, arguments: dict[str, Any]) -> dict[str, Any]:
         redacted = dict(arguments)
-        if action == "run_powershell" and "command" in redacted:
-            command = str(redacted.pop("command"))
-            redacted["command"] = {"redacted": True, "length": len(command),
+        key = "code" if action == "run_python" else "command"
+        if action in {"run_powershell", "run_python"} and key in redacted:
+            command = str(redacted.pop(key))
+            redacted[key] = {"redacted": True, "length": len(command),
                                    "sha256": hashlib.sha256(command.encode("utf-8")).hexdigest()}
         if action == "file_operation" and "content" in redacted:
             content = redacted.pop("content")
@@ -390,6 +400,33 @@ class ActionDispatcher:
                    "Tiempo agotado; comando interrumpido." if data["timed_out"] else
                    f"El comando terminó con código {data['exit_code']}.")
         return ActionResult(success, "run_powershell", message, data=data)
+
+    def _run_python(self, args: dict[str, Any]) -> ActionResult:
+        self.validate_for_authorization("run_python", args)
+        data = run_python(args)
+        success = data["exit_code"] == 0 and not data["timed_out"]
+        return ActionResult(success, "run_python", "Python completado." if success else "Python no terminó correctamente.", data=data)
+
+    def _developer_tool(self, action, args):
+        try:
+            data = local_tool(action, args)
+            return ActionResult(True, action, "Consulta completada.", data=data)
+        except (ValueError, OSError, ArithmeticError) as exc:
+            # Do not echo OS paths or raw source on failures.
+            message = str(exc) if isinstance(exc, ValueError) else "No pude completar la consulta."
+            return ActionResult(False, action, message)
+
+    def _read_webpage(self, args):
+        if not self.config.online_search_enabled:
+            return ActionResult(False, "read_webpage", "Las herramientas web están desactivadas.")
+        self._require_keys(args, required={"url"}, allowed={"url"})
+        if not isinstance(args["url"], str):
+            raise ActionValidationError("Indica una URL HTTPS pública.")
+        try:
+            data = WebPageReader(timeout_seconds=8).read(args["url"])
+            return ActionResult(True, "read_webpage", "Página leída.", data=data)
+        except ValueError as exc:
+            return ActionResult(False, "read_webpage", str(exc))
 
     def _open_app(self, args: dict[str, Any]) -> ActionResult:
         self._require_keys(args, required={"app"}, allowed={"app"})

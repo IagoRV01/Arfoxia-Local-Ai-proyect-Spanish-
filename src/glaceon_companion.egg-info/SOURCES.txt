@@ -15,6 +15,7 @@ src/glaceon_companion/conversation_storage.py
 src/glaceon_companion/database.py
 src/glaceon_companion/ddgs_provider.py
 src/glaceon_companion/desktop_interactions.py
+src/glaceon_companion/developer_tools.py
 src/glaceon_companion/dual_gpu.py
 src/glaceon_companion/game_streaming.py
 src/glaceon_companion/icons.py
@@ -34,6 +35,7 @@ src/glaceon_companion/sprites.py
 src/glaceon_companion/state.py
 src/glaceon_companion/temporal.py
 src/glaceon_companion/ui.py
+src/glaceon_companion/web_reader.py
 src/glaceon_companion.egg-info/PKG-INFO
 src/glaceon_companion.egg-info/SOURCES.txt
 src/glaceon_companion.egg-info/dependency_links.txt
@@ -60,6 +62,7 @@ tests/test_conversation_storage.py
 tests/test_database_conversations.py
 tests/test_ddgs_provider.py
 tests/test_desktop_interactions.py
+tests/test_developer_tools.py
 tests/test_dual_gpu.py
 tests/test_game_streaming.py
 tests/test_link_availability.py
