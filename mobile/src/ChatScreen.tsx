@@ -217,6 +217,7 @@ export function ChatScreen({
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [intensive, setIntensive] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [workTaskId, setWorkTaskId] = useState<string | null>(null);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [offline, setOffline] = useState(false);
@@ -234,7 +235,7 @@ export function ChatScreen({
     () => attachments.reduce((total, attachment) => total + attachment.size, 0),
     [attachments],
   );
-  const composerDisabled = busy || !selectedConversation;
+  const composerDisabled = busy || Boolean(workTaskId) || !selectedConversation;
 
   const handleError = useCallback(
     (reason: unknown, fallback: string): boolean => {
@@ -442,6 +443,12 @@ export function ChatScreen({
       });
       if (currentId && !busy) {
         void loadConversation(currentId, { quiet: true });
+        void api.workTasks(currentId).then(({tasks}) => {
+          if (selectedIdRef.current !== currentId) return;
+          const task = tasks.find(row => ['queued','running','cancelling'].includes(row.status));
+          setWorkTaskId(task?.id ?? null);
+          setStatus(task ? `Trabajo ${task.status} · ${task.calls} llamadas · ${task.last_action || 'pensando'}` : '');
+        }).catch(reason => handleError(reason, 'No se pudo consultar el trabajo en curso.'));
       }
     };
     const timer = setInterval(sync, SYNC_INTERVAL_MS);
@@ -454,7 +461,7 @@ export function ChatScreen({
       clearInterval(timer);
       subscription.remove();
     };
-  }, [active, busy, loadConversation, loadConversationList]);
+  }, [active, busy, api, handleError, loadConversation, loadConversationList]);
 
   const createConversation = useCallback(async () => {
     if (createInFlightRef.current) {
@@ -702,6 +709,7 @@ export function ChatScreen({
     if (
       (!typedMessage && !selected.length) ||
       busy ||
+      Boolean(workTaskId) ||
       sendInFlightRef.current
     ) {
       return;
@@ -762,6 +770,10 @@ export function ChatScreen({
         conversationId,
         clientMessageId,
         researchMode: intensive || undefined,
+        onProgress: task => {
+          setWorkTaskId(task.id);
+          setStatus(`Trabajo ${task.status} · ${task.calls} llamadas · ${task.last_action || 'pensando'}`);
+        },
       });
       const responseConversationId =
         response.conversation?.id ??
@@ -864,6 +876,7 @@ export function ChatScreen({
       sendInFlightRef.current = false;
       setBusy(false);
       setStatus('');
+      setWorkTaskId(null);
     }
   }, [
     api,
@@ -873,6 +886,7 @@ export function ChatScreen({
     intensive,
     loadConversationList,
     message,
+    workTaskId,
     onUnauthorized,
   ]);
 
@@ -1309,6 +1323,8 @@ export function ChatScreen({
             <Text style={styles.sendText}>{busy ? '…' : '↑'}</Text>
           </Pressable>
         </View>
+        {workTaskId ? <Button label="Detener trabajo" variant="ghost" compact
+          onPress={() => void api.stopWorkTask(workTaskId).then(() => setStatus('Deteniendo tras la herramienta actual…')).catch(reason => handleError(reason, 'No se pudo detener.'))} /> : null}
         {status ? <Text style={styles.status}>{status}</Text> : null}
       </View>
 

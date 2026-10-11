@@ -241,6 +241,13 @@ El resultado reproducible está en `assets/external/asset_catalog.json`. La apli
 
 ## Desarrollo y pruebas
 
+El chat del PC, Expo Go y la web incluyen [trabajo continuo](docs/CONTINUOUS_WORK.md):
+los encargos se ejecutan en segundo plano con progreso y botón **Detener trabajo**,
+sin finalizar por una simple promesa ni por el antiguo tope de seis rondas. Solo
+se pregunta por decisiones importantes; se conservan permisos y límites de
+seguridad. El PC puede continuar aunque el móvil se desconecte. Una tarea
+interrumpida al reiniciar no repite acciones automáticamente.
+
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
 .\.venv\Scripts\python.exe .\scripts\validate_assets.py

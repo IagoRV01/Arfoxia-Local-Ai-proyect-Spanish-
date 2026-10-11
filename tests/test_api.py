@@ -34,7 +34,7 @@ def test_api_requires_token_and_serves_mobile_ui(tmp_path):
         mobile = client.get("/")
         assert mobile.status_code == 200
         assert "no-cache" in mobile.headers["cache-control"]
-        assert "/app.js?v=9" in mobile.text
+        assert "/app.js?v=11" in mobile.text
         worker = client.get("/sw.js")
         assert worker.status_code == 200
         assert "no-store" in worker.headers["cache-control"]
@@ -145,18 +145,28 @@ def test_mobile_assets_recover_from_stale_safari_cache():
         (static_dir / "manifest.webmanifest").read_text(encoding="utf-8")
     )
 
-    assert "/style.css?v=9" in index
-    assert "/app.js?v=9" in index
-    assert "/manifest.webmanifest?v=9" in index
+    assert "/style.css?v=11" in index
+    assert "/app.js?v=11" in index
+    assert "/manifest.webmanifest?v=11" in index
     assert 'id="startup-error"' in index
-    assert "arfoxia-ui-v9" in worker
+    assert "arfoxia-ui-v11" in worker
     assert "self.skipWaiting()" in worker
     assert "fetch(event.request)" in worker
-    assert manifest["start_url"] == "/?ui=9"
+    assert manifest["start_url"] == "/?ui=11"
     assert "main().catch(showStartupError)" in app_js
     assert "sessionStorage.setItem" in app_js
-    assert '.register("/sw.js?v=9"' in app_js
+    assert '.register("/sw.js?v=11"' in app_js
     assert "?." not in app_js
+
+
+def test_web_work_recovery_is_installed_once_at_startup():
+    app_js = (PROJECT_ROOT / "src" / "glaceon_companion" / "static" / "app.js").read_text(encoding="utf-8")
+    sending = app_js[app_js.index("async function sendChat("):app_js.index("function attachmentExtension")]
+    startup = app_js[app_js.index("async function main()"):app_js.index("async function syncWorkProgress()")]
+    assert "setInterval(" not in sending
+    assert "await syncWorkProgress().catch" in startup
+    assert startup.count("setInterval(() => { syncWorkProgress().catch") == 1
+    assert 'id="stop-work"' in (PROJECT_ROOT / "src" / "glaceon_companion" / "static" / "index.html").read_text(encoding="utf-8")
 
 
 def test_static_chat_requires_an_explicit_conversation_before_uploading():

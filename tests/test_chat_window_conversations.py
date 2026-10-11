@@ -853,6 +853,22 @@ def _preview_image_bytes():
     return output.getvalue()
 
 
+def test_remote_work_progress_blocks_and_releases_desktop_composer(conversation_window):
+    window, service, _ = conversation_window
+    row = {"id": "job", "conversation_id": window.current_conversation_id,
+           "status": "running", "calls": 2, "last_action": "calculate"}
+    service.work_tasks = SimpleNamespace(list=lambda conversation_id: [row])
+    window.on_work_progress(row)
+    assert not window.input.isEnabled()
+    assert not window.send_button.isEnabled()
+    assert window.stop_work_button.isEnabled()
+    row["status"] = "completed"
+    window.on_work_progress(row)
+    assert window.input.isEnabled()
+    assert window.send_button.isEnabled()
+    assert not window.stop_work_button.isEnabled()
+
+
 def test_sent_image_is_visible_before_reply_without_consuming_upload(conversation_window):
     from glaceon_companion.attachments import AttachmentStore
 

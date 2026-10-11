@@ -36,6 +36,7 @@ src/glaceon_companion/state.py
 src/glaceon_companion/temporal.py
 src/glaceon_companion/ui.py
 src/glaceon_companion/web_reader.py
+src/glaceon_companion/work_tasks.py
 src/glaceon_companion.egg-info/PKG-INFO
 src/glaceon_companion.egg-info/SOURCES.txt
 src/glaceon_companion.egg-info/dependency_links.txt
@@ -86,4 +87,5 @@ tests/test_snowflake_icon.py
 tests/test_sprites.py
 tests/test_state.py
 tests/test_temporal_grounding.py
+tests/test_work_tasks.py
 tests/test_youtube_browser_routing.py

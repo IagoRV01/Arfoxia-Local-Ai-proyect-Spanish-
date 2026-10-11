@@ -3,6 +3,7 @@ import { File } from 'expo-file-system';
 
 import { conversationAttachmentSource } from './conversations';
 import { MODEL_MODE_ENDPOINT, modelModeRequest } from './modelMode';
+import { waitForWorkTask, type WorkTask } from './workTasks';
 import type {
   ActionResult,
   AttachmentInfo,
@@ -143,26 +144,40 @@ export class ArfoxiaApi {
     });
   }
 
-  chat(
+  async chat(
     message: string,
     attachmentIds: string[],
     options: {
       conversationId: string;
       clientMessageId?: string;
       researchMode?: boolean;
+      onProgress?: (task: WorkTask) => void;
     },
   ): Promise<ChatResponse> {
-    return this.request<ChatResponse>('/api/chat', {
+    const task = await this.request<WorkTask>('/api/tasks', {
       method: 'POST',
       body: {
         message,
         attachment_ids: attachmentIds,
         conversation_id: options.conversationId,
-        client_message_id: options.clientMessageId,
+        client_message_id: options.clientMessageId ?? `work-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         research_mode: options.researchMode,
       },
-      timeoutMs: 1_800_000,
+      timeoutMs: 20_000,
     });
+    return waitForWorkTask(task, id => this.workTask(id), options.onProgress);
+  }
+
+  workTask(id: string): Promise<WorkTask> {
+    return this.request<WorkTask>(`/api/tasks/${encodeURIComponent(id)}`);
+  }
+
+  workTasks(conversationId: string): Promise<{ tasks: WorkTask[] }> {
+    return this.request<{tasks: WorkTask[]}>(`/api/tasks?conversation_id=${encodeURIComponent(conversationId)}`);
+  }
+
+  stopWorkTask(id: string): Promise<WorkTask> {
+    return this.request<WorkTask>(`/api/tasks/${encodeURIComponent(id)}/stop`, {method:'POST'});
   }
 
   listConversations(

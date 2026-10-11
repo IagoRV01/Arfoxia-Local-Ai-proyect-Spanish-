@@ -19,6 +19,7 @@ const state = {
   conversationBusy: false,
   pendingAttachments: [],
   chatBusy: false,
+  workTaskId: null,
   nextAttachmentKey: 1,
 };
 const $ = (selector) => document.querySelector(selector);
@@ -154,7 +155,7 @@ function addSources(sources = []) {
 
 function updateChatControls() {
   const selectionMissing = !state.selectedConversationId;
-  const blocked = state.chatBusy || state.conversationBusy;
+  const blocked = state.chatBusy || state.conversationBusy || Boolean(state.workTaskId);
   const select = $("#conversation-select");
   const create = $("#new-conversation-button");
   const input = $("#message");
@@ -369,15 +370,32 @@ async function sendChat(message, conversationId) {
   ].filter(Boolean).join("\n");
   addMessage(visibleMessage, true);
   setChatStatus(attachments.length ? "Arfoxia está revisando el mensaje y los archivos…" : "Arfoxia está pensando…");
-  const response = await api("/api/chat", {
+  const response = await api("/api/tasks", {
     method: "POST",
     body: {
       message,
       attachment_ids: attachmentIds,
       conversation_id: conversationId,
+      client_message_id: `web-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     },
   });
-  const result = await response.json();
+  let task = await response.json();
+  state.workTaskId = task.id;
+  $("#stop-work").classList.remove("hidden");
+  let result;
+  try {
+    while (["queued", "running", "cancelling"].includes(task.status)) {
+      setChatStatus(`Trabajo ${task.status} · ${task.calls} llamadas · ${task.last_action || "pensando"}`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      task = await (await api(`/api/tasks/${encodeURIComponent(task.id)}`)).json();
+    }
+    if (!task.result) task = await (await api(`/api/tasks/${encodeURIComponent(task.id)}`)).json();
+    if (!task.result) throw new Error(task.message || "Trabajo detenido. Revisa el historial antes de continuar.");
+    result = task.result;
+  } finally {
+    state.workTaskId = null;
+    $("#stop-work").classList.add("hidden");
+  }
   const responseConversationId =
     result.conversation_id ||
     (result.conversation && result.conversation.id) ||
@@ -583,6 +601,9 @@ async function main() {
     });
   });
   $("#attach-button").addEventListener("click", () => $("#attachment-input").click());
+  $("#stop-work").addEventListener("click", () => {
+    if (state.workTaskId) api(`/api/tasks/${encodeURIComponent(state.workTaskId)}/stop`, {method:"POST"}).catch(showError);
+  });
   $("#attachment-input").addEventListener("change", (event) => {
     addAttachments(event.target.files);
     event.target.value = "";
@@ -591,7 +612,7 @@ async function main() {
     event.preventDefault();
     const input = $("#message");
     const text = input.value.trim();
-    if (state.chatBusy) return;
+    if (state.chatBusy || state.workTaskId) return;
     const conversationId = state.selectedConversationId;
     if (!conversationId) {
       setChatStatus(
@@ -636,10 +657,32 @@ async function main() {
     );
     updateChatControls();
   }
+  await syncWorkProgress().catch(() => {});
+  setInterval(() => { syncWorkProgress().catch(() => {}); }, 4000);
   setInterval(() => {
     refresh();
     loadConversations().catch(() => {});
   }, 60000);
+}
+
+async function syncWorkProgress() {
+  if (state.chatBusy || !state.token || !state.selectedConversationId) return;
+  const conversationId = state.selectedConversationId;
+  const payload = await (await api(`/api/tasks?conversation_id=${encodeURIComponent(conversationId)}`)).json();
+  if (state.selectedConversationId !== conversationId || state.chatBusy) return;
+  const previous = state.workTaskId;
+  const task = payload.tasks.find(row => ["queued", "running", "cancelling"].includes(row.status));
+  state.workTaskId = task ? task.id : null;
+  $("#stop-work").classList.toggle("hidden", !task);
+  updateChatControls();
+  if (task) setChatStatus(`Trabajo ${task.status} · ${task.calls} llamadas · ${task.last_action || "pensando"}`);
+  else if (previous) {
+    const finished = await (await api(`/api/tasks/${encodeURIComponent(previous)}`)).json();
+    if (state.selectedConversationId === conversationId) {
+      if (finished.result) addMessage(finished.result.message);
+      setChatStatus(finished.message || "Trabajo terminado; revisa el resultado en el chat.");
+    }
+  }
 }
 
 function showError(error) { addMessage(`No he podido completar eso: ${error.message}`); }
@@ -651,7 +694,7 @@ function showStartupError(error) {
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker
-    .register("/sw.js?v=9", { scope: "/" })
+    .register("/sw.js?v=11", { scope: "/" })
     .then((registration) => registration.update())
     .catch(() => {});
 }

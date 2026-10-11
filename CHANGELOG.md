@@ -6,6 +6,45 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Añadido — Trabajo continuo — 2026-10-11
+
+- Motor de tareas en segundo plano para PC, Expo Go y web, en el mismo chat,
+  con estado/progreso compartidos y botón Detener trabajo. El móvil consulta
+  con peticiones cortas: cerrar Expo Go o perder conexión no cancela al PC.
+- Cierre explícito con resumen y comprobación real posterior a las escrituras;
+  las promesas no cuentan como tareas terminadas. Preguntas importantes con
+  motivo concreto, sin el habitual «¿quieres que siga?»; respuestas habituales
+  retoman el objetivo pendiente en el mismo chat.
+- Se supera el antiguo límite de seis rondas conservando el objetivo y grupos
+  recientes de herramientas. Guardas de tres pasos idénticos/sin progreso,
+  escritura duplicada y emergencia a dos horas/240 llamadas: nunca se informa
+  éxito al activarse una guarda. Máximo cuatro trabajos activos/en cola.
+- Identidad idempotente, progreso privado persistente sin código/credenciales,
+  cancelación cooperativa y recuperación de resultados guardados. Tras reinicio
+  se marca la interrupción, sin repetir órdenes automáticamente. Un registro
+  dañado se conserva y bloquea nuevos encargos hasta revisarlo.
+- API autenticada de tareas y consulta/detención; contrato síncrono anterior
+  mantenido. No se amplían permisos ni se habilita ejecución del PC desde una
+  búsqueda web/adjunto. Se mantiene el modelo elegido, sin descargarlo por una
+  generación cancelada ni hacer fallback automático en trabajo continuo.
+- Pruebas de más de seis rondas, comprobación posterior, promesas, permisos,
+  decisiones, cancelación durante generación/herramienta, límites, corrupción,
+  deduplicación y reinicio. TypeScript comprueba los clientes y prueba el sondeo
+  sin reenvíos. Revisión de caché web 11 para cargar la interfaz nueva.
+- La prueba con el modelo local detectó y corrigió el enrutamiento de
+  «comprueba con calculate»: ya no fuerza una búsqueda web. Un fallo de
+  herramienta invalida la comprobación anterior y exige verificar de nuevo,
+  evitando cerrar con éxito después de una acción fallida. «Hazme», «créame»,
+  «necesito que» y encargos de configuración también activan la continuidad.
+- Validación real en Normal (Qwen 3.5 9B): dos llamadas correctas a calculate
+  para obtener 60 y 12, cierre explícito y petición duplicada sin duplicar
+  ejecución, en el mismo chat. Se conserva el informe del intento inicial
+  fallido y el del reintento corregido únicamente en el PC, fuera del repositorio.
+- Recuperación web instalada una sola vez al iniciar, también tras recargar
+  la página sin enviar otro mensaje. El PC bloquea y libera el editor también
+  si la tarea se inició desde el móvil. Validación: 687 pruebas Python, 55 pruebas
+  móviles, TypeScript y sintaxis JavaScript correctos.
+
 ### Corregido — 2026-10-11
 
 - Recuperación de generaciones Dual vacías o atascadas en razonamiento: se

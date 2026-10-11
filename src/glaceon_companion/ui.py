@@ -99,7 +99,7 @@ from .sprites import SpriteLibrary
 from .pet_motion import EXPRESSION_LABELS, direction_for_delta, expression_choices, step_towards
 
 
-MOBILE_UI_REVISION = "10"
+MOBILE_UI_REVISION = "11"
 
 SAFE_MARKDOWN_FEATURES = (
     QTextDocument.MarkdownFeature.MarkdownDialectGitHub
@@ -397,6 +397,7 @@ class QuickChatPopup(QWidget):
 
 
 class Bridge(QObject):
+    work_progress = Signal(object)
     chat_ready = Signal(object)
     chat_error = Signal(object)
     authorization_ready = Signal(object)
@@ -422,15 +423,28 @@ class Bridge(QObject):
         research_mode: bool = False,
     ) -> str:
         request_id = uuid.uuid4().hex
-        future = self.pool.submit(
-            asyncio.run,
-            self.service.chat(
-                text,
-                attachment_ids=attachment_ids or [],
-                conversation_id=conversation_id,
-                research_mode=research_mode,
-            ),
-        )
+        try:
+            task = self.service.start_work_task(text, conversation_id=conversation_id,
+                attachment_ids=attachment_ids or [], client_message_id=request_id,
+                research_mode=research_mode, origin="desktop")
+        except ValueError as exc:
+            QTimer.singleShot(0, lambda message=str(exc): self.chat_error.emit({"request_id": request_id, "conversation_id": conversation_id, "message": message}))
+            return request_id
+        request_id = task["id"]
+        def wait_for_work():
+            previous = None
+            while True:
+                row = self.service.get_work_task(request_id)
+                progress = (row["status"], row["rounds"], row["calls"], row["last_action"])
+                if progress != previous:
+                    self.work_progress.emit(row)
+                    previous = progress
+                if row["status"] not in {"queued", "running", "cancelling"}:
+                    if row.get("result"):
+                        return row["result"]
+                    raise ValueError(row.get("message") or "La tarea se ha detenido; revisa el chat.")
+                time.sleep(1)
+        future = self.pool.submit(wait_for_work)
 
         def finished(item: Any) -> None:
             try:
@@ -818,6 +832,9 @@ class ChatWindow(QDialog):
         attachment_buttons = QHBoxLayout()
         attachment_buttons.addWidget(self.attach_button)
         attachment_buttons.addWidget(self.clear_attachments_button)
+        self.stop_work_button = QPushButton("Detener trabajo")
+        self.stop_work_button.setEnabled(False)
+        attachment_buttons.addWidget(self.stop_work_button)
         attachment_buttons.addStretch(1)
         title_row = QHBoxLayout()
         title_row.addWidget(self.conversation_title, 1)
@@ -829,6 +846,10 @@ class ChatWindow(QDialog):
         layout.addWidget(self.load_older_button)
         layout.addWidget(self.transcript, 1)
         layout.addWidget(self.attachment_label)
+        self.work_label = QLabel("Trabajo continuo: los encargos avanzan hasta finalizar o necesitar una decisión importante.")
+        self.work_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.work_label.setWordWrap(True)
+        layout.addWidget(self.work_label)
         layout.addLayout(attachment_buttons)
         layout.addLayout(buttons)
         layout.addWidget(self.confirm_button)
@@ -861,6 +882,10 @@ class ChatWindow(QDialog):
         self.gpu_button.clicked.connect(self.show_gpu_manager)
         self.bridge.chat_ready.connect(self.on_reply)
         self.bridge.chat_error.connect(self.on_error)
+        progress_signal = getattr(self.bridge, "work_progress", None)
+        if progress_signal is not None:
+            progress_signal.connect(self.on_work_progress)
+        self.stop_work_button.clicked.connect(self.stop_work)
         self.bridge.authorization_ready.connect(self.on_authorization_result)
         self.bridge.authorization_error.connect(self.on_authorization_error)
         model_mode_ready = getattr(self.bridge, "model_mode_ready", None)
@@ -1479,6 +1504,9 @@ class ChatWindow(QDialog):
 
     def handle_service_event(self, event: dict[str, Any]) -> None:
         event_type = str(event.get("type") or "")
+        if event_type == "work_progress":
+            self.on_work_progress(event)
+            return
         if event_type not in {
             "chat_received",
             "speech",
@@ -1505,14 +1533,32 @@ class ChatWindow(QDialog):
             reload_current=conversation_id == current_id,
         )
 
+    def on_work_progress(self, row) -> None:
+        if row.get("conversation_id") == self.current_conversation_id:
+            active = row.get("status") in {"queued", "running", "cancelling"}
+            self.stop_work_button.setEnabled(active)
+            self.work_label.setText(f"Trabajo: {row.get('status')} · {row.get('calls', 0)} llamadas · {row.get('last_action', '')}")
+            self._update_composer_state()
+
+    def stop_work(self) -> None:
+        tasks = getattr(self.service, "work_tasks", None)
+        if tasks and self.current_conversation_id:
+            for row in tasks.list(self.current_conversation_id):
+                if row["status"] in {"queued", "running", "cancelling"}:
+                    self.on_work_progress(tasks.stop(row["id"]))
+
     def _update_composer_state(self) -> None:
         conversation_id = self.current_conversation_id
+        tasks = getattr(self.service, "work_tasks", None)
+        active_task = next((row for row in tasks.list(conversation_id) if row["status"] in {"queued", "running", "cancelling"}), None) if tasks and conversation_id else None
+        self.stop_work_button.setEnabled(bool(active_task))
         awaiting_reply = bool(
             conversation_id
             and conversation_id in self.pending_requests.values()
         )
         blocked = (
             not conversation_id
+            or active_task is not None
             or awaiting_reply
             or self.pending_authorization is not None
         )

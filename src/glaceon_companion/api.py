@@ -55,6 +55,10 @@ class InteractionRequest(BaseModel):
     kind: str
 
 
+class WorkRequest(ChatRequest):
+    client_message_id: str = Field(min_length=8, max_length=128, pattern=r"^[A-Za-z0-9_.:-]+$")
+
+
 class ConversationCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -144,6 +148,7 @@ def create_api(service: CompanionService, token: str, static_dir: Path) -> FastA
             "physical_interactions": True,
             "privileged_actions": True,
             "conversations": True,
+            "continuous_work": True,
             "cross_chat_memory": service.config.cross_chat_memory_enabled,
             "game_streaming": service.config.game_streaming_enabled,
             "chat_storage_limit_gb": min(
@@ -189,6 +194,37 @@ def create_api(service: CompanionService, token: str, static_dir: Path) -> FastA
             return service.list_conversations(limit=limit, cursor=cursor)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/tasks", dependencies=[auth], status_code=202)
+    async def start_work(request: WorkRequest) -> dict[str, Any]:
+        try:
+            return service.start_work_task(request.message, conversation_id=request.conversation_id,
+                client_message_id=request.client_message_id, attachment_ids=request.attachment_ids,
+                research_mode=request.research_mode, origin="api")
+        except (ValueError, AttachmentError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/tasks", dependencies=[auth])
+    async def list_work(conversation_id: str) -> dict[str, Any]:
+        try:
+            service.get_conversation(conversation_id)
+            return {"tasks": service.work_tasks.list(conversation_id)}
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/tasks/{job_id}", dependencies=[auth])
+    async def get_work(job_id: str) -> dict[str, Any]:
+        try:
+            return service.get_work_task(job_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/tasks/{job_id}/stop", dependencies=[auth])
+    async def stop_work(job_id: str) -> dict[str, Any]:
+        try:
+            return service.work_tasks.stop(job_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.post(
         "/api/conversations",
