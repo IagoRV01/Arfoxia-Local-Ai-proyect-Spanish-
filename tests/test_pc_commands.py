@@ -25,6 +25,18 @@ def test_invalid_command_is_rejected(args):
         validate_command(args)
 
 
+def test_large_command_is_rejected_with_file_tool_recovery_guidance():
+    with pytest.raises(ValueError, match="file_operation"):
+        validate_command({"command": "x" * 16001})
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows only")
+def test_encoded_command_cannot_exceed_windows_limit_before_process_start(monkeypatch):
+    monkeypatch.setattr("glaceon_companion.pc_commands.subprocess.Popen", lambda *a, **kw: pytest.fail("Must not start"))
+    with pytest.raises(ValueError, match="límite de Windows"):
+        run_command({"command": "#" + "x" * 13000})
+
+
 def test_command_disabled_by_default_even_after_validated_dispatch(tmp_path, monkeypatch):
     dispatcher = ActionDispatcher(CompanionConfig(), Database(tmp_path / "test.db"), tmp_path, Queue())
     monkeypatch.setattr("glaceon_companion.actions.run_command", lambda _: pytest.fail("Must not run"))

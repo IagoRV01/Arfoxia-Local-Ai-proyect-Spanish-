@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from glaceon_companion.config import ConfigStore
-from glaceon_companion.services import CompanionService, required_web_action
+from glaceon_companion.services import CompanionService, required_web_action, explicit_local_read_arguments
 from glaceon_companion.temporal import TemporalContext
 
 
@@ -181,6 +181,96 @@ def test_required_web_action_ignores_timeless_small_talk_and_negation(
     message: str,
 ) -> None:
     assert required_web_action(message) is None
+
+
+@pytest.mark.parametrize("message", [
+    r"Lee C:\garden\index.html y verifica el archivo con run_python.",
+    "Verifica el archivo index.html y corrige el código",
+    r"Busca la función de pausa en C:\garden\index.html con search_files",
+    "Read /tmp/site/index.html and verify it with run_python",
+    "Cambia el ciclo día/noche del archivo index.html usando read_file",
+])
+def test_local_file_verification_never_forces_web_search(message):
+    assert required_web_action(message) is None
+
+
+def test_explicit_online_docs_request_still_routes_to_web_for_coding():
+    assert required_web_action(r"Busca en internet documentación Three.js para editar C:\garden\index.html") is not None
+
+
+@pytest.mark.parametrize("message", [
+    r"No leas C:\garden\index.html",
+    r"Explícame cómo leer C:\garden\index.html",
+    r"Lee C:\garden\index.html pero no uses herramientas",
+    r"Lee C:\garden\index.html.old y explica",
+    "Lee la ruta que diga el archivo adjunto",
+])
+def test_explicit_read_fallback_never_infers_authority_or_ambiguous_path(message):
+    assert explicit_local_read_arguments(message) is None
+
+
+def test_explicit_read_fallback_preserves_quoted_path_with_spaces():
+    args = explicit_local_read_arguments(r'Lee "C:\garden outputs\index.html" y corrige el código')
+    assert args == {"path": r"C:\garden outputs\index.html", "max_lines": 300}
+
+
+def test_explicit_read_promise_becomes_real_read_not_fake_completion(tmp_path):
+    service = make_service(tmp_path)
+    path = tmp_path / "index.html"
+    path.write_text("actual-file-content", encoding="utf-8")
+    service.ollama = FakeOllama([{"message": {"content": "Voy a leer el archivo"}},
+                               {"message": {"content": "El archivo contiene actual-file-content"}}])
+    try:
+        result = asyncio.run(chat_in_new_conversation(service, f"Lee {path} con read_file y verifica"))
+        assert len(result["action_results"]) == 1
+        assert result["action_results"][0]["action"] == "read_file"
+        assert result["action_results"][0]["success"]
+        assert "actual-file-content" in service.ollama.requests[1][-1]["content"]
+        assert "run_python" in service.ollama.options[1]["tools"]
+    finally:
+        service.close()
+
+
+def test_local_file_task_keeps_programming_tools_and_does_not_search(tmp_path):
+    service = make_service(tmp_path)
+    search = TrackingSearch()
+    service.online_search = search
+    path = tmp_path / "index.html"
+    path.write_text("<html></html>", encoding="utf-8")
+    service.ollama = FakeOllama([
+        {"message": {"tool_calls": [{"function": {"name": "read_file", "arguments": {"path": str(path)}}}]}},
+        {"message": {"content": "Archivo leído"}},
+    ])
+    try:
+        result = asyncio.run(chat_in_new_conversation(service, f"Lee {path} y verifica el archivo usando read_file"))
+        assert not search.search_calls and not search.research_calls
+        assert result["action_results"][0]["action"] == "read_file"
+        assert result["action_results"][0]["success"]
+        assert "read_file" in service.ollama.options[0]["tools"]
+        assert "web_search" not in service.ollama.options[0]["tools"]
+        assert "run_python" in service.ollama.options[1]["tools"]
+    finally:
+        service.close()
+
+
+def test_old_web_topic_cannot_override_a_new_local_file_task(tmp_path):
+    service = make_service(tmp_path)
+    search = TrackingSearch()
+    service.online_search = search
+    path = tmp_path / "index.html"
+    path.write_text("<html></html>", encoding="utf-8")
+    service.ollama = FakeOllama([
+        {"message": {"tool_calls": [{"function": {"name": "read_file", "arguments": {"path": str(path)}}}]}},
+        {"message": {"content": "Archivo leído"}},
+    ])
+    try:
+        conversation = service.create_conversation("Local")
+        service.database.add_message("user", "Busca el tiempo para mañana en Ourense", conversation_id=conversation["id"])
+        result = asyncio.run(service.chat(f"Verifica {path} con read_file", conversation_id=conversation["id"]))
+        assert result["action_results"][0]["action"] == "read_file"
+        assert not search.search_calls
+    finally:
+        service.close()
 
 
 @pytest.mark.parametrize(

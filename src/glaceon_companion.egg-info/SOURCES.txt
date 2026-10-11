@@ -65,6 +65,7 @@ tests/test_desktop_interactions.py
 tests/test_developer_tools.py
 tests/test_dual_gpu.py
 tests/test_game_streaming.py
+tests/test_garden_benchmark.py
 tests/test_link_availability.py
 tests/test_markdown_regions.py
 tests/test_mobile_runtime.py

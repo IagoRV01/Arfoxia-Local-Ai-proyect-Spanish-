@@ -16,6 +16,10 @@ def validate_command(args: dict) -> tuple[str, Path, int]:
     if set(args) - {"command", "working_directory", "timeout_seconds"}:
         raise ValueError("Argumentos de PowerShell no admitidos.")
     command = args.get("command")
+    if isinstance(command, str) and len(command) > 16000:
+        raise ValueError("El comando supera 16000 caracteres. Para guardar un archivo grande "
+                         "usa file_operation con write_text/append_text; no incrustes todo su "
+                         "contenido en PowerShell. No se ha ejecutado el comando.")
     if not isinstance(command, str) or not command.strip() or len(command) > 16000 or "\0" in command:
         raise ValueError("El comando debe tener entre 1 y 16000 caracteres, sin NUL.")
     directory = args.get("working_directory", str(Path.home()))
@@ -53,8 +57,16 @@ def run_command(args: dict) -> dict:
               "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
               "$OutputEncoding = [Console]::OutputEncoding; " + command)
     encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+    arguments = [str(executable), "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded]
+    # CreateProcessW includes quoting and the terminating UTF-16 NUL in its
+    # 32,767-character limit. Base64 can exceed it even below the source limit.
+    command_units = len(subprocess.list2cmdline(arguments).encode("utf-16-le")) // 2 + 1
+    if command_units > 32767:
+        raise ValueError("El comando codificado supera el límite de Windows. Divídelo en "
+                         "pasos pequeños o usa file_operation write_text/append_text para "
+                         "archivos grandes. No se ha ejecutado el comando.")
     process = subprocess.Popen(
-        [str(executable), "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+        arguments,
         cwd=str(cwd), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT, shell=False,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),

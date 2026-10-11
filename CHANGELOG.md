@@ -6,8 +6,72 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Corregido — 2026-10-11
+
+- Recuperación de generaciones Dual vacías o atascadas en razonamiento: se
+  observa el flujo nativo y se reintenta una sola vez sin razonamiento cuando
+  no hay salida ni herramientas tras 8 000 caracteres internos o 120 segundos.
+  El modo extra high sigue siendo el predeterminado; la recuperación solo
+  afecta a la ejecución bloqueada y sus rondas de herramientas.
+- El reintento mantiene modelo, contexto, opciones de GPU y residencia
+  indefinida. No ejecuta acciones dos veces, no descarga Ollama ni cambia
+  permisos; el chat registra que hubo recuperación sin exponer razonamiento.
+- Un flujo interrumpido o malformado no puede ejecutar llamadas parciales.
+  Pruebas de agregación de fragmentos, recuperación finita, conversación única
+  y conservación de opciones/permisos.
+- El plazo también cubre servidores que no envían fragmentos mientras preparan
+  una llamada grande. Se desactiva al recibir texto visible o herramientas;
+  el flujo recuperado conserva el motivo hasta la respuesta final.
+- El harness registra las correcciones como iteraciones en el mismo chat,
+  con informes separados y el ID guardado antes de cada petición larga.
+- Las instrucciones de programación piden guardar primero una versión mínima
+  ejecutable y ampliarla en escrituras pequeñas, evitando proyectos enteros
+  que agotan la generación antes de crear el primer archivo.
+- El benchmark detectó además que los scripts extensos rechazados llenaban el
+  contexto de 32 768 tokens. Su contenido se resume únicamente en el historial
+  de llamadas ya procesadas; la herramienta recibe siempre los argumentos
+  completos y los archivos no se recortan. El modelo puede releer los archivos
+  reales. Un cierre vacío tras herramientas se informa como tarea incompleta.
+- La carpeta del benchmark debe estar fuera del programa, protegido por la
+  herramienta de archivos. Se corrigen el harness y su documentación en lugar
+  de permitir al modelo modificar Arfoxia. Se pide un cierre visible explícito
+  cuando terminan las herramientas, sin más llamadas ni éxito inventado.
+  Ese cierre conserva el orden nativo de Qwen: un único mensaje de sistema,
+  sin insertar nuevas instrucciones de sistema entre resultados de herramientas.
+  Si ese cierre todavía usa razonamiento extra high, también tiene el plazo de
+  recuperación por falta de progreso, aunque ya no permita llamadas nuevas.
+- «Verifica el archivo», búsquedas en rutas locales y menciones a herramientas
+  de programación ya no fuerzan una consulta web ni ocultan las herramientas
+  de archivos. Un tema web anterior no puede sustituir una nueva tarea local.
+  Estas tareas usan un conjunto local acotado, sin búsqueda/lectura web; las
+  peticiones explícitas de documentación en Internet conservan su búsqueda.
+- El reto detectó un comando PowerShell demasiado largo: se mantiene su límite
+  seguro y el error indica usar write_text/append_text para archivos extensos,
+  en lugar de repetir un comando que Windows no puede aceptar.
+- La misma guía se aplica a Python demasiado extenso. Ambos rechazos mantienen
+  sus límites y confirman que no se ejecutó el contenido; el harness conserva
+  también un ID de petición único para evitar duplicados al recuperar resultados.
+- La ejecución comprueba también el tamaño UTF-16 de la línea codificada antes
+  de crear un proceso, evitando el error de Windows por longitud aun cuando el
+  texto original no supera 16 000 caracteres. No se cambian políticas del sistema.
+- Los errores de Python conservan la excepción y las líneas útiles sin volcar
+  el transporte Base64 ni miles de indicadores de columna al contexto del modelo.
+  search_files admite también un único archivo explícito sin recorrer sus vecinos;
+  conserva límites de tamaño, resultados y exclusión de binarios.
+- Una orden positiva explícita «Lee C:\\...archivo» que el modelo conteste
+  solo con una promesa ejecuta esa lectura concreta y continúa con el contenido
+  real. Es una recuperación de solo lectura: no inventa rutas, no escribe ni
+  ejecuta código automáticamente, y no se activa por adjuntos o negaciones.
+
 ### Añadido — 2026-10-11
 
+- Resultado final guiado del jardín: HTML real creado por Qwen 27B/Dual, carga
+  sin errores, entidades animadas, pausa, cámara/zoom, ciclo día/noche y controles
+  a 390 × 844 comprobados en Chromium. Se registra como funcionamiento básico
+  iterativo, no one-shot ni puntuación oficial; incluye limitaciones visuales y
+  dos defectos residuales del artefacto, sin corregirlo manualmente ni ocultarlos.
+  La última fase tardó 358,91 s con siete de ocho llamadas correctas. Suite final
+  de las correcciones de Arfoxia: 654 pruebas aprobadas, una advertencia.
 - Seis herramientas útiles para trabajo local y programación: listar carpetas,
   leer texto con números de línea, buscar texto en un árbol de trabajo acotado,
   calculadora sin ejecución arbitraria, Python con salida/tiempo limitados y

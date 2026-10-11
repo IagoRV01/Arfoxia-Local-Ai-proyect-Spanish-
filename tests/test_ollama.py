@@ -29,6 +29,29 @@ def tool_schema(name):
     )
 
 
+def test_coding_prompt_requires_incremental_artifacts_not_chat_only_code():
+    from glaceon_companion.ollama_client import build_system_prompt
+    prompt = build_system_prompt(CompanionConfig(), "bien")
+    assert "versión mínima ejecutable" in prompt
+    assert "8000 caracteres de código por llamada" in prompt
+    assert "bloque de código en el chat" in prompt
+
+
+def test_final_tool_reply_explicitly_closes_workflow(monkeypatch):
+    import httpx
+    requests = []
+    def respond(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(200, json={"message": {"content": "Listo"}})
+    original = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: original(transport=httpx.MockTransport(respond), **kw))
+    asyncio.run(OllamaClient(CompanionConfig()).chat([
+        {"role": "user", "content": "Calcula"}, {"role": "tool", "content": "Resultado: 4"}], "bien", tools=False))
+    assert "tools" not in requests[0]
+    assert "No emitas más llamadas" in requests[0]["messages"][0]["content"]
+    assert [message["role"] for message in requests[0]["messages"]] == ["system", "user", "tool"]
+
+
 def test_parse_tool_call_accepts_json_arguments():
     message = {
         "tool_calls": [

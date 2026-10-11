@@ -38,6 +38,38 @@ def test_calculator_and_binary_files(tmp_path):
         validate_python({"code": "print(1)", "working_directory": str(tmp_path), "timeout_seconds": 121})
 
 
+def test_large_python_input_recommends_file_tool_instead_of_increasing_limit():
+    with pytest.raises(ValueError, match="file_operation"):
+        validate_python({"code": "x" * 10001})
+
+
+def test_search_accepts_one_explicit_file_without_scanning_neighbors(tmp_path):
+    target = tmp_path / "index.html"
+    target.write_text("needle\nneedle\nend", encoding="utf-8")
+    (tmp_path / "other.html").write_text("needle", encoding="utf-8")
+    result = local_tool("search_files", {"path": str(target), "query": "NEEDLE", "limit": 1})
+    assert result["truncated"] and len(result["matches"]) == 1
+    assert result["matches"][0]["path"] == str(target.resolve())
+    target.write_bytes(b"\0needle")
+    assert not local_tool("search_files", {"path": str(target), "query": "needle"})["matches"]
+
+
+def test_python_failure_reports_exception_without_encoded_transport_source(tmp_path):
+    import os
+    import base64
+    from glaceon_companion.developer_tools import run_python
+    if os.name != "nt":
+        pytest.skip("Windows command transport")
+    code = "owner_private_marker = 1\nraise ValueError('observed failure')"
+    result = run_python({"code": code, "working_directory": str(tmp_path)})
+    assert result["exit_code"] != 0
+    assert "ValueError: observed failure" in result["stdout"]
+    assert "<arfoxia>" in result["stdout"]
+    assert base64.b64encode(code.encode()).decode() not in result["stdout"]
+    assert "owner_private_marker" not in result["stdout"]
+    assert len(result["stdout"]) < 1000
+
+
 def test_python_uses_existing_sensitive_policy_and_redacts_source(tmp_path):
     instance = dispatcher(tmp_path)
     assert instance.is_sensitive("run_python")
@@ -153,5 +185,73 @@ def test_empty_generation_reports_failure_instead_of_greeting(tmp_path):
         assert result["generation_empty"] and result["generation_limit_reached"]
         assert "no se ha completado" in result["message"]
         assert "private reasoning" not in str(result)
+    finally:
+        service.close()
+
+
+def test_recovery_keeps_one_chat_and_execution_mode_for_followup(tmp_path):
+    service = make_service(tmp_path)
+    recovered = call("calculate", {"expression": "2+2"})
+    recovered.update(execution_recovery=True, recovery_reason="reasoning_without_progress")
+    service.ollama = FakeOllama([recovered, call("calculate", {"expression": "4*2"}),
+                                {"message": {"content": "Resultado: 8"}}])
+    try:
+        result = asyncio.run(chat_in_new_conversation(service, "Calcula dos más dos por dos"))
+        assert result["execution_recovery"] is True
+        assert result["recovery_reason"] == "reasoning_without_progress"
+        assert all(option["execution_recovery"] for option in service.ollama.options[1:])
+        assert len(result["action_results"]) == 2
+        assert len(service.database.list_conversations()["items"]) == 1
+    finally:
+        service.close()
+
+
+def test_late_recovery_reason_survives_remaining_tool_rounds(tmp_path):
+    service = make_service(tmp_path)
+    recovered = call("calculate", {"expression": "3+3"})
+    recovered.update(execution_recovery=True, recovery_reason="generation_without_progress")
+    service.ollama = FakeOllama([call("calculate", {"expression": "1+1"}),
+                                call("calculate", {"expression": "2+2"}), recovered,
+                                {"message": {"content": "Resultado: 6"}, "execution_recovery": True}])
+    try:
+        result = asyncio.run(chat_in_new_conversation(service, "Calcula unos resultados"))
+        assert result["execution_recovery"] is True
+        assert result["recovery_reason"] == "generation_without_progress"
+        assert service.ollama.options[-1]["execution_recovery"] is True
+        assert len(result["action_results"]) == 3
+    finally:
+        service.close()
+
+
+def test_large_executed_source_is_compacted_only_in_model_history(tmp_path):
+    service = make_service(tmp_path)
+    service.config.require_action_password = False
+    source = "a" * 5000
+    destination = tmp_path / "garden.html"
+    first = call("file_operation", {"operation": "write_text", "path": str(destination), "content": source})
+    first["message"]["thinking"] = "private reasoning"
+    service.ollama = FakeOllama([first, {"message": {"content": "Archivo guardado"}}])
+    try:
+        result = asyncio.run(chat_in_new_conversation(service, "Crea el archivo solicitado"))
+        assert result["action_results"][0]["success"]
+        assert destination.read_text() == source
+        history_assistant = service.ollama.requests[1][-2]
+        assert "thinking" not in history_assistant
+        compact = history_assistant["tool_calls"][0]["function"]["arguments"]["content"]
+        assert len(compact) < 500 and "omitida SOLO del contexto" in compact
+        assert first["message"]["tool_calls"][0]["function"]["arguments"]["content"] == source
+    finally:
+        service.close()
+
+
+def test_empty_tool_followup_does_not_claim_task_completion(tmp_path):
+    service = make_service(tmp_path)
+    service.ollama = FakeOllama([call("calculate", {"expression": "2+2"}),
+                                {"message": {"content": ""}, "done_reason": "length"}])
+    try:
+        result = asyncio.run(chat_in_new_conversation(service, "Calcula y termina el programa"))
+        assert result["generation_empty"] and result["generation_limit_reached"]
+        assert "incompleta" in result["message"]
+        assert result["action_results"][0]["success"]
     finally:
         service.close()

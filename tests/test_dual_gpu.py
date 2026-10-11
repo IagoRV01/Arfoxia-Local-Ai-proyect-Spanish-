@@ -177,3 +177,113 @@ def test_dual_start_refuses_game_without_starting_process(monkeypatch):
     with pytest.raises(RuntimeError, match="juegos activos"):
         asyncio.run(runtime.start("unused.exe"))
     assert runtime.process is None
+
+
+@pytest.mark.parametrize("content_type", ["application/x-ndjson", "application/json"])
+def test_stalled_reasoning_retries_once_without_unloading_or_changing_gpu_options(monkeypatch, content_type):
+    import json
+    client = OllamaClient(CompanionConfig())
+    monkeypatch.setattr(DualGpuRuntime, "owned", property(lambda _: True))
+    requests = []
+    def respond(request):
+        payload = json.loads(request.content)
+        requests.append(payload)
+        if len(requests) == 1:
+            chunk = {"message": {"thinking": "private" * 1200}, "done": False}
+            return httpx.Response(200, text=json.dumps(chunk) + "\n", headers={"content-type": content_type})
+        return httpx.Response(200, json={"message": {"content": "", "tool_calls": [
+            {"function": {"name": "calculate", "arguments": {"expression": "2+2"}}}]}, "done": True})
+    original = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: original(transport=httpx.MockTransport(respond), **kw))
+    result = asyncio.run(client.chat([{"role": "user", "content": "Calcula"}], "bien",
+                                    selection=client._dual_selection(snapshot(client.config))))
+    assert len(requests) == 2
+    assert requests[0]["stream"] is True
+    assert requests[0]["think"] == "high"
+    assert requests[1]["think"] is False
+    assert requests[0]["options"] == requests[1]["options"]
+    assert all(request["keep_alive"] == -1 for request in requests)
+    assert result["execution_recovery"] is True
+    assert result["recovery_reason"] == "reasoning_without_progress"
+    assert "thinking" not in result["message"]
+    assert "private" not in json.dumps(result)
+
+
+def test_streamed_tools_are_assembled_and_never_retried(monkeypatch):
+    import json
+    client = OllamaClient(CompanionConfig())
+    monkeypatch.setattr(DualGpuRuntime, "owned", property(lambda _: True))
+    requests = []
+    call = {"function": {"name": "calculate", "arguments": {"expression": "2+2"}}}
+    chunks = [{"message": {"content": "Voy "}}, {"message": {"content": "a calcular", "tool_calls": [call]}},
+              {"message": {"thinking": "x" * 9000}, "done": True, "eval_count": 42}]
+    def respond(request):
+        requests.append(request)
+        return httpx.Response(200, text="\n".join(json.dumps(chunk) for chunk in chunks),
+                              headers={"content-type": "application/x-ndjson"})
+    original = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: original(transport=httpx.MockTransport(respond), **kw))
+    result = asyncio.run(client.chat([{"role": "user", "content": "Calcula"}], "bien",
+                                    selection=client._dual_selection(snapshot(client.config))))
+    assert len(requests) == 1
+    assert result["message"] == {"role": "assistant", "content": "Voy a calcular", "tool_calls": [call]}
+    assert result["eval_count"] == 42
+
+
+def test_empty_recovery_is_bounded_even_if_retry_also_empty(monkeypatch):
+    import json
+    client = OllamaClient(CompanionConfig())
+    monkeypatch.setattr(DualGpuRuntime, "owned", property(lambda _: True))
+    requests = []
+    def respond(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(200, json={"message": {"content": ""}, "done_reason": "length"})
+    original = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: original(transport=httpx.MockTransport(respond), **kw))
+    result = asyncio.run(client.chat([], "bien", tools=False,
+                                    selection=client._dual_selection(snapshot(client.config))))
+    assert len(requests) == 2
+    assert result["message"]["content"] == ""
+    assert result["recovery_reason"] == "empty_generation"
+    requests.clear()
+    asyncio.run(client.chat([], "bien", tools=False, execution_recovery=True,
+                            selection=client._dual_selection(snapshot(client.config))))
+    assert len(requests) == 1 and requests[0]["think"] is False
+
+
+@pytest.mark.parametrize("body", ['{"message":{"tool_calls":[{}]}}\n', 'invalid\n'])
+def test_incomplete_or_invalid_stream_never_returns_a_tool_call(monkeypatch, body):
+    client = OllamaClient(CompanionConfig())
+    monkeypatch.setattr(DualGpuRuntime, "owned", property(lambda _: True))
+    original = httpx.AsyncClient
+    transport = httpx.MockTransport(lambda _: httpx.Response(200, text=body,
+                                    headers={"content-type": "application/x-ndjson"}))
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: original(transport=transport, **kw))
+    with pytest.raises(httpx.HTTPError):
+        asyncio.run(client.chat([], "bien", selection=client._dual_selection(snapshot(client.config))))
+
+
+@pytest.mark.parametrize("closing_workflow", [False, True])
+def test_no_stream_progress_has_real_deadline_and_safe_retry(monkeypatch, closing_workflow):
+    import json
+    client = OllamaClient(CompanionConfig())
+    monkeypatch.setattr(DualGpuRuntime, "owned", property(lambda _: True))
+    monkeypatch.setattr(OllamaClient, "TOOL_PROGRESS_TIMEOUT_SECONDS", 0.01)
+    class SilentStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            await asyncio.sleep(1)
+            yield b'{"message":{"content":"too late"},"done":true}\n'
+    requests = []
+    def respond(request):
+        requests.append(json.loads(request.content))
+        if len(requests) == 1:
+            return httpx.Response(200, stream=SilentStream(), headers={"content-type": "application/x-ndjson"})
+        return httpx.Response(200, json={"message": {"content": "Recovered"}, "done": True})
+    original = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: original(transport=httpx.MockTransport(respond), **kw))
+    messages = [{"role": "tool", "content": "Result"}] if closing_workflow else []
+    result = asyncio.run(client.chat(messages, "bien", tools=not closing_workflow,
+                                    selection=client._dual_selection(snapshot(client.config))))
+    assert len(requests) == 2 and requests[1]["think"] is False
+    assert result["recovery_reason"] == "generation_without_progress"
+    assert result["message"]["content"] == "Recovered"

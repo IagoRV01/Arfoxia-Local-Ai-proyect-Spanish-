@@ -467,6 +467,43 @@ def _web_action_arguments(
     }
 
 
+def local_file_task(text: str) -> bool:
+    """Concrete local files/tools, unless the owner explicitly requests web."""
+    folded = _fold_command(str(text or ""))
+    words = set(re.findall(r"[a-z0-9]+", folded))
+    if words & {"internet", "online"} or re.search(r"\b(?:en|on|search|buscar)\s+(?:la\s+|the\s+)?web\b", folded):
+        return False
+    if _explicit_link_request(words, folded):
+        return False
+    if re.search(r"\b(?:read_file|run_python|run_powershell|file_operation|search_files|list_directory)\b", folded):
+        return True
+    if re.search(r"\b[a-z]:[\\/]", folded):
+        return True
+    return bool(words & {"archivo", "archivos", "file", "files", "codigo", "script", "local"}) and bool(
+        re.search(r"\b[\w.-]+\.(?:html?|py|js|jsx|ts|tsx|css|json|md|txt|ps1)\b", folded)
+    )
+
+
+def explicit_local_read_arguments(text: str) -> dict[str, Any] | None:
+    """Only a leading positive read command and a literal Windows file path.
+
+    This read-only fallback does not infer a write/command from a promise, a
+    previous turn, an attachment, or instructions inside the file.
+    """
+    normalized = str(text or "").strip()
+    folded = _fold_command(normalized)
+    if re.search(r"\b(?:sin herramientas|no uses|no utilices|solo explica|no ejecutes)\b", folded):
+        return None
+    match = re.match(
+        r'''(?i)^(?:lee|read)\s+(?:el\s+archivo\s+|the\s+file\s+)?["'`]?'''
+        r'''([a-z]:[\\/][^\r\n<>"'`|?*]+?\.(?:html?|py|js|jsx|ts|tsx|css|json|md|txt|ps1))'''
+        r'''(?=[\s"'`;,]|$)''', normalized,
+    )
+    if not match:
+        return None
+    return {"path": match.group(1), "max_lines": 300}
+
+
 def required_web_action(
     text: str,
     *,
@@ -479,6 +516,8 @@ def required_web_action(
     words_in_order = re.findall(r"[a-z0-9]+", folded)
     words = set(words_in_order)
     if not words:
+        return None
+    if local_file_task(normalized):
         return None
 
     # Respect an explicit "do not search" close to a search verb or web noun.
@@ -2344,7 +2383,8 @@ class CompanionService:
                 attachments,
                 max_text_chars=text_limit,
             )
-        contextual_web_text = resolve_web_followup(
+        is_local_request = local_file_task(turn_text)
+        contextual_web_text = turn_text if is_local_request else resolve_web_followup(
             turn_text, previous_user_messages,
             lambda candidate: required_web_action(candidate, temporal_context=temporal_context) is not None,
         )
@@ -2354,12 +2394,15 @@ class CompanionService:
             contextual_web_text,
             temporal_context=temporal_context,
         )
+        local_only = not attachments and required_web is None and is_local_request
         if required_web is not None:
             required_action, required_arguments = required_web
             enabled_tools: bool | set[str] = {required_action}
         else:
             required_action, required_arguments = None, {}
-            enabled_tools = set() if attachments else True
+            enabled_tools = (set() if attachments else
+                             self.WORKFLOW_TOOLS - {"web_search", "web_research", "read_webpage"}
+                             if local_only else True)
         allowed_turn_actions = enabled_tools if isinstance(enabled_tools, set) else None
         try:
             response = await self.ollama.chat(
@@ -2419,9 +2462,21 @@ class CompanionService:
                     },
                 )
 
+        execution_recovery = bool(response.get("execution_recovery"))
+        recovery_metadata = ({"execution_recovery": True,
+                              "recovery_reason": response.get("recovery_reason", "empty_generation")}
+                             if execution_recovery else {})
         assistant_message = response.get("message") or {}
         proposed_calls = parse_tool_calls(assistant_message)
         assistant_for_followup = assistant_message
+        # Native Ollama can return only a promise despite an explicit "Lee
+        # C:\\...". Fulfil that precise, read-only request from current typed
+        # text, then give the model the real file and its normal local tools.
+        if local_only and not proposed_calls and (read_arguments := explicit_local_read_arguments(turn_text)):
+            proposed_calls = [("read_file", read_arguments)]
+            assistant_for_followup = {"role": "assistant", "content": "", "tool_calls": [
+                {"type": "function", "function": {"name": "read_file", "arguments": read_arguments}}
+            ]}
         if required_action is not None:
             # Ollama's native API has no ``tool_choice=required``. Always use
             # the trusted arguments derived from Gori's current text. This
@@ -2527,13 +2582,15 @@ class CompanionService:
             ]
             followup_messages = [
                 *history,
-                assistant_for_followup,
+                self._workflow_assistant_message(assistant_for_followup),
                 *tool_messages,
             ]
             workflow_tools = (
                 self.WORKFLOW_TOOLS if enabled_tools is True and any(action in self.WORKFLOW_TOOLS for action, _ in completed) else
+                enabled_tools & self.WORKFLOW_TOOLS if local_only else
                 {"read_webpage"} if not attachments and required_action in {"web_search", "web_research"} else set()
             )
+            followup = {}
             try:
                 followup = await self.ollama.chat(
                     followup_messages,
@@ -2542,7 +2599,12 @@ class CompanionService:
                     selection=selection,
                     turn_text=turn_text,
                     temporal_context=temporal_context,
+                    **({"execution_recovery": True} if execution_recovery else {}),
                 )
+                if followup.get("execution_recovery"):
+                    execution_recovery = True
+                    recovery_metadata.update({"execution_recovery": True,
+                                              "recovery_reason": followup.get("recovery_reason", "empty_generation")})
                 message = clean_model_text(
                     (followup.get("message") or {}).get("content")
                     or " ".join(result.message for _, result in completed)
@@ -2553,6 +2615,7 @@ class CompanionService:
                         summary=summary, selection=selection, turn_text=turn_text,
                         temporal_context=temporal_context, origin=origin,
                         conversation_id=conversation_id,
+                        execution_recovery=execution_recovery,
                     )
             except (httpx.HTTPError, asyncio.TimeoutError):
                 if selection.tier in {"large", "power", "gaming_gpu"}:
@@ -2583,7 +2646,15 @@ class CompanionService:
             )
             payload: dict[str, Any] = {
                 **self._model_metadata(selection),
+                **recovery_metadata,
             }
+            if followup.get("execution_recovery"):
+                payload["execution_recovery"] = True
+                payload.setdefault("recovery_reason", followup.get("recovery_reason", "empty_generation"))
+            if followup and not (followup.get("message") or {}).get("content") and not parse_tool_calls(followup.get("message") or {}):
+                payload["generation_empty"] = True
+                payload["generation_limit_reached"] = followup.get("done_reason") == "length"
+                message = "El modelo no completó la respuesta; la tarea puede estar incompleta. " + message
             if completed:
                 payload["action_result"] = completed[0][1].to_dict()
                 payload["action_results"] = [result.to_dict() for _, result in completed]
@@ -2638,6 +2709,7 @@ class CompanionService:
             completed=[],
         )
         model_metadata = self._model_metadata(selection)
+        model_metadata.update(recovery_metadata)
         if empty_generation:
             model_metadata.update({"generation_empty": True,
                                    "generation_limit_reached": generation_limit})
@@ -2655,11 +2727,41 @@ class CompanionService:
             payload=model_metadata,
         )
 
+    @staticmethod
+    def _workflow_assistant_message(assistant):
+        """Compact ONLY executed-call history, never the dispatched arguments."""
+        output = {"role": "assistant", "content": str(assistant.get("content") or "")[:8000]}
+        if assistant.get("tool_calls"):
+            valid = [call for call in assistant["tool_calls"][:6] if isinstance(call, dict)
+                     and isinstance(call.get("function"), dict) and str(call["function"].get("name") or "").strip()]
+            output["tool_calls"] = json.loads(json.dumps(valid))
+            for call in output["tool_calls"]:
+                function = call.get("function") or {}
+                arguments = function.get("arguments")
+                if isinstance(arguments, str):
+                    try:
+                        arguments = json.loads(arguments)
+                    except json.JSONDecodeError:
+                        arguments = {}
+                    function["arguments"] = arguments
+                if isinstance(arguments, dict):
+                    for key, value in arguments.items():
+                        if key in {"code", "command", "content"} and isinstance(value, str) and len(value) > 2000:
+                            arguments[key] = (
+                                f"[Fuente de {len(value)} caracteres omitida SOLO del contexto tras procesar "
+                                "esta llamada; no es código ejecutable. Consulta el resultado real: si se "
+                                "guardó un archivo usa read_file; si falló crea una versión pequeña con "
+                                "file_operation write_text/append_text.]"
+                            )
+        return output
+
     async def _continue_tool_workflow(
         self, response, messages, completed, allowed, *, summary, selection,
         turn_text, temporal_context, origin, conversation_id,
+        execution_recovery=False,
     ):
         """At most six rounds/24 calls; retain authorization and one chat turn."""
+        recovery_reason = response.get("recovery_reason")
         for round_index in range(5):
             assistant = response.get("message") or {}
             calls = parse_tool_calls(assistant)
@@ -2667,7 +2769,7 @@ class CompanionService:
                 return response, clean_model_text(assistant.get("content") or " ".join(r.message for _, r in completed))
             if len(completed) + len(calls) > 24:
                 break
-            messages = [*messages, assistant]
+            messages = [*messages, self._workflow_assistant_message(assistant)]
             for action, arguments in calls:
                 if action not in allowed:
                     result = ActionResult(False, action, "Herramienta no habilitada para este flujo.")
@@ -2681,7 +2783,12 @@ class CompanionService:
             response = await self.ollama.chat(
                 messages, summary, tools=allowed if round_index < 4 else False,
                 selection=selection, turn_text=turn_text, temporal_context=temporal_context,
+                **({"execution_recovery": True} if execution_recovery else {}),
             )
+            execution_recovery = execution_recovery or bool(response.get("execution_recovery"))
+            recovery_reason = recovery_reason or response.get("recovery_reason")
+            if execution_recovery and recovery_reason:
+                response.setdefault("recovery_reason", recovery_reason)
         # Never claim completion when the model kept requesting actions.
         if parse_tool_calls(response.get("message") or {}):
             return response, "He alcanzado el límite de herramientas de este turno; la tarea puede estar incompleta."

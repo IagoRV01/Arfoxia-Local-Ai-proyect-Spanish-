@@ -169,6 +169,11 @@ y corregir código. Todas las rondas conservan la política de autorización y e
 chat seleccionado. Los adjuntos no habilitan acciones del PC; tras una búsqueda
 sin adjuntos solo puede leer páginas, no ejecutar código recibido de Internet.
 
+Dual comienza en extra high. Si se atasca en razonamiento sin texto ni llamadas,
+recupera esa petición una sola vez sin razonamiento y registra el motivo; no
+cambia modelo, contexto, permisos ni residencia. No repite acciones ya emitidas
+y rechaza llamadas procedentes de un flujo incompleto.
+
 `read_webpage` lee hasta 512 KiB de HTML/texto/JSON público y entrega como máximo
 16 000 caracteres; no ejecuta JavaScript, no usa cookies y rechaza direcciones
 privadas, credenciales y redirecciones internas. Fija la IP pública comprobada,
@@ -186,8 +191,15 @@ estandarizado ni asigna una puntuación oficial. El resultado necesita una
 comprobación posterior en navegador.
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/benchmark_japanese_garden.py --output work/jardin-prueba
+.\.venv\Scripts\python.exe scripts/benchmark_japanese_garden.py --output "$env:USERPROFILE\Documents\Arfoxia Benchmarks\jardin-prueba"
 ```
+
+Las correcciones del propio modelo pueden registrarse en el mismo chat con
+`--followup "error observado" --conversation-id ID --output RUTA_ORIGINAL`.
+La carpeta debe estar fuera del programa: sus archivos están protegidos por
+`file_operation` y el benchmark no elimina esa protección.
+Consulta las condiciones y resultados reales en
+[el informe del reto](docs/JAPANESE_GARDEN_BENCHMARK.md).
 
 La búsqueda online utiliza `ddgs` para recuperar títulos, extractos y enlaces HTTPS. Antes de confiar en un resultado, Arfoxia comprueba su disponibilidad con peticiones acotadas, sin ejecutar contenido ni descargar archivos; las páginas generales se validan solo mediante cabeceras y YouTube mediante endpoints oficiales y metadatos limitados. Todo texto web sigue tratándose como contenido no confiable. Las URLs escritas literalmente por Gori no se sondean automáticamente, por lo que los servicios privados de Tailscale o de la red local no se filtran hacia una conexión inesperada. Puede desactivarse con `online_search_enabled=false`. En una conversación con adjuntos, una búsqueda solo puede activarse si el texto escrito por Gori pide explícitamente buscar, verificar, investigar o solicitar enlaces: una instrucción incrustada en el archivo nunca habilita herramientas.
 
