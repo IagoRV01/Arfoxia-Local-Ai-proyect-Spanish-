@@ -6,6 +6,30 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Añadido — Carpeta de proyectos predeterminada — 2026-10-11
+
+- Carpeta local persistente `workspace_directory`, por defecto `Arfoxia` dentro
+  de la carpeta del usuario (en este PC `C:\Users\Iago\Arfoxia`). Se crea si falta
+  y se conserva una ruta personalizada al migrar configuraciones existentes.
+- El modelo recibe la ubicación decidida por el propietario y puede crear
+  subcarpetas descriptivas por proyecto sin preguntar de nuevo dónde guardarlo;
+  debe consultar nombres libres y continuar los proyectos sin sobrescribirlos.
+- Archivos, lectura y búsqueda resuelven rutas relativas dentro de la carpeta
+  base. Python/PowerShell usan esa base cuando se omite `working_directory`,
+  fijada antes de la autorización. No se cambia el cwd global de Arfoxia/Expo.
+- Las rutas relativas no pueden escapar mediante `..`, unidades parciales ni
+  enlaces hacia fuera. Se mantienen contraseñas/permisos locales, validaciones
+  de rutas explícitas, archivos del programa protegidos y control de sobrescritura.
+  La ubicación predeterminada no se presenta como sandbox de comandos.
+- Pruebas de migración, prompt, subcarpetas, lectura/escritura relativa, cwd,
+  autorización, escape de rutas/enlaces y proyecto continuo en el mismo chat.
+- Validación: 700 pruebas Python correctas y prueba real con el perfil Dual
+  conservado. Creó una subcarpeta en la base sin preguntar la ruta, recuperó
+  llamadas de archivo inválidas mediante PowerShell con el cwd correcto y
+  comprobó el archivo con read_file antes de cerrar. La comprobación acepta
+  texto UTF-8 con BOM de Windows PowerShell, como la herramienta de lectura;
+  los informes y archivos de prueba permanecen únicamente en el PC.
+
 ### Añadido — Trabajo continuo — 2026-10-11
 
 - Motor de tareas en segundo plano para PC, Expo Go y web, en el mismo chat,

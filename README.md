@@ -223,6 +223,10 @@ se pregunta por decisiones importantes; se conservan permisos y límites de
 seguridad. El PC puede continuar aunque el móvil se desconecte. Una tarea
 interrumpida al reiniciar no repite acciones automáticamente.
 
+Los proyectos sin una ruta indicada usan la carpeta local `<usuario>\Arfoxia`
+(`C:\Users\Iago\Arfoxia` en este PC), con subcarpetas por proyecto. El ajuste
+`workspace_directory` no cambia permisos ni permite sobrescribir por defecto.
+
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
 .\.venv\Scripts\python.exe .\scripts\validate_assets.py

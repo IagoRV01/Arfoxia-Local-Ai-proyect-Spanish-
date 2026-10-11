@@ -33,6 +33,7 @@ from .config import PROJECT_ROOT, CompanionConfig
 from .database import Database
 from .pc_commands import run_command, validate_command
 from .developer_tools import local_tool, run_python, validate_python
+from .workspace import workspace_arguments, workspace_root
 from .web_reader import WebPageReader
 
 try:
@@ -124,6 +125,8 @@ class ActionDispatcher:
         self.database = database
         self.data_dir = data_dir
         self.events = events
+        self.workspace_dir = workspace_root(config.workspace_directory)
+        self.workspace_dir.mkdir(parents=True, exist_ok=True)
         self.screenshot_dir = data_dir / "screenshots"
         self.screenshot_dir.mkdir(parents=True, exist_ok=True)
 
@@ -141,6 +144,10 @@ class ActionDispatcher:
                 ActionResult(False, action, "Los argumentos de la acción no son válidos."),
             )
         args = dict(arguments or {})
+        try:
+            args = self.prepare_workspace_arguments(action, args)
+        except ActionValidationError as exc:
+            return self.validation_failure(action, args, str(exc))
         if action not in self.IMMEDIATE | self.SENSITIVE:
             result = ActionResult(False, action, "Acción no permitida.")
             return self._record(action, args, result)
@@ -194,6 +201,7 @@ class ActionDispatcher:
                 action, args, ActionResult(False, action, "Acción no permitida.")
             )
         try:
+            args = self.prepare_workspace_arguments(action, args)
             result = handler(args)
         except ActionValidationError as exc:
             result = ActionResult(False, action, str(exc))
@@ -261,6 +269,7 @@ class ActionDispatcher:
     def validate_for_authorization(
         self, action: str, arguments: dict[str, Any]
     ) -> None:
+        arguments = self.prepare_workspace_arguments(action, arguments)
         if action in {"run_powershell", "run_python"}:
             if self.config.pc_command_enabled is not True:
                 raise ActionValidationError("PowerShell está desactivado en la configuración local.")
@@ -309,7 +318,7 @@ class ActionDispatcher:
     ) -> dict[str, Any]:
         """Bind challenges to canonical paths/resolved app targets when possible."""
 
-        prepared = dict(arguments)
+        prepared = self.prepare_workspace_arguments(action, arguments)
         if action == "open_target":
             kind, value = self._validated_open_target(prepared)
             if kind in {"named", "path"}:
@@ -327,6 +336,12 @@ class ActionDispatcher:
             if operation in {"write_text", "append_text"} and path.is_file():
                 prepared["_expected_sha256"] = self._file_sha256(path)
         return prepared
+
+    def prepare_workspace_arguments(self, action: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return workspace_arguments(action, arguments, self.config.workspace_directory)
+        except ValueError as exc:
+            raise ActionValidationError(str(exc)) from exc
 
     @staticmethod
     def _file_sha256(path: Path) -> str:

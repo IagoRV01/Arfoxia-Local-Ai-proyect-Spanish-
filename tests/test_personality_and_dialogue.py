@@ -33,8 +33,11 @@ def test_system_prompt_defines_arfoxias_male_trilingual_personality():
 
 
 def test_system_prompt_recognizes_the_user_as_gori():
-    prompt = build_system_prompt(CompanionConfig.defaults(), "ánimo=sereno")
-    folded = _fold(prompt)
+    config = CompanionConfig.defaults()
+    prompt = build_system_prompt(config, "ánimo=sereno")
+    # An OS account name in a real workspace path is not the owner's identity.
+    assert config.workspace_directory in prompt
+    folded = _fold(prompt.replace(config.workspace_directory, "<carpeta de proyectos>"))
 
     assert "companero pokemon de gori" in folded
     assert "gori es tu humano y entrenador" in folded

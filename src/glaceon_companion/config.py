@@ -117,6 +117,11 @@ def default_data_dir() -> Path:
     return base / "GlaceonCompanion"
 
 
+def default_workspace_directory() -> str:
+    from .workspace import default_workspace_directory as default
+    return default()
+
+
 @dataclass(slots=True)
 class AppEntry:
     command: list[str]
@@ -129,6 +134,7 @@ class CompanionConfig:
     species: str = "Glaceon"
     gender: str = "male"
     owner_name: str = "Gori"
+    workspace_directory: str = field(default_factory=default_workspace_directory)
     language: str = "auto"
     supported_languages: list[str] = field(default_factory=lambda: ["es", "en", "gl"])
     model: str = "qwen3.5:4b"
@@ -326,6 +332,7 @@ class ConfigStore:
             "mobile_dev_server_enabled",
             "mobile_dev_server_port",
             "mobile_dev_server_host",
+            "workspace_directory",
             "game_streaming_enabled",
             "game_streaming_host",
             "sunshine_service_name",

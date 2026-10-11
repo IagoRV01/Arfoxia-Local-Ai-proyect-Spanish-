@@ -1153,6 +1153,10 @@ class CompanionService:
 
         del confirmed
         args = dict(arguments or {})
+        try:
+            args = self.actions.prepare_workspace_arguments(action, args)
+        except ActionValidationError as exc:
+            return self.actions.validation_failure(action, args, str(exc))
         sensitive = (
             action in self.SENSITIVE_EXTERNAL_ACTIONS
             or (action not in self.EXTERNAL_ACTIONS and self.actions.is_sensitive(action, args))

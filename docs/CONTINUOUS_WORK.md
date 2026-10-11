@@ -5,9 +5,31 @@ en segundo plano. No hay que escribir «continúa» después de cada paso. Para 
 pregunta normal el modelo responde directamente; para un encargo puede encadenar
 herramientas, guardar avances, consultar resultados y corregirlos en el mismo chat.
 
-Por ejemplo: «Crea una pequeña calculadora en esta carpeta, comprueba sus funciones
-y corrige los errores antes de terminar». La carpeta y las decisiones materiales
-deben formar parte del encargo. No se autoriza al modelo a ampliar su alcance.
+Por ejemplo: «Crea una pequeña calculadora, comprueba sus funciones y corrige los
+errores antes de terminar». Si no indicas carpeta se utiliza la predeterminada;
+las decisiones materiales deben formar parte del encargo. No se autoriza al
+modelo a ampliar su alcance.
+
+## Carpeta predeterminada para proyectos
+
+Los proyectos sin una ruta indicada se guardan en `C:\Users\Iago\Arfoxia` en este
+PC (`<carpeta del usuario>\Arfoxia` por defecto en otras instalaciones). El ajuste
+local `workspace_directory` se conserva entre reinicios y se crea la carpeta si
+falta. El modelo conoce esta elección: no debe preguntar de nuevo dónde guardar.
+
+Puede crear una subcarpeta descriptiva por proyecto usando `file_operation`
+`create_directory`, consultando antes qué nombres existen. Para continuar un
+proyecto usa su carpeta; para uno nuevo elige un nombre libre sin reemplazar otro.
+Las herramientas de archivos/lectura admiten rutas relativas a esta base y
+Python/PowerShell la usan si no se indica `working_directory`; especificar la
+subcarpeta permite ejecutar pruebas dentro del proyecto. No se cambia el directorio
+global del proceso ni el de Ollama/Expo.
+
+Las rutas relativas no pueden escapar mediante `..`, rutas parciales de unidad o
+enlaces hacia fuera. Las rutas absolutas explícitas mantienen sus validaciones y
+permisos anteriores: la carpeta base **no es un sandbox de ejecución**. Trabajar
+fuera de ella requiere una indicación explícita del propietario, y una carpeta
+predeterminada no concede permisos para borrar, sobrescribir o ampliar la tarea.
 
 ## Finalización y preguntas
 
