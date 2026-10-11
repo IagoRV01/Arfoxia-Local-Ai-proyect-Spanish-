@@ -4,7 +4,6 @@ import {
   AppState,
   KeyboardAvoidingView,
   Linking,
-  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -15,6 +14,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 
 import { ApiError, ArfoxiaApi } from './api';
+import { SafeModal } from './SafeModal';
 import {
   MOONLIGHT_APP_STORE_URL,
   moonlightShortcutUrl,
@@ -142,7 +142,10 @@ export function GamingLauncher({ api, onUnauthorized }: Props) {
       if (nextStatus && typeof nextStatus.ready === 'boolean') {
         setStatus(nextStatus);
       }
-      Alert.alert('PIN enviado a Sunshine', result.message || 'Vuelve a Moonlight.');
+      Alert.alert(
+        'PIN enviado a Sunshine',
+        result.message || 'Vuelve a Moonlight.',
+      );
     } catch (reason) {
       handleError(reason);
     } finally {
@@ -193,7 +196,7 @@ export function GamingLauncher({ api, onUnauthorized }: Props) {
         />
       </View>
 
-      <Modal
+      <SafeModal
         visible={visible}
         transparent
         animationType="slide"
@@ -237,18 +240,24 @@ export function GamingLauncher({ api, onUnauthorized }: Props) {
                             ? 'Preparando'
                             : 'Revisar'
                       }
-                      tone={status?.ready ? 'success' : busy ? 'warning' : 'danger'}
+                      tone={
+                        status?.ready ? 'success' : busy ? 'warning' : 'danger'
+                      }
                     />
                   }
                 />
                 <View style={styles.facts}>
                   <Fact
                     label="Sunshine"
-                    value={status?.running ? 'Servicio activo' : 'No disponible'}
+                    value={
+                      status?.running ? 'Servicio activo' : 'No disponible'
+                    }
                   />
                   <Fact
                     label="Tailscale"
-                    value={status?.tailscale_ready ? 'Conectado' : 'Sin conexión'}
+                    value={
+                      status?.tailscale_ready ? 'Conectado' : 'Sin conexión'
+                    }
                   />
                   <Fact
                     label="Captura"
@@ -277,10 +286,12 @@ export function GamingLauncher({ api, onUnauthorized }: Props) {
               <View style={styles.stepCard}>
                 <Text style={styles.stepNumber}>1</Text>
                 <View style={styles.stepBody}>
-                  <Text style={styles.stepTitle}>Añade este PC en Moonlight</Text>
+                  <Text style={styles.stepTitle}>
+                    Añade este PC en Moonlight
+                  </Text>
                   <Text style={styles.stepText}>
-                    En Moonlight pulsa «+» y pega este host privado. Para el primer
-                    emparejamiento, mantén el iPhone en la Wi‑Fi de casa.
+                    En Moonlight pulsa «+» y pega este host privado. Para el
+                    primer emparejamiento, mantén el iPhone en la Wi‑Fi de casa.
                   </Text>
                   <View style={styles.hostBox}>
                     <Text selectable style={styles.host} numberOfLines={2}>
@@ -304,13 +315,15 @@ export function GamingLauncher({ api, onUnauthorized }: Props) {
                   {status?.pin_submission_available ? (
                     <>
                       <Text style={styles.stepText}>
-                        Moonlight mostrará cuatro cifras. Escríbelas aquí mientras la
-                        solicitud siga abierta.
+                        Moonlight mostrará cuatro cifras. Escríbelas aquí
+                        mientras la solicitud siga abierta.
                       </Text>
                       <View style={styles.pinRow}>
                         <TextInput
                           value={pin}
-                          onChangeText={(value) => setPin(normalizeMoonlightPin(value))}
+                          onChangeText={(value) =>
+                            setPin(normalizeMoonlightPin(value))
+                          }
                           keyboardType="number-pad"
                           maxLength={4}
                           placeholder="0000"
@@ -322,15 +335,17 @@ export function GamingLauncher({ api, onUnauthorized }: Props) {
                         <Button
                           label="Emparejar"
                           busy={pairing}
-                          disabled={pin.length !== 4 || !status?.sunshine_ready || busy}
+                          disabled={
+                            pin.length !== 4 || !status?.sunshine_ready || busy
+                          }
                           onPress={() => void pair()}
                         />
                       </View>
                     </>
                   ) : (
                     <Text style={styles.stepText}>
-                      Si Sunshine ya tenía una cuenta propia, introduce el PIN una vez
-                      desde https://localhost:47990 en el PC.
+                      Si Sunshine ya tenía una cuenta propia, introduce el PIN
+                      una vez desde https://localhost:47990 en el PC.
                     </Text>
                   )}
                 </View>
@@ -341,9 +356,9 @@ export function GamingLauncher({ api, onUnauthorized }: Props) {
                 <View style={styles.stepBody}>
                   <Text style={styles.stepTitle}>Abre Moonlight y juega</Text>
                   <Text style={styles.stepText}>
-                    iOS no permite a Expo abrir Moonlight por su cuenta. Para un toque,
-                    crea un Atajo llamado «Abrir Moonlight»; si no, usa su ficha oficial
-                    y pulsa «Abrir».
+                    iOS no permite a Expo abrir Moonlight por su cuenta. Para un
+                    toque, crea un Atajo llamado «Abrir Moonlight»; si no, usa
+                    su ficha oficial y pulsa «Abrir».
                   </Text>
                   <View style={styles.actions}>
                     <Button
@@ -370,7 +385,7 @@ export function GamingLauncher({ api, onUnauthorized }: Props) {
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
+      </SafeModal>
     </>
   );
 }
@@ -430,6 +445,7 @@ const styles = StyleSheet.create({
   },
   sheetTitle: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   title: {

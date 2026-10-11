@@ -23,6 +23,14 @@ adicionales para mostrar un resultado.
 4. **Recargar** solicita una nueva vista y lee los archivos actuales del PC.
    **Cerrar** vuelve al chat o a la lista, sin detener el trabajo de Arfoxia.
 
+La ventana del visor tiene su propio proveedor nativo de área segura, que
+se mide cada vez que se abre. Título y botones quedan debajo de la barra de
+estado/notch; el contenido termina antes del indicador de inicio y respeta
+los laterales. Título y acciones usan filas independientes. La WebView no
+duplica esos márgenes con ajustes automáticos. El mismo patrón protege las
+ventanas de chats, imágenes y Moonlight, siguiendo la
+[documentación de SafeAreaProvider](https://appandflow.github.io/react-native-safe-area-context/api/safe-area-provider/).
+
 Arfoxia recibe instrucciones para entregar los proyectos visuales con un
 `index.html` y recursos en la misma subcarpeta, usando rutas relativas. No debe
 enviar una dirección `localhost` del PC al iPhone ni inventar enlaces internos.

@@ -6,6 +6,29 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Corregido — Interfaz de iOS en Expo Go — 2026-10-11
+
+- Las ventanas nativas disponen de su propio SafeAreaProvider/SafeAreaView:
+  la jerarquía nativa de un Modal de iOS no hereda el proveedor de la pantalla
+  principal. Se protegen los cuatro bordes, incluida la barra de estado, la
+  zona del notch/Dynamic Island y el indicador de inicio, sin alturas fijas
+  ni métricas de una ventana anterior.
+- Componente SafeModal reutilizado por Visor, historial de conversaciones,
+  renombrado, imágenes/capturas y el panel de Moonlight. Se mantienen las
+  presentaciones de pantalla completa/transparentes y los botones de cierre.
+- Título del proyecto separado de Recargar/Cerrar; botones con ajuste de línea
+  y títulos largos contenidos para no empujar otros controles. La WebView no
+  añade un segundo margen automático sobre el área segura de la ventana.
+- Pantalla principal protegida también en los laterales; se sustituye el
+  margen fijo de 52 puntos de las capturas por margen normal más insets nativos.
+- Pruebas de regresión de la jerarquía de las cinco ventanas emergentes, bordes,
+  medición al reabrir, distribución de cabecera y ajustes de WebView. Validación
+  de TypeScript y exportación iOS; confirmación visual final en el iPhone por
+  el propietario, sin simular que se ha realizado desde el PC.
+- Validación: 65 pruebas móviles correctas, TypeScript sin errores y bundle
+  iOS generado. Expo/Metro sigue sirviendo el proyecto actualizado en el mismo
+  host/puerto; no se cambia el emparejamiento, el modelo ni los archivos 3D.
+
 ### Añadido — Visualizador de proyectos en Expo Go — 2026-10-11
 
 - Nueva pestaña Visor, listado de proyectos/archivos y WebView nativa con

@@ -9,35 +9,20 @@ import {
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import {
-  SafeAreaProvider,
-  SafeAreaView,
-} from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { ApiError, ArfoxiaApi } from './src/api';
 import { ChatScreen } from './src/ChatScreen';
 import { CompanionScreen } from './src/CompanionScreen';
-import {
-  clearCredentials,
-  loadCredentials,
-} from './src/credentials';
+import { clearCredentials, loadCredentials } from './src/credentials';
 import { PairScreen } from './src/PairScreen';
 import { GamingLauncher } from './src/GamingLauncher';
-import {
-  MOONLIGHT_APP_STORE_URL,
-  moonlightShortcutUrl,
-} from './src/moonlight';
+import { MOONLIGHT_APP_STORE_URL, moonlightShortcutUrl } from './src/moonlight';
 import { SettingsScreen } from './src/SettingsScreen';
 import { SystemScreen } from './src/SystemScreen';
 import { ProjectsScreen } from './src/ProjectsScreen';
 import type { Credentials, Health, TabKey } from './src/types';
-import {
-  Button,
-  Card,
-  ErrorBanner,
-  colors,
-  sharedStyles,
-} from './src/ui';
+import { Button, Card, ErrorBanner, colors, sharedStyles } from './src/ui';
 
 type Phase = 'loading' | 'pairing' | 'ready' | 'offline';
 
@@ -173,10 +158,7 @@ export default function App() {
             <CompanionScreen api={api} onUnauthorized={unauthorized} />
           ) : null}
           <View
-            style={[
-              styles.tabPanel,
-              tab !== 'chat' && styles.tabPanelHidden,
-            ]}
+            style={[styles.tabPanel, tab !== 'chat' && styles.tabPanelHidden]}
           >
             <ChatScreen
               api={api}
@@ -187,7 +169,9 @@ export default function App() {
           {tab === 'system' ? (
             <SystemScreen api={api} onUnauthorized={unauthorized} />
           ) : null}
-          {tab === 'projects' ? <ProjectsScreen api={api} onUnauthorized={unauthorized} /> : null}
+          {tab === 'projects' ? (
+            <ProjectsScreen api={api} onUnauthorized={unauthorized} />
+          ) : null}
           {tab === 'settings' ? (
             <SettingsScreen
               api={api}
@@ -206,7 +190,10 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
-      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <SafeAreaView
+        style={styles.safeArea}
+        edges={['top', 'right', 'bottom', 'left']}
+      >
         {content}
       </SafeAreaView>
     </SafeAreaProvider>
@@ -238,7 +225,9 @@ function OfflineScreen({
     <View style={styles.offline}>
       <Card style={styles.offlineCard}>
         <Text style={styles.offlineIcon}>☾</Text>
-        <Text style={[sharedStyles.title, styles.center]}>Arfoxia no responde</Text>
+        <Text style={[sharedStyles.title, styles.center]}>
+          Arfoxia no responde
+        </Text>
         <Text style={[sharedStyles.subtitle, styles.center]}>
           {message ||
             'Comprueba que el PC esté encendido y Tailscale conectado en el iPhone.'}
@@ -250,11 +239,7 @@ function OfflineScreen({
             onPress={() => void openMoonlightOffline()}
           />
           <Button label="Volver a intentar" onPress={onRetry} />
-          <Button
-            label="Desemparejar"
-            variant="ghost"
-            onPress={onUnpair}
-          />
+          <Button label="Desemparejar" variant="ghost" onPress={onUnpair} />
         </View>
       </Card>
     </View>

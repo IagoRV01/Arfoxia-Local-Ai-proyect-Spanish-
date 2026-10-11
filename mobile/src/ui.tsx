@@ -1,7 +1,6 @@
 import type { PropsWithChildren, ReactNode } from 'react';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +10,7 @@ import {
   type ScrollViewProps,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { SafeModal } from './SafeModal';
 
 export const colors = {
   background: '#061522',
@@ -66,7 +66,9 @@ export function SectionTitle({
     <View style={styles.sectionHeader}>
       <View style={styles.sectionText}>
         <Text style={styles.sectionTitle}>{title}</Text>
-        {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
+        {subtitle ? (
+          <Text style={styles.sectionSubtitle}>{subtitle}</Text>
+        ) : null}
       </View>
       {trailing}
     </View>
@@ -158,7 +160,10 @@ export function Meter({
   value: number;
   invert?: boolean;
 }) {
-  const normalized = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
+  const normalized = Math.max(
+    0,
+    Math.min(100, Number.isFinite(value) ? value : 0),
+  );
   const positive = invert ? 100 - normalized : normalized;
   return (
     <View style={styles.meter}>
@@ -214,28 +219,32 @@ export function ScreenshotModal({
   onClose: () => void;
 }) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalBackdrop}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle} numberOfLines={1}>
-              {title}
-            </Text>
-            <Button label="Cerrar" variant="ghost" compact onPress={onClose} />
-          </View>
-          {source ? (
-            <Image
-              source={source}
-              style={styles.screenshot}
-              contentFit="contain"
-              cachePolicy="none"
-              transition={150}
-            />
-          ) : null}
-          <Text style={styles.modalHint}>{hint}</Text>
+    <SafeModal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      safeAreaStyle={styles.modalBackdrop}
+    >
+      <View style={styles.modalCard}>
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalTitle} numberOfLines={1}>
+            {title}
+          </Text>
+          <Button label="Cerrar" variant="ghost" compact onPress={onClose} />
         </View>
+        {source ? (
+          <Image
+            source={source}
+            style={styles.screenshot}
+            contentFit="contain"
+            cachePolicy="none"
+            transition={150}
+          />
+        ) : null}
+        <Text style={styles.modalHint}>{hint}</Text>
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 
@@ -476,7 +485,6 @@ const styles = StyleSheet.create({
   modalBackdrop: {
     flex: 1,
     padding: 15,
-    paddingVertical: 52,
     justifyContent: 'center',
     backgroundColor: 'rgba(1, 7, 12, 0.90)',
   },
@@ -493,8 +501,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
   },
   modalTitle: {
+    flex: 1,
+    minWidth: 0,
     color: colors.text,
     fontSize: 18,
     fontWeight: '800',

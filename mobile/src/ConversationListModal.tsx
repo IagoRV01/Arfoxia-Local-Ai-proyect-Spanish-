@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Modal,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -11,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeModal } from './SafeModal';
 
 import type { Conversation, ConversationStorage } from './types';
 import { Button, EmptyState, ErrorBanner, colors } from './ui';
@@ -43,7 +42,8 @@ function friendlyDate(value: string): string {
   return date.toLocaleDateString('es-ES', {
     day: '2-digit',
     month: 'short',
-    year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric',
+    year:
+      date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric',
   });
 }
 
@@ -154,174 +154,172 @@ export function ConversationListModal({
 
   return (
     <>
-      <Modal
+      <SafeModal
         visible={visible}
         animationType="slide"
         presentationStyle="fullScreen"
         onRequestClose={onClose}
+        safeAreaStyle={styles.safeArea}
       >
-        <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-          <View style={styles.header}>
-            <View style={styles.headerText}>
-              <Text style={styles.eyebrow}>Historial compartido</Text>
-              <Text style={styles.title}>Conversaciones</Text>
-            </View>
-            <Button label="Cerrar" variant="ghost" compact onPress={onClose} />
+        <View style={styles.header}>
+          <View style={styles.headerText}>
+            <Text style={styles.eyebrow}>Historial compartido</Text>
+            <Text style={styles.title}>Conversaciones</Text>
           </View>
+          <Button label="Cerrar" variant="ghost" compact onPress={onClose} />
+        </View>
 
-          <View style={styles.createWrap}>
-            <Button
-              label="Nueva conversación"
-              icon="+"
-              busy={operation === 'create'}
-              disabled={Boolean(operation)}
-              onPress={() => void create()}
-            />
-            {storageLabel(storage) ? (
-              <Text style={styles.storage}>{storageLabel(storage)}</Text>
-            ) : null}
-          </View>
-
-          {error ? (
-            <View style={styles.banner}>
-              <ErrorBanner message={error} />
-            </View>
+        <View style={styles.createWrap}>
+          <Button
+            label="Nueva conversación"
+            icon="+"
+            busy={operation === 'create'}
+            disabled={Boolean(operation)}
+            onPress={() => void create()}
+          />
+          {storageLabel(storage) ? (
+            <Text style={styles.storage}>{storageLabel(storage)}</Text>
           ) : null}
+        </View>
 
-          {loading && !conversations.length ? (
-            <View style={styles.loading}>
-              <ActivityIndicator color={colors.ice} />
-              <Text style={styles.loadingText}>Cargando tus chats…</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={conversations}
-              keyExtractor={(item) => item.id}
-              refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={onRefresh}
-                  tintColor={colors.ice}
-                />
+        {error ? (
+          <View style={styles.banner}>
+            <ErrorBanner message={error} />
+          </View>
+        ) : null}
+
+        {loading && !conversations.length ? (
+          <View style={styles.loading}>
+            <ActivityIndicator color={colors.ice} />
+            <Text style={styles.loadingText}>Cargando tus chats…</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={conversations}
+            keyExtractor={(item) => item.id}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={colors.ice}
+              />
+            }
+            contentContainerStyle={[
+              styles.list,
+              !conversations.length && styles.emptyList,
+            ]}
+            ListEmptyComponent={
+              <EmptyState
+                icon="✦"
+                title="Todavía no hay conversaciones"
+                detail="Crea una para empezar a hablar con Arfoxia."
+              />
+            }
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
+            onEndReachedThreshold={0.35}
+            onEndReached={() => {
+              if (hasMore && !loadingMore) {
+                onLoadMore();
               }
-              contentContainerStyle={[
-                styles.list,
-                !conversations.length && styles.emptyList,
-              ]}
-              ListEmptyComponent={
-                <EmptyState
-                  icon="✦"
-                  title="Todavía no hay conversaciones"
-                  detail="Crea una para empezar a hablar con Arfoxia."
-                />
-              }
-              ItemSeparatorComponent={() => <View style={styles.separator} />}
-              onEndReachedThreshold={0.35}
-              onEndReached={() => {
-                if (hasMore && !loadingMore) {
-                  onLoadMore();
-                }
-              }}
-              ListFooterComponent={
-                loadingMore ? (
-                  <View style={styles.listFooter}>
-                    <ActivityIndicator size="small" color={colors.ice} />
-                    <Text style={styles.loadingText}>Cargando más chats…</Text>
+            }}
+            ListFooterComponent={
+              loadingMore ? (
+                <View style={styles.listFooter}>
+                  <ActivityIndicator size="small" color={colors.ice} />
+                  <Text style={styles.loadingText}>Cargando más chats…</Text>
+                </View>
+              ) : null
+            }
+            renderItem={({ item }) => {
+              const selected = item.id === selectedId;
+              const busy = operation.endsWith(item.id);
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  disabled={busy}
+                  onPress={() => {
+                    onSelect(item);
+                    onClose();
+                  }}
+                  style={({ pressed }) => [
+                    styles.row,
+                    selected && styles.rowSelected,
+                    pressed && styles.rowPressed,
+                  ]}
+                >
+                  <View style={styles.rowText}>
+                    <Text style={styles.rowTitle} numberOfLines={1}>
+                      {item.title}
+                    </Text>
+                    <Text style={styles.preview} numberOfLines={2}>
+                      {item.preview || 'Conversación vacía'}
+                    </Text>
+                    <Text style={styles.meta}>
+                      {item.message_count} mensajes
+                      {friendlyDate(item.updated_at)
+                        ? ` · ${friendlyDate(item.updated_at)}`
+                        : ''}
+                    </Text>
                   </View>
-                ) : null
-              }
-              renderItem={({ item }) => {
-                const selected = item.id === selectedId;
-                const busy = operation.endsWith(item.id);
-                return (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    disabled={busy}
-                    onPress={() => {
-                      onSelect(item);
-                      onClose();
-                    }}
-                    style={({ pressed }) => [
-                      styles.row,
-                      selected && styles.rowSelected,
-                      pressed && styles.rowPressed,
-                    ]}
-                  >
-                    <View style={styles.rowText}>
-                      <Text style={styles.rowTitle} numberOfLines={1}>
-                        {item.title}
-                      </Text>
-                      <Text style={styles.preview} numberOfLines={2}>
-                        {item.preview || 'Conversación vacía'}
-                      </Text>
-                      <Text style={styles.meta}>
-                        {item.message_count} mensajes
-                        {friendlyDate(item.updated_at)
-                          ? ` · ${friendlyDate(item.updated_at)}`
-                          : ''}
-                      </Text>
-                    </View>
-                    {busy ? (
-                      <ActivityIndicator size="small" color={colors.ice} />
-                    ) : (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Opciones de ${item.title}`}
-                        hitSlop={10}
-                        onPress={(event) => {
-                          event.stopPropagation();
-                          openActions(item);
-                        }}
-                        style={styles.more}
-                      >
-                        <Text style={styles.moreText}>•••</Text>
-                      </Pressable>
-                    )}
-                  </Pressable>
-                );
-              }}
-            />
-          )}
-        </SafeAreaView>
-      </Modal>
+                  {busy ? (
+                    <ActivityIndicator size="small" color={colors.ice} />
+                  ) : (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Opciones de ${item.title}`}
+                      hitSlop={10}
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        openActions(item);
+                      }}
+                      style={styles.more}
+                    >
+                      <Text style={styles.moreText}>•••</Text>
+                    </Pressable>
+                  )}
+                </Pressable>
+              );
+            }}
+          />
+        )}
+      </SafeModal>
 
-      <Modal
+      <SafeModal
         visible={Boolean(renaming)}
         transparent
         animationType="fade"
         onRequestClose={() => setRenaming(null)}
+        safeAreaStyle={styles.renameBackdrop}
       >
-        <View style={styles.renameBackdrop}>
-          <View style={styles.renameCard}>
-            <Text style={styles.renameTitle}>Renombrar conversación</Text>
-            <TextInput
-              autoFocus
-              value={title}
-              onChangeText={setTitle}
-              maxLength={80}
-              placeholder="Nombre del chat"
-              placeholderTextColor={colors.muted}
-              selectTextOnFocus
-              style={styles.renameInput}
+        <View style={styles.renameCard}>
+          <Text style={styles.renameTitle}>Renombrar conversación</Text>
+          <TextInput
+            autoFocus
+            value={title}
+            onChangeText={setTitle}
+            maxLength={80}
+            placeholder="Nombre del chat"
+            placeholderTextColor={colors.muted}
+            selectTextOnFocus
+            style={styles.renameInput}
+          />
+          <View style={styles.renameActions}>
+            <Button
+              label="Cancelar"
+              variant="ghost"
+              disabled={Boolean(operation)}
+              onPress={() => setRenaming(null)}
             />
-            <View style={styles.renameActions}>
-              <Button
-                label="Cancelar"
-                variant="ghost"
-                disabled={Boolean(operation)}
-                onPress={() => setRenaming(null)}
-              />
-              <Button
-                label="Guardar"
-                busy={operation.startsWith('rename:')}
-                disabled={!title.trim()}
-                onPress={() => void saveRename()}
-              />
-            </View>
+            <Button
+              label="Guardar"
+              busy={operation.startsWith('rename:')}
+              disabled={!title.trim()}
+              onPress={() => void saveRename()}
+            />
           </View>
         </View>
-      </Modal>
+      </SafeModal>
     </>
   );
 }
@@ -344,6 +342,7 @@ const styles = StyleSheet.create({
   },
   headerText: {
     flex: 1,
+    minWidth: 0,
   },
   eyebrow: {
     color: colors.ice,
