@@ -21,6 +21,8 @@ import type {
   RequestedModelMode,
   PcStatus,
   PetState,
+  ProjectPreview,
+  PreviewSession,
   PendingAttachment,
 } from './types';
 
@@ -131,6 +133,14 @@ export class ArfoxiaApi {
 
   health(): Promise<Health> {
     return this.request<Health>('/api/health', { authenticated: false });
+  }
+
+  projects(): Promise<{projects: ProjectPreview[]}> {
+    return this.request('/api/projects');
+  }
+
+  openProjectPreview(id: string): Promise<PreviewSession> {
+    return this.request(`/api/projects/${encodeURIComponent(id)}/preview`, {method: 'POST'});
   }
 
   state(): Promise<PetState> {

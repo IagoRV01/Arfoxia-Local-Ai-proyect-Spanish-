@@ -252,6 +252,11 @@ Los proyectos sin una ruta indicada usan la carpeta local `<usuario>\Arfoxia`
 (`C:\Users\Iago\Arfoxia` en este PC), con subcarpetas por proyecto. El ajuste
 `workspace_directory` no cambia permisos ni permite sobrescribir por defecto.
 
+Expo Go incluye un [visualizador de proyectos](docs/PROJECT_VIEWER.md): la pestaña
+**Visor** y los botones **Ver resultado** del chat abren HTML/3D, imágenes, PDF y
+texto guardados en la carpeta de trabajo. Las vistas son privadas, de lectura y
+no reciben la clave principal ni acceso a herramientas del PC.
+
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
 .\.venv\Scripts\python.exe .\scripts\validate_assets.py

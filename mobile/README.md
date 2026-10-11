@@ -86,6 +86,19 @@ un segundo dispositivo siempre activo en casa que haga de relé Wake-on-LAN.
 Si Arfoxia queda temporalmente sin conexión, la pantalla offline conserva el
 botón **Abrir Moonlight** para entrar al cliente ya emparejado.
 
+## Visualizador de resultados
+
+La pestaña **Visor** muestra los proyectos guardados en la carpeta Arfoxia del PC.
+El chat añade **Ver resultado** tras herramientas correctas relacionadas con
+archivos existentes. La vista nativa admite HTML/Three.js interactivo, imágenes,
+PDF en iOS y lectura de texto/código. **Recargar** obtiene los archivos actuales;
+**Cerrar** vuelve sin crear otra conversación ni detener trabajos.
+
+Usa HTTPS privado de Tailscale, con permisos de lectura de 30 minutos que no
+exponen la clave de la API. No ejecuta programas Windows ni backends Python en
+el iPhone. Los proyectos con bibliotecas CDN requieren Internet. Consulta
+[formatos, límites y seguridad](../docs/PROJECT_VIEWER.md).
+
 ## Comprobaciones de desarrollo
 
 ```powershell

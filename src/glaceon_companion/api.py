@@ -18,13 +18,14 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .attachments import AttachmentError, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_CHAT
 from .game_streaming import GameStreamingError
 from .services import CompanionService
+from .project_previews import CSP
 
 
 class ChatRequest(BaseModel):
@@ -149,6 +150,7 @@ def create_api(service: CompanionService, token: str, static_dir: Path) -> FastA
             "privileged_actions": True,
             "conversations": True,
             "continuous_work": True,
+            "project_previews": True,
             "cross_chat_memory": service.config.cross_chat_memory_enabled,
             "game_streaming": service.config.game_streaming_enabled,
             "chat_storage_limit_gb": min(
@@ -388,6 +390,28 @@ def create_api(service: CompanionService, token: str, static_dir: Path) -> FastA
     async def show_chat() -> dict[str, bool]:
         service.events.put({"type": "ui", "action": "show_chat"})
         return {"ok": True}
+
+    @app.get("/api/projects", dependencies=[auth])
+    async def projects():
+        return {"projects": await asyncio.to_thread(service.project_previews.catalogue)}
+
+    @app.post("/api/projects/{project_id}/preview", dependencies=[auth])
+    async def open_project_preview(project_id: str):
+        try:
+            return await asyncio.to_thread(service.project_previews.issue, project_id)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=404, detail="Ese proyecto ya no está disponible; actualiza la lista.") from exc
+
+    @app.get("/project-preview/{ticket}/{asset:path}")
+    async def preview_resource(ticket: str, asset: str):
+        try:
+            path, mime, text = await asyncio.to_thread(service.project_previews.resource, ticket, asset)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=404, detail="Vista caducada o recurso no permitido. Vuelve a abrir el proyecto.") from exc
+        headers = {"Content-Security-Policy": CSP, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
+                   "X-Content-Type-Options": "nosniff", "Access-Control-Allow-Origin": "*",
+                   "Permissions-Policy": "camera=(), microphone=(), geolocation=(), clipboard-read=(), clipboard-write=()"}
+        return HTMLResponse(text, headers=headers) if text is not None else FileResponse(path, media_type=mime, headers=headers)
 
     app.mount("/", StaticFiles(directory=static_dir, html=True), name="mobile")
     return app

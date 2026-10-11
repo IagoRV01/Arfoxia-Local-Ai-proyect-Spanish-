@@ -60,6 +60,7 @@ from .privileges import is_administrator
 from .search_context import compact_search_query, resolve_web_followup
 from .pet_commands import posture_command
 from .work_tasks import WorkTasks, WorkSession, WorkStopped, is_work_request
+from .project_previews import ProjectPreviews
 from .temporal import (
     TemporalContext,
     TemporalGrounding,
@@ -604,6 +605,7 @@ class CompanionService:
     def __init__(self, store: ConfigStore, config: CompanionConfig) -> None:
         self.store = store
         self.config = config
+        self.project_previews = ProjectPreviews(config)
         self.events: Queue[dict[str, Any]] = Queue()
         self.database = Database(store.data_dir / "companion.sqlite3")
         self.chat_storage = ConversationStorage(
@@ -1048,6 +1050,26 @@ class CompanionService:
             )
         except KeyError as exc:
             raise ValueError("La conversación no existe.") from exc
+        # Older replies can expose already-existing results without rewriting
+        # the archive, inventing files or re-running a historical PC command.
+        catalogue = None
+        for item in page["items"]:
+            if item.get("role") != "assistant":
+                continue
+            metadata = dict(item.get("metadata") or {})
+            if metadata.get("project_previews"):
+                continue
+            results = metadata.get("action_results") or ([metadata["action_result"]] if metadata.get("action_result") else [])
+            if not results:
+                continue
+            try:
+                if catalogue is None:
+                    catalogue = self.project_previews.catalogue()
+                previews = self.project_previews.related(results, catalogue=catalogue)
+                if previews:
+                    item["metadata"] = {**metadata, "project_previews": previews}
+            except (ValueError, OSError):
+                pass
         next_before_id = page.get("next_cursor")
         return {
             "conversation": conversation,
@@ -1074,6 +1096,15 @@ class CompanionService:
         client_message_id: str | None = None,
     ) -> dict[str, Any]:
         message = clean_model_text(message)
+        metadata = dict(metadata or {})
+        results = metadata.get("action_results") or ([metadata["action_result"]] if metadata.get("action_result") else [])
+        try:
+            since = self.work_tasks.get(metadata["task_id"])["created_at"] if metadata.get("task_id") else None
+            previews = self.project_previews.related(results, since=since) if results else []
+            if previews:
+                metadata["project_previews"] = previews
+        except (ValueError, OSError):
+            pass  # Preview discovery must never lose a completed chat reply.
         stored = self.database.add_message(
             "assistant",
             message,
@@ -1976,6 +2007,9 @@ class CompanionService:
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         result = dict(payload or {})
+        previews = (assistant_message.get("metadata") or {}).get("project_previews")
+        if previews:
+            result["project_previews"] = previews
         result["message"] = assistant_message["content"]
         result["conversation_id"] = conversation_id
         result["conversation"] = self.get_conversation(conversation_id)

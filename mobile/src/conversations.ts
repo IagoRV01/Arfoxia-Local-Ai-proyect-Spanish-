@@ -7,6 +7,7 @@ import type {
   Source,
   StoredAttachment,
 } from './types';
+import { validatedPreviews } from './projectPreviews';
 
 export function conversationAttachmentSource(
   credentials: Credentials,
@@ -73,6 +74,7 @@ export function chatMessageToEntry(message: ChatMessage): ChatEntry {
     id: message.id,
     role: message.role,
     text: message.content,
+    projectPreviews: validatedPreviews(metadata.project_previews),
     attachmentNames: attachments.map((attachment) => attachment.name),
     attachments,
     sources: metadataSources(message.metadata),

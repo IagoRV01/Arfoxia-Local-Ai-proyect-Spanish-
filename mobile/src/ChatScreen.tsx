@@ -29,6 +29,7 @@ import Markdown, {
 import { ApiError, ArfoxiaApi, findScreenshotId } from './api';
 import { ConversationListModal } from './ConversationListModal';
 import { MarkdownCodeBlock, codeFontFamily } from './MarkdownCodeBlock';
+import { ProjectViewer } from './ProjectViewer';
 import {
   chatMessageToEntry,
   conversationsAfterDelete,
@@ -51,6 +52,7 @@ import type {
   Conversation,
   ConversationStorage,
   PendingAttachment,
+  ProjectPreview,
   StoredAttachment,
 } from './types';
 import {
@@ -222,6 +224,7 @@ export function ChatScreen({
   const [error, setError] = useState('');
   const [offline, setOffline] = useState(false);
   const [mediaPreview, setMediaPreview] = useState<MediaPreview | null>(null);
+  const [projectPreview, setProjectPreview] = useState<ProjectPreview | null>(null);
 
   const selectedConversation = useMemo(
     () => conversations.find((item) => item.id === selectedId) ?? null,
@@ -819,6 +822,7 @@ export function ChatScreen({
             ),
             model: response.model,
             modelMode: response.model_mode,
+            projectPreviews: response.project_previews,
           },
         ]);
       }
@@ -1028,6 +1032,10 @@ export function ChatScreen({
               ))}
             </View>
           ) : null}
+          {item.projectPreviews?.length ? <View style={styles.screenshotActions}>
+            {item.projectPreviews.map(project => <Button key={project.id} label={`Ver resultado · ${project.title}`}
+              icon="▧" variant="ghost" compact onPress={() => setProjectPreview(project)} />)}
+          </View> : null}
           {item.model || item.modelMode ? (
             <Text style={styles.modelMeta}>
               {[item.modelMode, item.model].filter(Boolean).join(' · ')}
@@ -1358,6 +1366,7 @@ export function ChatScreen({
         onDelete={deleteConversation}
       />
 
+      <ProjectViewer project={projectPreview} api={api} onClose={() => setProjectPreview(null)} onUnauthorized={onUnauthorized} />
       <ScreenshotModal
         visible={Boolean(mediaPreview)}
         source={mediaPreview?.source ?? null}

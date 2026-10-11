@@ -6,6 +6,35 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Añadido — Visualizador de proyectos en Expo Go — 2026-10-11
+
+- Nueva pestaña Visor, listado de proyectos/archivos y WebView nativa con
+  Recargar/Cerrar. HTML y Three.js interactivos, imágenes, PDF de iOS y lectura
+  de texto/código. Se conserva el chat activo y los trabajos del PC.
+- Botones Ver resultado automáticos tras herramientas relacionadas con archivos
+  reales; recuperación de resultados de mensajes antiguos sin reejecutar
+  comandos. Prompt de Arfoxia orientado a entregas HTML con recursos relativos,
+  sin enlaces localhost inventados ni falsas comprobaciones visuales.
+- API privada de catálogo y vistas con permisos aleatorios de 30 minutos,
+  limitados a recursos del proyecto. Sin clave principal en WebView, cookies
+  compartidas, acceso a archivos del iPhone ni puente a herramientas del PC.
+  CSP aislada, CDN permitidos, rechazo de escapes, enlaces/uniones/enlaces duros,
+  archivos privados y carpetas generadas. Sin exposición pública/Funnel.
+- Aviso visible de errores JavaScript/carga, sin reescribir los archivos fuente.
+  Prueba visual real por Tailscale del proyecto 3D, pausa, día/noche, tamaño móvil,
+  módulos/CSS locales y error controlado. Se detectó y corrigió localmente una
+  función usada antes de inicializarse, conservando copia previa privada.
+- WebView 13.16.1 y parches compatibles recomendados para SDK 57. Actualización
+  de shell-quote que elimina el aviso crítico previo; quedan 26 avisos npm
+  transitivos (9 moderados/17 altos), sin hallazgos en WebView ni cambios mayores
+  forzados. Dependencias generadas y proyectos personales no se publican.
+- Pruebas automatizadas y prueba real con Dual: lectura correcta, tarea
+  completada en el mismo chat y vista asociada. Documentación de formatos,
+  permisos y límites en docs/PROJECT_VIEWER.md; pendiente validación en iPhone
+  por el propietario, sin presentarla como ya realizada.
+- Validación final: 733 pruebas Python, 59 pruebas móviles, TypeScript sin
+  errores, exportación iOS correcta y 21/21 comprobaciones de Expo Doctor.
+
 ### Añadido — Carpeta de proyectos predeterminada — 2026-10-11
 
 - Carpeta local persistente `workspace_directory`, por defecto `Arfoxia` dentro

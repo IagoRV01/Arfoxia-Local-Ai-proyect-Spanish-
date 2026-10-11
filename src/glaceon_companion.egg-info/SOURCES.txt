@@ -29,6 +29,7 @@ src/glaceon_companion/pc_commands.py
 src/glaceon_companion/pet_commands.py
 src/glaceon_companion/pet_motion.py
 src/glaceon_companion/privileges.py
+src/glaceon_companion/project_previews.py
 src/glaceon_companion/search_context.py
 src/glaceon_companion/services.py
 src/glaceon_companion/sprites.py
@@ -80,6 +81,7 @@ tests/test_pet_commands.py
 tests/test_pet_motion.py
 tests/test_physical_pet_ui.py
 tests/test_privileges.py
+tests/test_project_previews.py
 tests/test_quick_chat_popup.py
 tests/test_search_context.py
 tests/test_search_routing.py

@@ -1,5 +1,5 @@
 export type InteractionKind = 'feed' | 'pet' | 'play' | 'sleep' | 'wake' | 'sit' | 'resume';
-export type TabKey = 'companion' | 'chat' | 'system' | 'settings';
+export type TabKey = 'companion' | 'chat' | 'projects' | 'system' | 'settings';
 export type ModelMode = 'small' | 'large' | 'direct' | string;
 export type RequestedModelMode = 'gaming_gpu' | 'normal' | 'power' | 'dual';
 
@@ -24,6 +24,7 @@ export interface Health {
   physical_interactions: boolean;
   privileged_actions: boolean;
   conversations?: boolean;
+  project_previews?: boolean;
   cross_chat_memory?: boolean;
   game_streaming?: boolean;
   chat_storage_limit_gb?: number;
@@ -79,6 +80,7 @@ export interface ActionResult {
 }
 
 export interface ChatResponse {
+  project_previews?: ProjectPreview[];
   message: string;
   model: string | null;
   model_mode: ModelMode;
@@ -121,6 +123,7 @@ export interface StoredAttachment {
 }
 
 export interface ChatMessageMetadata {
+  project_previews?: ProjectPreview[];
   sources?: Source[];
   model?: string | null;
   model_mode?: ModelMode;
@@ -207,6 +210,7 @@ export interface PendingAttachment {
 }
 
 export interface ChatEntry {
+  projectPreviews?: ProjectPreview[];
   id: string;
   role: 'user' | 'assistant' | 'system';
   text: string;
@@ -219,6 +223,24 @@ export interface ChatEntry {
   screenshotIds?: string[];
   clientMessageId?: string;
   delivery?: 'sending' | 'failed' | 'uncertain';
+}
+
+export interface ProjectPreview {
+  id: string;
+  title: string;
+  entry: string;
+  kind: 'html' | 'image' | 'pdf' | 'text';
+  modified_at: number;
+  size: number;
+  entries?: ProjectPreview[];
+}
+
+export interface PreviewSession {
+  path: string;
+  title: string;
+  entry: string;
+  kind: ProjectPreview['kind'];
+  expires_in: number;
 }
 
 export interface GpuStatus {

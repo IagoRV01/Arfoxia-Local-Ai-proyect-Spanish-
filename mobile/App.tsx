@@ -29,6 +29,7 @@ import {
 } from './src/moonlight';
 import { SettingsScreen } from './src/SettingsScreen';
 import { SystemScreen } from './src/SystemScreen';
+import { ProjectsScreen } from './src/ProjectsScreen';
 import type { Credentials, Health, TabKey } from './src/types';
 import {
   Button,
@@ -43,6 +44,7 @@ type Phase = 'loading' | 'pairing' | 'ready' | 'offline';
 const tabs: Array<{ key: TabKey; icon: string; label: string }> = [
   { key: 'companion', icon: '⌂', label: 'Arfoxia' },
   { key: 'chat', icon: '✦', label: 'Chat' },
+  { key: 'projects', icon: '▧', label: 'Visor' },
   { key: 'system', icon: '▣', label: 'PC' },
   { key: 'settings', icon: '⚙', label: 'Ajustes' },
 ];
@@ -185,6 +187,7 @@ export default function App() {
           {tab === 'system' ? (
             <SystemScreen api={api} onUnauthorized={unauthorized} />
           ) : null}
+          {tab === 'projects' ? <ProjectsScreen api={api} onUnauthorized={unauthorized} /> : null}
           {tab === 'settings' ? (
             <SettingsScreen
               api={api}
