@@ -6,6 +6,26 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Añadido — Base de investigación nativa PS4/ShellUI — 2026-10-12
+
+- Sonda propia PRX de metadata Mono/PUI, limitada a `SceShellUI` y GoldHEN SDK
+  1.00; registra versión real y firmas de clases, con log acotado. Sin offsets
+  de firmware, hooks, parches de hilo principal ni modificación de plugins.
+- Cargador BinLoader de una sola ejecución, ruta propia y comprobación explícita
+  del syscall/handle; no confunde el envío con una mascota visible.
+- Transporte manual FTP con comprobación byte a byte antes de la carga, límite
+  de tamaños, rechazo de sobrescrituras/reintentos ciegos y estado de solo lectura.
+  Se evita el ping vacío del cargador y el auto-descifrado `.prx` de GoldHEN
+  durante la verificación. Sin contraseñas ni configuración persistente nueva.
+- Compilación real de PRX y payload con Clang/LLD 18/OpenOrbis y SDK público,
+  en contenedor rootless sobre Bazzite; no se instalan capas ni se mueve la IA.
+  Once pruebas automatizadas de transporte correctas; suite Python completa:
+  775 pruebas correctas.
+- Prueba en consola pendiente: PRX subido y verificado en la carpeta propia;
+  no se envió el payload porque BinLoader dejó de escuchar tras la comprobación
+  TCP. Requiere reactivación manual. Renderizador/mascota PS4 todavía no
+  implementados ni registrados como destino de paseo operativo.
+
 ### Corregido y ampliado — Paseo en Bazzite — 2026-10-12
 
 - Arrastre estable en Wayland: superficie transparente fija, coordenadas

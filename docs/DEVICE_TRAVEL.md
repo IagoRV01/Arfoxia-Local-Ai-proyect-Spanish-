@@ -84,12 +84,12 @@ atrasado nunca puede ordenar un nuevo viaje por sí solo. Un reinicio del PC
 restaura la presencia local. No se viaja automáticamente ni se cambia de
 dispositivo sin pulsar el control. Derecha en Linux → **Volver al PC**.
 
-## PS4 con GoldHEN: no implementado como overlay global
+## PS4 con GoldHEN: cliente nativo en investigación
 
 FTP no ejecuta un cliente gráfico. El repositorio oficial de plugins GoldHEN
 documenta carga en juegos por TitleID; eso no garantiza un plugin universal
 para todos los juegos y el shell. Un hook genérico de VideoOut puede colisionar
-con el propio overlay de GoldHEN. No se instala un PRX especulativo, no se
+con el propio overlay de GoldHEN. No se instala un renderizador especulativo, no se
 modifica `plugins.ini`, juegos, kernel ni firmware.
 
 - [Plugins oficiales y carga por título](https://github.com/GoldHEN/GoldHEN_Plugins_Repository)
@@ -98,17 +98,23 @@ modifica `plugins.ini`, juegos, kernel ni firmware.
 - [Capa Wayland compatible con KDE](https://github.com/wmww/gtk-layer-shell)
 
 La superposición PS4 en todos los juegos **y** menú del sistema queda pendiente
-de desarrollo específico, acceso a SDK/firmware compatibles y pruebas reales.
+de desarrollar y verificar el renderizador específico y su ejecución real.
 No se sustituye silenciosamente por una página del navegador ni se registra
 la PS4 como destino operativo si no existe ese cliente.
 
 ### Prueba limitada al menú del SO (12.52 / GoldHEN 2.4b18.7)
 
-La comprobación del 12-10-2026 confirma servidor FTP GoldHEN v2.2 y BinLoader
-accesibles. Solo se listó metadata de directorios; no se subió ningún archivo,
-se cambiaron plugins ni se envió un payload. No hubo una prueba gráfica PS4.
-Reducir la prueba al menú no elimina la necesidad de un cliente compatible con
-ShellUI. [Orbis-Toolbox](https://github.com/OSM-Made/Orbis-Toolbox), que modifica
-esa interfaz, documenta solo 5.05/6.72/7.02/7.55/9.00, no 12.52. No se instala
-ese binario ni se prueban offsets antiguos. Se necesita un renderizador de
-ShellUI portado/verificado para el firmware exacto antes de una prueba visual.
+La comprobación del 12-10-2026 confirma FTP GoldHEN v2.2 y disponibilidad inicial
+de BinLoader. La investigación continúa con una sonda PRX propia de metadata
+Mono/PUI y un cargador limitado a `SceShellUI`: ambos compilados con SDKs
+públicos en un contenedor aislado del cliente Bazzite. El PRX se ha subido a
+la carpeta propia y verificado byte a byte, sin modificar plugins existentes.
+No se llegó a enviar el payload: el puerto 9090 dejó de escuchar después de la
+comprobación TCP inicial y necesita reactivarse desde la consola.
+
+No hubo aún ejecución confirmada de la sonda ni prueba gráfica. La sonda no es
+la mascota: identifica las clases reales para diseñar un renderizador con
+despacho correcto al hilo UI, sin parches de código ni offsets de otro firmware.
+No se instala Orbis-Toolbox antiguo ni se registra la PS4 como destino operativo.
+Detalles, límites, compilación y comandos explícitos en
+[ports/ps4/README.md](../ports/ps4/README.md).

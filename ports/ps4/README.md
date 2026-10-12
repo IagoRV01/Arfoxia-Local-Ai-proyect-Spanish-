@@ -1,0 +1,90 @@
+# Cliente PS4: investigación del menú ShellUI
+
+Estado: **sonda nativa compilada; mascota/renderizado todavía no implementados**.
+No es un cliente GTK ni una aplicación a pantalla completa disfrazada de overlay.
+La prueba está limitada al menú de inicio, sin juegos abiertos. No habilita
+viajes a PS4 en la interfaz Windows hasta verificar un cliente que dibuje.
+
+## Arquitectura propuesta
+
+GoldHEN permite cargar un PRX propio en `SceShellUI` mediante su SDK publicado.
+ShellUI utiliza Mono y widgets PUI: antes de portar el renderizador se consultan
+los nombres y firmas de las clases disponibles en la consola concreta.
+No se asumen direcciones de otro firmware ni se anula la comprobación del hilo
+principal de PUI. El futuro renderizador necesita un mecanismo real de despacho
+al hilo UI y confirmación visual, no solo un identificador de módulo cargado.
+
+`native/probe.c` enumera metadata Mono y escribe como máximo 128 KiB en
+`/user/data/Arfoxia/probe.txt`. Solo funciona dentro de `SceShellUI`, con ABI
+GoldHEN SDK 1.00. No crea widgets, no hace hooks ni escribe memoria de código.
+`native/loader.c` carga exclusivamente `/data/Arfoxia/arfoxia_probe.prx` en ese
+proceso y guarda `load.txt`; comprueba tanto el resultado del syscall como el
+handle, inicialmente marcado como inválido. No ejecuta el comando jailbreak.
+
+**Experimental:** cargar código en ShellUI puede bloquear el menú o requerir
+reiniciar la consola. No se instala como plugin persistente, no se prueba en
+juegos y no se cambia `plugins.ini`. No debe reenviarse mientras siga cargado.
+La disponibilidad de FTP/BinLoader no demuestra compatibilidad del overlay.
+
+## Compilación aislada en Linux
+
+Dependencias externas, fuera del repositorio:
+
+- [OpenOrbis PS4 Toolchain](https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain),
+  release v0.5.4, archivo `toolchain-llvm-18.tar.gz`. SHA256 publicado y verificado:
+  `3c7cd5bb593ca74fa1c13fd59f3938dc0fc07985167f7275063019e63abe4526`.
+- [GoldHEN Plugins SDK](https://github.com/GoldHEN/GoldHEN_Plugins_SDK),
+  revisión probada `bcea3c7ef01dac6d7f9f49ebf9e90fe66d86f5f7`. Solo se usa su CRT
+  y el ABI de carga; no se enlaza el motor de hooks.
+- [Scene-Collective payload SDK](https://github.com/Scene-Collective/ps4-payload-sdk),
+  revisión probada `b7326416c23ce14639e9180a24093bdc5eedb579`.
+- Clang/LLD 18, GCC, GNU make y binutils. Validado en un contenedor rootless
+  Ubuntu 24.04, sin instalar compiladores ni capas en el SO inmutable Bazzite.
+
+```sh
+make -C /ruta/ps4-payload-sdk/libPS4
+make -C ports/ps4 \
+  OO_PS4_TOOLCHAIN=/ruta/OpenOrbis/PS4Toolchain \
+  PAYLOAD_SDK=/ruta/ps4-payload-sdk \
+  GOLDHEN_SDK=/ruta/GoldHEN_Plugins_SDK
+```
+
+Genera `build/arfoxia_probe.prx` y `build/arfoxia_probe_loader.bin`.
+No publicar SDKs, bibliotecas propietarias, directorios `.git`, binarios de
+desarrollo ni logs de una consola. `build/` está excluido de Git.
+
+## Prueba manual (Python estándar, sin contraseña)
+
+Activar FTP y BinLoader en GoldHEN y dejar la consola en el menú de inicio.
+`--host` debe ser la dirección verificada del dispositivo del dueño.
+
+```sh
+python ports/ps4/probe_transport.py stage --host DIRECCION_PS4
+python ports/ps4/probe_transport.py send --host DIRECCION_PS4 --home-menu
+python ports/ps4/probe_transport.py status --host DIRECCION_PS4
+```
+
+- `stage`: solo carpeta propia `/data/Arfoxia`; nunca sobreescribe un archivo
+  existente. Verifica bytes antes de renombrar a `.prx`, ya que GoldHEN puede
+  auto-descifrar PRX/SELF en una descarga FTP normal.
+- `send`: verifica nuevamente el archivo y abre **una sola conexión** al puerto
+  9090, con el payload real. No hace un ping vacío ni reintentos automáticos.
+  Rechaza una carga si ya hay un log o una verificación interrumpida. La marca
+  `--home-menu` declara la comprobación física; no detecta por sí sola un juego.
+- `status`: FTP de solo lectura para los dos logs propios, con límites de tamaño.
+  Nunca abre BinLoader; «enviado» no equivale a «ejecutado» ni a «mascota visible».
+
+Si una conexión vacía hace que el cargador deje de escuchar, desactivar y
+reactivar BinLoader en la consola antes del envío real. No intentar solventarlo
+instalando plugins ajenos, cambiando offsets o alterando configuraciones.
+
+## Referencias y licencias
+
+La vía Mono/PUI se investigó a partir de
+[ps4-thumbgrid-ime](https://github.com/Zenalios/ps4-thumbgrid-ime), revisión
+`9e4fbc9f39f207ce4f08f1ec635bca5fa5bb90f1` (MIT). No se incorpora su parche a
+`CheckRunningOnMainThread`: no es un despacho UI seguro.
+
+Las dependencias conservan sus licencias en sus repositorios originales.
+No se incluyen recursos Sony ni SDKs completos en este directorio. La atribución
+del diseño de estructuras ABI está en [NOTICE.md](NOTICE.md).
