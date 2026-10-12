@@ -9,6 +9,7 @@ import argparse
 import json
 from pathlib import Path
 import struct
+import uuid
 
 MAX_FILE = 64 * 1024 * 1024
 MAX_ROWS = 200_000
@@ -85,6 +86,7 @@ class Metadata:
             raise MetadataError('Optimized tables, strings and blobs required')
         self.strings = entries['#Strings']
         self.blobs = entries['#Blob']
+        self.guids = entries.get('#GUID', b'')
         tables = entries['#~']
         heap_sizes = uint(tables, 6, 1)
         valid = uint(tables, 8, 8)
@@ -116,7 +118,7 @@ class Metadata:
         for table, layout in enumerate(layouts):
             width = sum(layout)
             chunk(tables, cursor, width * self.rows[table])
-            if table in (1, 2, 6):
+            if table in (0, 1, 2, 6):
                 records = []
                 for _ in range(self.rows[table]):
                     values = []
@@ -128,11 +130,18 @@ class Metadata:
             else:
                 cursor += width * self.rows[table]
         self.refs = decoded[1]
+        self.modules = decoded[0]
         self.types = decoded[2]
         self.methods = decoded[6]
         starts = [row[5] for row in self.types]
         if starts != sorted(starts) or any(not 1 <= n <= len(self.methods) + 1 for n in starts):
             raise MetadataError('Invalid TypeDef MethodList range')
+
+    def module_guid(self) -> str:
+        if len(self.modules) != 1 or self.modules[0][2] == 0:
+            raise MetadataError('Expected exactly one Module MVID')
+        data = chunk(self.guids, (self.modules[0][2] - 1)*16, 16)
+        return str(uuid.UUID(bytes_le=data)).upper()
 
     def text(self, offset: int) -> str:
         chunk(self.strings, offset, 1)
@@ -224,11 +233,11 @@ class Metadata:
                 'offline_only': True, 'render_validated': False}
 
 
-def inspect(data: bytes, selected=DEFAULT_TYPES, offset: int | None = None) -> dict:
+def parse(data: bytes, offset: int | None = None) -> Metadata:
     if len(data) > MAX_FILE:
         raise MetadataError('File exceeds offline size limit')
     if offset is not None:
-        return Metadata(data, offset).report(tuple(selected))
+        return Metadata(data, offset)
     candidates = []
     position = 0
     for _ in range(64):
@@ -244,7 +253,11 @@ def inspect(data: bytes, selected=DEFAULT_TYPES, offset: int | None = None) -> d
         raise MetadataError('Too many metadata candidates; specify an offset')
     if len(candidates) != 1:
         raise MetadataError('Expected one valid metadata root; specify an offset')
-    return candidates[0].report(tuple(selected))
+    return candidates[0]
+
+
+def inspect(data: bytes, selected=DEFAULT_TYPES, offset: int | None = None) -> dict:
+    return parse(data, offset).report(tuple(selected))
 
 
 def main():

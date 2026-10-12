@@ -6,6 +6,29 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Añadido — Reemplazo de diagnóstico PS4 y validación AOT aislada — 2026-10-12
+
+- Inspector offline del layout ELF/AOT v140 observado, con límites, validación
+  de cuerpos nativos y reconocimiento de métodos provistos por el runtime.
+  Metadata ampliada con MVID acotado; generador de perfil exige contratos
+  exactos y coincidencia GUID AOT/MVID. Perfil y bibliotecas quedan privados.
+- Nueva sonda independiente de un solo callback, sin widgets/hooks/parches:
+  valida proceso, firmware y GUID antes de resolver tokens. Checkpoints fsync,
+  limpieza antes del envío y conservación del módulo/raíces GC después de
+  encolar para evitar liberar código pendiente. No repite la búsqueda global
+  de clases que se investigaba cuando falló ShellUI.
+- Cargador nuevo de una sola ejecución y rutas separadas del PRX en cuarentena.
+  Build normal desactivado, targets experimentales separados con perfil privado,
+  sin autoarranque, envío automático ni cambios a los transportes bloqueados.
+- Fixture propio de despacho Mono: callback nativo ejecutado exactamente una
+  vez en otro hilo, en host normal y full-AOT sin JIT, usando un contenedor
+  aislado. Mono 6.8 del host no equivale a PlayStation4 Mono 5.2 de la consola.
+- Validación: 859 pruebas Python correctas (95 específicas PS4), 10 casos C de GUID,
+  13 casos C de ABI, compilación Clang/LLD y empaquetado PIE de ambos cargadores.
+  Desensamblado confirma retornos -4 de las versiones normales y ausencia de
+  relocaciones en el candidato. No se ha enviado otro payload a la PS4 ni se
+  afirma que el error en consola o el renderizado estén solucionados.
+
 ### Corregido — Investigación PS4 sin resolver clases en ShellUI — 2026-10-12
 
 - Consola recuperada: el dueño confirmó regreso al menú y respuesta del mando.

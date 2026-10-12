@@ -6,6 +6,58 @@ No es un cliente GTK ni una aplicación a pantalla completa disfrazada de overla
 La prueba está limitada al menú de inicio, sin juegos abiertos. No habilita
 viajes a PS4 en la interfaz Windows hasta verificar un cliente que dibuje.
 
+## Candidato de despacho nuevo: preparado, no enviado
+
+`offline_aot.py` analiza el formato x64 AOT v140 observado en las bibliotecas
+privadas: exportación de información, límites de segmentos ELF y tabla de
+llamadas relativas. Rechaza layouts desconocidos, cuerpos no ejecutables y
+tokens fuera de rango. Un método sin cuerpo nativo se marca como provisto por
+el runtime, no como prueba de que podamos invocarlo. No ejecuta código Sony.
+
+`dispatch_profile.py` exige los tipos y firmas exactos, los cuerpos AOT del
+constructor/contexto PUI y de `Post`, y coincidencia entre GUID AOT y MVID de
+metadata. Genera un header **privado y excluido de Git**, sin activar cargas:
+
+```sh
+python ports/ps4/dispatch_profile.py \
+  --pui RUTA_PUI_PRIVADA --corlib RUTA_CORLIB_PRIVADA \
+  --output ports/ps4/build/dispatch_profile.h
+```
+
+La prueba de host (`make test-mono`) crea un delegado hacia una función nativa
+y lo encola en un `SynchronizationContext` propio. Se verificó ejecución
+exactamente una vez en el hilo gestionado propietario, también con JIT
+deshabilitado en **full-AOT**, en un contenedor Mono 6.8 aislado. El runtime
+de la consola se identifica como PlayStation4 Mono 5.2: **el éxito del host
+no valida esa variante ni demuestra que el hilo sea el gráfico de PS4**.
+
+El reemplazo `native/dispatch_probe.c` se limita a un único callback, sin
+widgets, renderizado, hooks, parches ni aserciones del hilo principal.
+Antes de resolver tokens verifica firmware, proceso y los GUID de ambas
+bibliotecas cargadas. Solo consulta el ensamblado PUI ya cargado, sin buscar
+clases en todos los ensamblados ni cargar una DLL nueva. Registra fases con
+fsync y conserva el módulo/raíces GC después de encolar: no se deben liberar
+mientras pueda quedar código pendiente. `module_stop` rechaza una parada tras
+el envío; no se debe asumir que esto protege frente a cualquier descarga
+externa forzada.
+
+El cargador usa rutas nuevas y un log exclusivo de una sola ejecución;
+no puede cargar `arfoxia_probe.prx`, el prototipo que causó el error. Ambos
+puntos de entrada nuevos retornan -4 por defecto, comprobado por desensamblado.
+Los targets explícitos `build/arfoxia_dispatch_candidate_v1.prx` y
+`build/dispatch_loader_candidate.elf` requieren el perfil privado y generan
+artefactos distintos de las versiones desactivadas. No forman parte de `all`,
+no tienen autoarranque ni un envío automático. Los transportes anteriores
+permanecen bloqueados y el PRX fallido sigue conservado con nombre `.disabled`.
+
+Se compilaron los candidatos con OpenOrbis/Clang/LLD y se validó el cargador
+PIE sin relocaciones pendientes. **No se ha enviado esta sonda a la consola.**
+Una futura carga de código en ShellUI aún puede causar otro error del sistema;
+primero requiere confirmar físicamente menú operativo y BinLoader activo,
+guardar el diagnóstico bruto y realizar un solo envío, sin reintentos. Incluso
+`CALLBACK_COUNT 1` solo probaría despacho: faltan validar propiedad del hilo UI
+y dibujar una mascota visible antes de anunciar soporte PS4 operativo.
+
 ## Investigación offline después del fallo
 
 La consola volvió al menú y responde al mando, según confirmó el dueño.
