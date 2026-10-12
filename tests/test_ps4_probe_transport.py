@@ -30,14 +30,16 @@ class FTP:
         self.changes.append(('rename', old, new))
 
 
-def test_stage_verifies_neutral_extension_before_prx():
+def test_stage_verifies_neutral_extension_before_prx(monkeypatch):
+    monkeypatch.setattr(transport, 'LIVE_LOADS_DISABLED', False)  # In-memory FTP only.
     ftp = FTP({'unrelated.txt': b'keep'})
     transport.stage(ftp, b'owned')
     assert ftp.files == {'unrelated.txt': b'keep', 'arfoxia_probe.prx': b'owned'}
     assert ftp.changes[0] == ('store', 'arfoxia_probe.upload-bin')
 
 
-def test_corrupt_transfer_is_never_named_as_executable():
+def test_corrupt_transfer_is_never_named_as_executable(monkeypatch):
+    monkeypatch.setattr(transport, 'LIVE_LOADS_DISABLED', False)  # In-memory FTP only.
     ftp = FTP(corrupt=True)
     with pytest.raises(ValueError, match='readback'):
         transport.stage(ftp, b'owned')
@@ -45,14 +47,16 @@ def test_corrupt_transfer_is_never_named_as_executable():
 
 
 @pytest.mark.parametrize('name', ['arfoxia_probe.prx', 'arfoxia_probe.upload-bin'])
-def test_stage_preserves_existing_file(name):
+def test_stage_preserves_existing_file(name, monkeypatch):
+    monkeypatch.setattr(transport, 'LIVE_LOADS_DISABLED', False)  # In-memory FTP only.
     ftp = FTP({name: b'keep'})
     with pytest.raises(ValueError, match='already staged'):
         transport.stage(ftp, b'owned')
     assert not ftp.changes
 
 
-def test_verification_restores_original_name_on_mismatch():
+def test_verification_restores_original_name_on_mismatch(monkeypatch):
+    monkeypatch.setattr(transport, 'LIVE_LOADS_DISABLED', False)  # In-memory FTP only.
     ftp = FTP({'arfoxia_probe.prx': b'keep'})
     with pytest.raises(ValueError, match='match'):
         transport.verify_staged(ftp, b'other')
@@ -60,7 +64,8 @@ def test_verification_restores_original_name_on_mismatch():
 
 
 @pytest.mark.parametrize('log', ['load.txt', 'probe.txt', 'arfoxia_probe.verify-bin'])
-def test_no_blind_retry_after_execution_or_interrupted_verification(log):
+def test_no_blind_retry_after_execution_or_interrupted_verification(log, monkeypatch):
+    monkeypatch.setattr(transport, 'LIVE_LOADS_DISABLED', False)  # In-memory FTP only.
     ftp = FTP({'arfoxia_probe.prx': b'keep', log: b'prior'})
     with pytest.raises(ValueError):
         transport.verify_staged(ftp, b'keep')
@@ -132,3 +137,20 @@ def test_quarantine_rejects_cli_before_ftp_connection(action, monkeypatch):
     monkeypatch.setattr(transport.ftplib, 'FTP', forbidden)
     with pytest.raises(ValueError, match='CE-36329-3'):
         transport.main()
+
+
+@pytest.mark.parametrize('action', [transport.stage, transport.verify_staged])
+def test_direct_ftp_api_cannot_bypass_quarantine(action):
+    class ForbiddenFTP:
+        def __getattr__(self, _):
+            pytest.fail('Quarantine must reject before any FTP operation')
+    with pytest.raises(ValueError, match='CE-36329-3'):
+        action(ForbiddenFTP(), b'owned')
+
+
+def test_native_probe_does_not_resolve_or_invoke_classes():
+    source = (Path(__file__).parents[1] / 'ports/ps4/native/probe.c').read_text()
+    for symbol in ('mono_class_from_name', 'mono_class_get_methods', 'mono_method_full_name',
+                   'mono_runtime_invoke', 'mono_compile_method', 'mprotect'):
+        assert symbol not in source
+    assert 'if (ARFOXIA_PS4_PROBE_QUARANTINED) return -4;' in source

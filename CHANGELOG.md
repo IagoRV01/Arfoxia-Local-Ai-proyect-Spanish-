@@ -6,6 +6,32 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Corregido — Investigación PS4 sin resolver clases en ShellUI — 2026-10-12
+
+- Consola recuperada: el dueño confirmó regreso al menú y respuesta del mando.
+  Investigación continuada por FTP de solo lectura y análisis local, sin nuevas
+  cargas ni cambios de plugins, firmware, juegos o datos del usuario.
+- Retirada la búsqueda indiscriminada de clases y métodos del callback nativo
+  de ensamblados. Sonda reducida a inventario limitado con checkpoints fsync;
+  conserva retorno inmediato de cuarentena y no se ha ejecutado en consola.
+- Añadido inspector offline ECMA-335 sin Mono/red/dependencias externas:
+  tipos, tokens, firmas, métodos estáticos/de instancia y ausencias explícitas.
+  Límites de archivo/tablas/streams/firmas, rechazo de raíces ambiguas y firmas
+  no soportadas sin inventar resultados. Pruebas con fixtures sintéticos propios.
+- Verificadas bibliotecas privadas de la PS4: Application, UI2.Widget/Panel/
+  ImageBox, UISynchronizationContext.Post y LayerManager.FindContainerSceneByPath.
+  Corregidas suposiciones de namespaces/firmas de la referencia; los recursos
+  Sony e informes privados no se incluyen en la publicación.
+- Cuarentena reforzada en APIs FTP directas de staging y verificación, antes de
+  operaciones que puedan escribir/renombrar; pruebas de rechazo sin contactar FTP.
+- No se atribuye el crash a una llamada concreta sin backtrace. Firmas offline
+  y pruebas de host no equivalen a renderizado PS4; falta validar un callback
+  AOT y despacho UI compatible antes de una nueva prueba visual.
+- Validación: 53 pruebas específicas PS4 y 817 pruebas Python totales correctas;
+  13 casos C de ABI y compilación Clang/LLD/OpenOrbis correctos. Comparación
+  independiente con dnfile de 761 contratos de métodos en bibliotecas privadas.
+  Desensamblado confirma que el PRX conserva el retorno -4 de cuarentena.
+
 ### Corregido — Cargador de diagnóstico PS4 — 2026-10-12
 
 - Prueba real: GoldHEN recibió y lanzó el BIN; el registro de kernel confirmó

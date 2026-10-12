@@ -48,6 +48,7 @@ def validate(prx: bytes, loader: bytes) -> None:
 
 
 def stage(ftp: ftplib.FTP, prx: bytes) -> str:
+    require_live_enabled()
     try:
         ftp.cwd(REMOTE)
     except ftplib.error_perm as exc:
@@ -67,6 +68,7 @@ def stage(ftp: ftplib.FTP, prx: bytes) -> str:
 
 
 def verify_staged(ftp: ftplib.FTP, prx: bytes) -> None:
+    require_live_enabled()
     # No source overwrite. Restore the name even when verification fails.
     source = REMOTE + '/arfoxia_probe.prx'
     temporary = REMOTE + '/arfoxia_probe.verify-bin'

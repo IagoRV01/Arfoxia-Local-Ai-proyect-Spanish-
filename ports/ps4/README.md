@@ -6,6 +6,57 @@ No es un cliente GTK ni una aplicación a pantalla completa disfrazada de overla
 La prueba está limitada al menú de inicio, sin juegos abiertos. No habilita
 viajes a PS4 en la interfaz Windows hasta verificar un cliente que dibuje.
 
+## Investigación offline después del fallo
+
+La consola volvió al menú y responde al mando, según confirmó el dueño.
+Se han analizado copias privadas de las bibliotecas de **su propia consola**
+por FTP de solo lectura, sin enviar otro payload ni modificar el sistema.
+Esas bibliotecas y los informes completos no se publican.
+
+La búsqueda de clases/métodos se ha trasladado a `offline_metadata.py`: lee
+metadata ECMA-335 embebida en un archivo local, sin Mono, dependencias externas,
+ejecución de bibliotecas ni conexiones de red. Limita archivo, streams, tablas,
+cadenas, firmas y profundidad; rechaza raíces ambiguas y marca las firmas no
+soportadas como desconocidas en lugar de inventarlas. Los tokens corresponden
+al archivo analizado, **no son offsets de memoria ni contratos universales**.
+
+```sh
+python ports/ps4/offline_metadata.py RUTA_BIBLIOTECA_PRIVADA
+python ports/ps4/offline_metadata.py RUTA_BIBLIOTECA_PRIVADA --type NAMESPACE.CLASE
+```
+
+Comprobaciones offline en firmware 12.52:
+
+| Biblioteca | Clase existente | Firma relevante |
+| --- | --- | --- |
+| PUI | `Sce.PlayStation.PUI.Application` | `get_Instance()` estático; `get_RootScene()` de instancia |
+| PUI | `Sce.PlayStation.PUI.UISynchronizationContext` | `Post(System.Threading.SendOrPostCallback, object)` de instancia |
+| app | `Sce.Vsh.ShellUI.AppSystem.LayerManager` | `FindContainerSceneByPath(string)` estático |
+
+También existen `UI2.Widget`, `UI2.Panel` y `UI2.ImageBox`. No aparece
+`UI2.ImageAsset` en la tabla TypeDef de PUI analizada: no se presume su
+existencia en ese namespace. La existencia de `Post` **no demuestra todavía**
+que podamos capturar el contexto UI correcto ni crear un callback compatible
+con el runtime AOT. El texto de una cadena suelta tampoco demuestra que sea
+un método público invocable.
+
+La sonda nativa conserva su retorno inmediato de cuarentena. Se retiraron
+por completo `mono_class_from_name`, enumeración de métodos y generación de
+firmas dentro del callback de `mono_assembly_foreach`. El código restante es
+solo un inventario limitado, con checkpoints sincronizados a disco; no se ha
+vuelto a cargar. Los helpers FTP directos también rechazan staging/verificación
+con renombrado mientras siga la cuarentena, no solo la CLI y el envío TCP.
+
+El fallo exacto de Mono sigue sin backtrace conservado que permita atribuirlo
+a una llamada concreta. Esta revisión elimina una ruta de inspección arriesgada,
+pero **no establece que el error esté resuelto en consola**. Antes de renderizar
+se necesita validar el despacho al hilo UI sin desactivar sus comprobaciones,
+y una prueba visual real del overlay. No hay mascota PS4 operativa todavía.
+
+Formato de metadata: [ECMA-335, partición II](https://ecma-international.org/publications-and-standards/standards/ecma-335/).
+El runtime AOT conserva metadata/cache además de código precompilado, según
+la [documentación de Mono](https://www.mono-project.com/docs/advanced/runtime/docs/aot/).
+
 ## Arquitectura propuesta
 
 GoldHEN permite cargar un PRX propio en `SceShellUI` mediante su SDK publicado.
