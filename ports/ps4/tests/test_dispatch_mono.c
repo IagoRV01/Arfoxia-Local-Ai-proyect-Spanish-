@@ -16,10 +16,15 @@
 static atomic_uint observed;
 static atomic_uint wrong_thread;
 static pthread_t sender;
+static MonoMethod *owner_query;
 
 static void callback(void *state) {
     if (state != NULL || pthread_equal(sender, pthread_self()))
         atomic_store(&wrong_thread, 1);
+    MonoObject *exception = NULL;
+    MonoObject *boxed = mono_runtime_invoke(owner_query, NULL, NULL, &exception);
+    const unsigned char *value = boxed && !exception ? mono_object_unbox(boxed) : NULL;
+    if (!value || !*value) atomic_store(&wrong_thread, 1);
     atomic_fetch_add(&observed, 1);
 }
 
@@ -49,6 +54,8 @@ int main(int argc, char **argv) {
     if (!assembly) return 4;
     MonoClass *fixture = mono_class_from_name(mono_assembly_get_image(assembly), "", "ArfoxiaDispatchFixture");
     if (!fixture) return 5;
+    owner_query = mono_class_get_method_from_name(fixture, "IsOwnerThread", 0);
+    if (!owner_query) return 5;
     MonoClass *delegate_class = mono_class_from_name(mono_get_corlib(), "System.Threading", "SendOrPostCallback");
     MonoMethod *constructor = mono_class_get_method_from_name(delegate_class, ".ctor", 2);
     MonoObject *delegate = mono_object_new(domain, delegate_class);

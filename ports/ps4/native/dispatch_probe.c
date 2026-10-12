@@ -5,6 +5,9 @@
 #ifndef ARFOXIA_PS4_DISPATCH_PROBE_ENABLED
 #define ARFOXIA_PS4_DISPATCH_PROBE_ENABLED 0
 #endif
+#ifndef ARFOXIA_PS4_QUERY_UI_OWNER
+#define ARFOXIA_PS4_QUERY_UI_OWNER 0
+#endif
 
 #if !ARFOXIA_PS4_DISPATCH_PROBE_ENABLED
 int module_start(size_t argc, const void *argv) { (void)argc; (void)argv; return -4; }
@@ -17,7 +20,14 @@ int module_stop(size_t argc, const void *argv) { (void)argc; (void)argv; return 
 #include <orbis/libkernel.h>
 #include "goldhen_abi.h"
 #include "dispatch_contract.h"
+#if ARFOXIA_PS4_QUERY_UI_OWNER
+#include "dispatch_owner_profile.h"
+#if !ARFOXIA_OWNER_PROFILE_PRESENT
+#error A private validated UI owner profile is required
+#endif
+#else
 #include "dispatch_profile.h"
+#endif
 #if !ARFOXIA_DISPATCH_PROFILE_PRESENT
 #error A private validated dispatch profile is required
 #endif
@@ -45,6 +55,10 @@ extern MonoObject *mono_runtime_invoke(MonoMethod *, void *, void **, MonoObject
 extern uint32_t mono_gchandle_new(MonoObject *, int);
 extern MonoObject *mono_gchandle_get_target(uint32_t);
 extern void mono_gchandle_free(uint32_t);
+#if ARFOXIA_PS4_QUERY_UI_OWNER
+extern void *mono_object_unbox(MonoObject *);
+static MonoMethod *owner_query;
+#endif
 
 static int descriptor = -1;
 static atomic_uint posted, observed;
@@ -81,9 +95,25 @@ static int invoke(MonoMethod *method, MonoObject *target, void **args) {
 
 static void callback(void *state) {
     uintptr_t thread = (uintptr_t)scePthreadSelf();
+    record("PTHREAD_IDENTITY_AVAILABLE", thread != 0 && sender_thread != 0);
     record("DIFFERENT_THREAD", thread != sender_thread);
     record("NULL_STATE", state == NULL);
     record("CALLBACK_COUNT", (int)atomic_fetch_add(&observed, 1) + 1);
+#if ARFOXIA_PS4_QUERY_UI_OWNER
+    record("PHASE_UI_OWNER_QUERY", 0);
+    MonoObject *exception = NULL;
+    MonoObject *boxed = mono_runtime_invoke(owner_query, NULL, NULL, &exception);
+    if (exception) {
+        record("UI_OWNER_MANAGED_EXCEPTION", 1);
+        return;
+    }
+    void *value = boxed ? mono_object_unbox(boxed) : NULL;
+    if (!value) {
+        record("UI_OWNER_MISSING_RESULT", 1);
+        return;
+    }
+    record("CORE_IS_MAIN_THREAD", *(const unsigned char *)value != 0);
+#endif
     /* Not a proof of UI ownership or rendering, just one queued callback. */
 }
 
@@ -97,10 +127,14 @@ int module_start(size_t argc, const void *argv) {
     memset(&firmware, 0, sizeof(firmware));
     firmware.Size = sizeof(firmware);
     if (sceKernelGetSystemSwVersion(&firmware) < 0 || firmware.Version != 0x12520001) return -2;
+#if ARFOXIA_PS4_QUERY_UI_OWNER
+    descriptor = sceKernelOpen("/user/data/Arfoxia/dispatch-v2.txt", 0xa01, 0600);
+#else
     descriptor = sceKernelOpen("/user/data/Arfoxia/dispatch-v1.txt", 0xa01, 0600);
+#endif
     if (descriptor < 0) return -3;  /* EXCLUSIVE: never overwrite a prior run. */
     sender_thread = (uintptr_t)scePthreadSelf();
-    record("ARFOXIA_DISPATCH_PROBE", 1);
+    record("ARFOXIA_DISPATCH_PROBE", ARFOXIA_PS4_QUERY_UI_OWNER ? 2 : 1);
     record("PHASE_ROOT_DOMAIN", 0);
     MonoDomain *domain = mono_get_root_domain();
     if (!domain || !mono_thread_attach(domain)) return stopped(-5);
@@ -117,6 +151,23 @@ int module_start(size_t argc, const void *argv) {
         record("PROFILE_MISMATCH", 1);
         return stopped(-8);
     }
+#if ARFOXIA_PS4_QUERY_UI_OWNER
+    record("PHASE_FIND_LOADED_CORE", 0);
+    name = mono_assembly_name_new("Sce.PlayStation.Core");
+    if (!name) return stopped(-15);
+    assembly = mono_assembly_loaded(name);
+    mono_assembly_name_free(name);
+    MonoImage *core = assembly ? mono_assembly_get_image(assembly) : NULL;
+    if (!core || !arfoxia_guid_equal(mono_image_get_guid(core), ARFOXIA_CORE_GUID)) {
+        record("CORE_PROFILE_MISMATCH", 1);
+        return stopped(-16);
+    }
+    record("PHASE_OWNER_QUERY_TYPE", 0);
+    MonoClass *owner_class = mono_class_get(core, ARFOXIA_OWNER_TYPE);
+    if (!owner_class) return stopped(-17);
+    owner_query = mono_get_method(core, ARFOXIA_OWNER_QUERY, owner_class);
+    if (!owner_query) return stopped(-18);
+#endif
     record("PHASE_CONTEXT_TYPE", 0);
     MonoClass *context_class = mono_class_get(pui, ARFOXIA_CONTEXT_TYPE);
     record("PHASE_CALLBACK_TYPE", 0);

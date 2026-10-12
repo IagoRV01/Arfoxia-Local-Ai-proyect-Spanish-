@@ -45,6 +45,11 @@ public static class ArfoxiaDispatchFixture
         context.Post(callback, null);
     }
 
+    public static bool IsOwnerThread()
+    {
+        return Thread.CurrentThread == owner;
+    }
+
     public static void Stop()
     {
         lock (queue)

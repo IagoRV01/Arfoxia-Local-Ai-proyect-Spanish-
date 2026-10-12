@@ -1,12 +1,13 @@
 # Cliente PS4: investigación del menú ShellUI
 
-Estado: **sonda en cuarentena tras CE-36329-3; cargas en consola deshabilitadas**.
+Estado: **sonda antigua en cuarentena; nuevo callback validado en consola;
+propiedad del hilo gráfico y renderizado todavía pendientes**.
 La mascota/renderizado PS4 todavía no están implementados ni validados.
 No es un cliente GTK ni una aplicación a pantalla completa disfrazada de overlay.
 La prueba está limitada al menú de inicio, sin juegos abiertos. No habilita
 viajes a PS4 en la interfaz Windows hasta verificar un cliente que dibuje.
 
-## Candidato de despacho nuevo: preparado, no enviado
+## Despacho nuevo: primera prueba en consola superada
 
 `offline_aot.py` analiza el formato x64 AOT v140 observado en las bibliotecas
 privadas: exportación de información, límites de segmentos ELF y tabla de
@@ -51,12 +52,28 @@ no tienen autoarranque ni un envío automático. Los transportes anteriores
 permanecen bloqueados y el PRX fallido sigue conservado con nombre `.disabled`.
 
 Se compilaron los candidatos con OpenOrbis/Clang/LLD y se validó el cargador
-PIE sin relocaciones pendientes. **No se ha enviado esta sonda a la consola.**
-Una futura carga de código en ShellUI aún puede causar otro error del sistema;
-primero requiere confirmar físicamente menú operativo y BinLoader activo,
-guardar el diagnóstico bruto y realizar un solo envío, sin reintentos. Incluso
-`CALLBACK_COUNT 1` solo probaría despacho: faltan validar propiedad del hilo UI
-y dibujar una mascota visible antes de anunciar soporte PS4 operativo.
+PIE sin relocaciones pendientes. Con el menú/BinLoader confirmados por el dueño,
+se hizo **un único envío de v1**: `LOAD_RC 0`, `POST_RETURNED 1`, `NULL_STATE 1`
+y `CALLBACK_COUNT 1`, sin excepción gestionada. Se conservaron el diagnóstico
+bruto de kernel y los logs en almacenamiento privado. El dueño confirmó que
+el menú siguió normal y respondió al mando, sin error del sistema.
+
+`DIFFERENT_THREAD 0` no identifica por sí solo al hilo gráfico ni invalida el
+despacho. La variante v2 añade identidad pthread no nula y consulta de solo
+lectura `Sce.PlayStation.Core.Runtime.Diagnostics.get_IsMainThread(): bool`;
+no ejecuta las aserciones `CheckRunningOnMainThread`/`AssertRunningOnMainThread`.
+El perfil opcional `--core RUTA_CORE_PRIVADA` exige firma estática, cuerpo AOT y
+GUID/MVID coincidentes antes de resolver tokens. Tiene targets, perfil y logs
+separados; nunca se sustituye o recarga la instancia v1 pendiente de descarga.
+El host también verifica la invocación gestionada anidada y desempaquetado de
+un booleano dentro del callback, en Mono normal/full-AOT.
+
+**v2 está preparada, todavía no enviada.** Cada prueba nueva requiere confirmar
+menú operativo y BinLoader activo, guardar diagnóstico bruto y un solo envío
+sin reintentos. Una nueva carga aún puede causar otro error del sistema.
+El callback v1 no demuestra propiedad del hilo UI ni renderizado: no hay una
+mascota PS4 visible/operativa todavía. No descargar módulos a la fuerza ni
+eliminar sus logs/marcas para repetir una ejecución.
 
 ## Investigación offline después del fallo
 

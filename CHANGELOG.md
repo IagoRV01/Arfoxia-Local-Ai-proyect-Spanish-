@@ -6,6 +6,25 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Añadido — Callback PS4 validado y consulta de propiedad del hilo — 2026-10-13
+
+- Primera prueba limitada del reemplazo en la PS4: un solo envío, carga
+  confirmada, Post retornó y el callback se ejecutó exactamente una vez,
+  sin excepción gestionada. Diagnóstico de kernel guardado sin filtrar en
+  almacenamiento privado. El dueño confirmó menú y mando normales, sin error.
+- La identidad registrada coincidió con la del cargador; esto no se interpreta
+  como identificación del hilo gráfico. Preparada variante v2 separada para
+  consultar `Core.Runtime.Diagnostics.get_IsMainThread(): bool`, con contrato
+  estático/AOT y comprobación GUID/MVID. No llama aserciones ni crea widgets.
+- Fixture de host ampliado para invocar un método gestionado dentro del
+  callback y desempaquetar su booleano; pruebas Mono normal/full-AOT correctas.
+  Candidato v2 compilado, con perfil privado, rutas y logs exclusivos distintos.
+- Prototipo antiguo permanece en cuarentena, sin autoarranque, hooks ni cambios
+  de plugins/firmware/juegos. Esta prueba no demuestra renderizado de la mascota.
+- Validación: 863 pruebas Python correctas (99 específicas PS4), compilación
+  nativa y pruebas Mono normal/full-AOT. Contrato estático, rechazo de GUID/cuerpo
+  inválidos y guardas de consulta sin dibujo. Prueba física v2 pendiente.
+
 ### Añadido — Reemplazo de diagnóstico PS4 y validación AOT aislada — 2026-10-12
 
 - Inspector offline del layout ELF/AOT v140 observado, con límites, validación

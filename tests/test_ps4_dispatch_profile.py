@@ -63,6 +63,32 @@ def test_aot_guid_metadata_mismatch_stops_before_generating_profile(monkeypatch)
         profile.generate(b'', b'')
 
 
+@pytest.mark.parametrize('body, match', [(True, True), (False, True), (True, False)])
+def test_optional_owner_query_needs_static_boolean_native_body_and_matching_guid(monkeypatch, body, match):
+    calls = []
+    def contract(data, classname, names, **kwargs):
+        calls.append((data, classname, names, kwargs))
+        return ('0x02000001', {name: '0x06000001' for name in names})
+    class Aot:
+        def __init__(self, data): self.data = data
+        def assembly_guid(self): return 'GUID'
+        def body(self, token): return 1 if self.data != b'core' or body else None
+    class Module:
+        def __init__(self, data): self.data = data
+        def module_guid(self): return 'GUID' if self.data != b'core' or match else 'OTHER'
+    monkeypatch.setattr(profile, 'contract', contract)
+    monkeypatch.setattr(profile, 'AotImage', Aot)
+    monkeypatch.setattr(profile, 'parse', Module)
+    if body and match:
+        generated = profile.generate(b'pui', b'corlib', b'core')
+        assert 'ARFOXIA_OWNER_PROFILE_PRESENT 1' in generated
+        assert calls[-1][2] == {'get_IsMainThread': 'bool()'}
+        assert calls[-1][3] == {'is_static': True}
+    else:
+        with pytest.raises(ValueError, match='Core ownership'):
+            profile.generate(b'pui', b'corlib', b'core')
+
+
 def test_profile_generation_cannot_contact_or_load_console():
     source = inspect.getsource(profile)
     assert ".open('x'," in source
@@ -99,3 +125,13 @@ def test_enabled_and_disabled_build_objects_are_distinct():
     assert 'dispatch_loader_candidate.o:' in source and 'dispatch_loader.o:' in source
     all_line = next(line for line in source.splitlines() if line.startswith('all:'))
     assert 'dispatch' not in all_line
+
+
+def test_optional_owner_query_does_not_draw_or_disable_ui_checks():
+    root = Path(__file__).resolve().parents[1] / 'ports' / 'ps4'
+    source = (root / 'native' / 'dispatch_probe.c').read_text()
+    assert '#define ARFOXIA_PS4_QUERY_UI_OWNER 0' in source
+    assert 'CORE_IS_MAIN_THREAD' in source
+    assert source.index('CORE_PROFILE_MISMATCH') < source.index('mono_class_get(core,')
+    for forbidden in ('AssertRunningOnMainThread', 'CheckRunningOnMainThread', 'mprotect', 'ImageBox', 'Panel', 'Window'):
+        assert forbidden not in source
