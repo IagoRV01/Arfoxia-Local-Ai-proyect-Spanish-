@@ -57,6 +57,30 @@ def test_feed_event_shows_and_consumes_one_berry_without_double_counting(physica
     assert service.state.hunger == hunger_after_event
 
 
+def test_travel_hides_only_after_arrival_and_recovers_visible_pet(physical_pet):
+    pet, service = physical_pet
+    service.travel.register("linux", "Linux", "pc2")
+    service.travel.select("linux", connect=False)
+    pet.poll_events()
+    assert pet.isVisible()
+    service.travel.heartbeat("linux", True)
+    pet.poll_events()
+    assert not pet.isVisible()
+    assert pet.travel_away
+    assert not pet.movement_timer.isActive()
+    assert not pet.animation_timer.isActive()
+    pet.play("Pose")
+    assert not pet.animation_timer.isActive()
+    service.interact("sit")
+    pet.poll_events()
+    assert not pet.animation_timer.isActive()
+    service.travel.home()
+    pet.poll_events()
+    assert pet.isVisible()
+    assert pet.current_animation == "Sit"
+    assert not pet.travel_away
+
+
 @pytest.mark.parametrize("delta,direction", [((0, -70), 4), ((0, 70), 0), ((70, -70), 3), ((-70, 70), 7)])
 def test_two_dimensional_wander_uses_correct_facing_and_arrives(physical_pet, monkeypatch, delta, direction):
     pet, service = physical_pet

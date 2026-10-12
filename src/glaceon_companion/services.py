@@ -607,6 +607,8 @@ class CompanionService:
         self.config = config
         self.project_previews = ProjectPreviews(config)
         self.events: Queue[dict[str, Any]] = Queue()
+        from .travel import TravelManager
+        self.travel = TravelManager(store.data_dir, config.api_port)
         self.database = Database(store.data_dir / "companion.sqlite3")
         self.chat_storage = ConversationStorage(
             store.data_dir / "attachments",
@@ -3036,6 +3038,7 @@ class CompanionService:
             self._turn_lock.release()
 
     def close(self) -> None:
+        self.travel.close()
         self.work_tasks.close()
         self._guard_stop.set()
         # Dual is intentionally left resident. Its identity-checked marker

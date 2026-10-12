@@ -6,6 +6,29 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Añadido — Paseo de Arfoxia a Linux — 2026-10-12
+
+- Cliente ligero GTK3 para Bazzite/KDE Wayland: sprites originales, expresiones,
+  movimiento en ocho direcciones, arrastre e interacciones, con Layer Shell
+  OVERLAY y sin apropiarse del teclado. IA, GPU, memoria y chats permanecen
+  en el PC; no se instala otro Ollama ni se migra el modelo.
+- Control Paseo entre dispositivos en mascota y bandeja, llegada confirmada
+  tras dibujar, regreso manual y recuperación por pérdida de conexión.
+  Túnel inverso SSH exclusivamente loopback, huellas estrictas y claves.
+- Recuperación del túnel propio tras un cierre forzado, comprobando PID, fecha
+  de creación y línea de comando exacta; no se terminan conexiones ajenas.
+- Permiso independiente restringido a mascota, DPAPI en Windows y fichero
+  privado en Linux; sin acceso a herramientas, chats o archivos del dueño.
+  Instalador de usuario, sin root ni cambios al sistema inmutable de Bazzite.
+- PS4/GoldHEN: se documenta la limitación real del overlay universal de juegos
+  y menú. No se instala un PRX no validado ni se altera plugins.ini/firmware.
+- Pruebas de llegada, timeout, regreso, credenciales, aislamiento API y comandos
+  SSH; validación adicional del cliente en la sesión real del PC Linux.
+- Validación: 750 pruebas Python correctas; cliente real dibujando en KDE,
+  captura de escritorio y superposición sobre una ventana de prueba a pantalla
+  completa. Regreso manual y por parada del servicio comprobados. Esto no
+  equivale a probar todos los juegos ni el modo Gamescope de Bazzite.
+
 ### Corregido — Interfaz de iOS en Expo Go — 2026-10-11
 
 - Las ventanas nativas disponen de su propio SafeAreaProvider/SafeAreaView:

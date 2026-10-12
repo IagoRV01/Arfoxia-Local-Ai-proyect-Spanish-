@@ -56,6 +56,28 @@ class InteractionRequest(BaseModel):
     kind: str
 
 
+class TravelRegisterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    device_id: str = Field(max_length=48)
+    label: str = Field(max_length=80)
+    ssh_alias: str = Field(max_length=64)
+
+
+class TravelSelectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    device_id: str = Field(max_length=48)
+
+
+class TravelHeartbeatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ready: bool
+
+
+class TravelInteractionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: str = Field(pattern=r"^(pet|feed|play|wake|sleep|sit|resume)$")
+
+
 class WorkRequest(ChatRequest):
     client_message_id: str = Field(min_length=8, max_length=128, pattern=r"^[A-Za-z0-9_.:-]+$")
 
@@ -131,6 +153,59 @@ def create_api(service: CompanionService, token: str, static_dir: Path) -> FastA
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
 
     auth = Depends(authorize)
+
+    def travel_authorize(authorization: Annotated[str | None, Header()] = None) -> str:
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Cliente no emparejado")
+        device_id = service.travel.authenticate(authorization[7:])
+        if device_id is None:
+            raise HTTPException(status_code=401, detail="Cliente no emparejado")
+        return device_id
+
+    @app.get("/api/travel", dependencies=[auth])
+    async def travel_status():
+        return service.travel.snapshot()
+
+    @app.post("/api/travel/register", dependencies=[auth])
+    async def travel_register(request: TravelRegisterRequest):
+        try:
+            secret = service.travel.register(request.device_id, request.label, request.ssh_alias)
+            return {"device_id": request.device_id, "client_token": secret}
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/travel/select", dependencies=[auth])
+    async def travel_select(request: TravelSelectRequest):
+        try:
+            return service.travel.select(request.device_id)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/travel/client/heartbeat")
+    async def travel_heartbeat(request: TravelHeartbeatRequest,
+                               device_id: str = Depends(travel_authorize)):
+        value = service.travel.heartbeat(device_id, request.ready)
+        state = service.state_dict()
+        # Never disclose conversations, owner credentials, machine tools or filesystem paths.
+        value["pet"] = {key: state[key] for key in
+            ("name", "asleep", "energy", "hunger", "happiness") if key in state}
+        value["pet"]["seated"] = bool(state.get("seated"))
+        return value
+
+    @app.post("/api/travel/client/return")
+    async def travel_return(device_id: str = Depends(travel_authorize)):
+        presence = service.travel.snapshot()
+        if presence["active"] == device_id or presence["pending"] == device_id:
+            service.travel.home()
+        return {"ok": True}
+
+    @app.post("/api/travel/client/interact")
+    async def travel_interact(request: TravelInteractionRequest,
+                              device_id: str = Depends(travel_authorize)):
+        if service.travel.snapshot()["active"] != device_id:
+            raise HTTPException(status_code=409, detail="Arfoxia no está en este dispositivo")
+        result = service.interact(request.kind)
+        return {key: result[key] for key in ("asleep", "seated", "energy", "hunger", "happiness") if key in result}
 
     @app.get("/api/health")
     async def health() -> dict[str, Any]:

@@ -2501,11 +2501,74 @@ class GpuManagerDialog(QDialog):
         super().hideEvent(event)
 
 
+class TravelDialog(QDialog):
+    def __init__(self, service: CompanionService, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.service = service
+        self.setWindowTitle("Paseo entre dispositivos")
+        self.setWindowIcon(snowflake_icon())
+        self.setStyleSheet(parent.chat_window.styleSheet())
+        self.resize(470, 320)
+        layout = QVBoxLayout(self)
+        description = QLabel("La IA y los chats permanecen en este PC.\n"
+            "Solo viaja la mascota; vuelve si se pierde la conexión.")
+        description.setWordWrap(True)
+        layout.addWidget(description)
+        self.status = QLabel()
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+        self.devices = QListWidget()
+        layout.addWidget(self.devices)
+        travel = QPushButton("Enviar al dispositivo seleccionado")
+        travel.clicked.connect(self.go)
+        layout.addWidget(travel)
+        home = QPushButton("Volver a este PC")
+        home.clicked.connect(lambda: self.service.travel.home())
+        layout.addWidget(home)
+        note = QLabel("PS4: el overlay global de juegos/menú no está implementado.\n"
+            "No se envían plugins ni se modifican juegos o firmware.")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        self.timer = QTimer(self)
+        self.timer.setInterval(500)
+        self.timer.timeout.connect(self.refresh)
+        self.timer.start()
+        self.refresh()
+
+    def refresh(self) -> None:
+        value = self.service.travel.snapshot()
+        label = next((row["label"] for row in value["devices"] if row["id"] == value["active"]), "Este PC")
+        self.status.setText(("Conectando y comprobando el cliente…" if value["pending"]
+            else f"Arfoxia está en: {label}") + ("\n" + value["error"] if value["error"] else ""))
+        selected = self.devices.currentItem()
+        key = selected.data(Qt.ItemDataRole.UserRole) if selected else None
+        self.devices.clear()
+        for row in value["devices"]:
+            item = QListWidgetItem(row["label"] + (" · conectado" if row["online"] else " · por SSH"))
+            item.setData(Qt.ItemDataRole.UserRole, row["id"])
+            self.devices.addItem(item)
+            if row["id"] == key:
+                self.devices.setCurrentItem(item)
+        if self.devices.currentRow() < 0 and self.devices.count():
+            self.devices.setCurrentRow(0)
+
+    def go(self) -> None:
+        item = self.devices.currentItem()
+        if item:
+            try:
+                self.service.travel.select(item.data(Qt.ItemDataRole.UserRole))
+            except (ValueError, OSError) as exc:
+                QMessageBox.warning(self, "Paseo", str(exc))
+        self.refresh()
+
+
 class PetWindow(QWidget):
     def __init__(self, service: CompanionService, token: str) -> None:
         super().__init__()
         self.service = service
         self.token = token
+        self.travel_away = False
+        self.travel_dialog: TravelDialog | None = None
         variant = service.config.sprite_variant
         self.library = SpriteLibrary(PROJECT_ROOT / "assets" / "external" / "pmd" / variant)
         self.scale = service.config.sprite_scale
@@ -3128,7 +3191,7 @@ class PetWindow(QWidget):
         self.movement_timer.start()
 
     def update_eevee_presence(self) -> None:
-        if not self.service.config.eevee_companion_enabled:
+        if self.travel_away or not self.service.config.eevee_companion_enabled:
             return
         detected = detect_codex_presence()
         was_visible = self.eevee_presence.visible
@@ -3168,7 +3231,7 @@ class PetWindow(QWidget):
             self._schedule_eevee_interaction()
 
     def _schedule_eevee_interaction(self, retry: bool = False) -> None:
-        if not self.eevee_presence.visible:
+        if self.travel_away or not self.eevee_presence.visible:
             self.eevee_interaction_timer.stop()
             return
         if retry:
@@ -3182,7 +3245,7 @@ class PetWindow(QWidget):
         self.eevee_interaction_timer.start(delay)
 
     def interact_with_eevee(self) -> None:
-        if not self.eevee_presence.visible:
+        if self.travel_away or not self.eevee_presence.visible:
             return
         state = self.service.state_dict()
         busy = (
@@ -3206,6 +3269,8 @@ class PetWindow(QWidget):
         self._schedule_eevee_interaction()
 
     def play(self, name: str, direction: int | None = None, loop: bool = False) -> None:
+        if self.travel_away:
+            return
         self.expression_cycles_left = 0
         if self.interaction_mode == "idle" and self.service.state_dict().get("seated"):
             name, loop = "Sit", True
@@ -3320,6 +3385,7 @@ class PetWindow(QWidget):
         power_action.triggered.connect(self.chat_window.toggle_power_mode)
         menu.addSeparator()
         actions = [
+            ("Paseo entre dispositivos…", self.show_travel),
             ("Hablar", self.show_quick_chat),
             ("Conversación completa", self.show_chat),
             ("Dar una Baya Aranja", self.request_feed),
@@ -3435,6 +3501,8 @@ class PetWindow(QWidget):
         widget.move(*selected)
 
     def show_speech(self, message: str, source: str = "interaction") -> None:
+        if self.travel_away:
+            return
         if not is_short_dialogue(message, self.service.config.bubble_max_chars):
             return
         if source == "chat":
@@ -3526,6 +3594,8 @@ class PetWindow(QWidget):
         self.pair_dialog.show()
 
     def autonomous_behavior(self) -> None:
+        if self.travel_away or self.service.travel.snapshot()["active"] != "home":
+            return
         self.behavior_timer.setInterval(random.randint(12_000, 22_000))
         if self.interaction_mode != "idle" or self.drag_origin is not None or self.movement_timer.isActive():
             return
@@ -3626,6 +3696,8 @@ class PetWindow(QWidget):
         self.play_expression()
 
     def move_step(self) -> None:
+        if self.travel_away or self.service.travel.snapshot()["active"] != "home":
+            return
         state = self.service.state_dict()
         if state.get("seated") or state["asleep"]:
             self.wander_target = self.wander_target_y = None
@@ -3692,9 +3764,29 @@ class PetWindow(QWidget):
             self.play("Idle", direction=0, loop=True)
 
     def poll_events(self) -> None:
+        away = self.service.travel.snapshot()["active"] != "home"
+        if away != self.travel_away:
+            self.travel_away = away
+            if away:
+                self.cancel_fetch_game()
+                self.placement_overlay.cancel()
+                self.feed_timer.stop()
+                self.berry_prop.hide()
+                self.quick_chat.hide()
+                self.speech_bubble.hide()
+                self.movement_timer.stop()
+                self.animation_timer.stop()
+                self.eevee_interaction_timer.stop()
+                self.hide()
+            else:
+                state = self.service.state_dict()
+                self.play("Sleep" if state["asleep"] else "Sit" if state.get("seated") else "Idle", loop=True)
+                self.show()
         while not self.service.events.empty():
             event = self.service.events.get_nowait()
             self.chat_window.handle_service_event(event)
+            if away and event.get("type") not in {"authorization_requested", "ui"}:
+                continue
             if event.get("type") == "chat_received":
                 state = self.service.state_dict()
                 if (
@@ -3799,6 +3891,16 @@ class PetWindow(QWidget):
             elif event.get("type") == "ui" and event.get("action") == "show_chat":
                 self.show_chat()
 
+    def show_travel(self) -> None:
+        if self.travel_dialog is None:
+            self.travel_dialog = TravelDialog(self.service, self)
+        self.travel_dialog.show()
+        self.travel_dialog.raise_()
+
+    def return_home(self) -> None:
+        self.service.travel.home()
+        self.show()
+
     def closeEvent(self, event: Any) -> None:
         self.animation_timer.stop()
         self.movement_timer.stop()
@@ -3835,11 +3937,13 @@ class DesktopController(QObject):
         sit_action = QAction("Quedarse sentado (sin dormir)", tray_menu)
         resume_action = QAction("Volver a pasear", tray_menu)
         quit_action = QAction("Salir", tray_menu)
-        show_action.triggered.connect(self.pet.show)
+        show_action.triggered.connect(self.pet.return_home)
         chat_action.triggered.connect(self.pet.show_quick_chat)
         full_chat_action.triggered.connect(self.pet.show_chat)
         gpu_action.triggered.connect(self.pet.chat_window.show_gpu_manager)
         pair_action.triggered.connect(self.pet.show_pairing)
+        travel_action = QAction("Paseo entre dispositivos…", tray_menu)
+        travel_action.triggered.connect(self.pet.show_travel)
         sit_action.triggered.connect(lambda: service.interact("sit"))
         resume_action.triggered.connect(lambda: service.interact("resume"))
         quit_action.triggered.connect(QApplication.quit)
@@ -3849,6 +3953,7 @@ class DesktopController(QObject):
             full_chat_action,
             gpu_action,
             pair_action,
+            travel_action,
             sit_action,
             resume_action,
         ):
