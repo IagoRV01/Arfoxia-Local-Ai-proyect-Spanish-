@@ -6,6 +6,38 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Corregido — Cargador de diagnóstico PS4 — 2026-10-12
+
+- Prueba real: GoldHEN recibió y lanzó el BIN; el registro de kernel confirmó
+  fallo de lectura en `0x1520`, la variable `libKernelHandle` del SDK. El enlace
+  ET_EXEC había transformado una referencia PIC en dirección absoluta. El fallo
+  ocurrió antes de cargar el PRX en ShellUI; no hubo diagnóstico Mono ni mascota.
+- Enlace corregido a PIE sin intérprete dinámico, con desensamblado comprobado
+  y sin relocaciones pendientes. Empaquetador de BIN rechaza ELF no trasladable,
+  imports, relocaciones y solapamientos, limita tamaño y materializa BSS a cero.
+- Registro intenta ruta nativa `/user/data/Arfoxia/` y fallback `/data/`. Errores
+  del transporte con salida clara y sin reenvíos automáticos; pruebas de envío
+  de una sola conexión y ausencia de reintentos ante puerto cerrado.
+- Entrada del SDK ajustada a syscall indirecto. Confirmado en consola que la
+  firma exacta de SDK 1.00 llega como `RAW 256 CARRY 1`; compatibilidad limitada
+  a esa versión/comando, sin convertir otros errores en éxitos. Pruebas C puras
+  del ABI sin ejecutar syscalls, compilación y revisión del BIN/PRX reales.
+- La sonda se ejecutó dentro de `SceShellUI`, confirmó firmware 12.52 y registró
+  ensamblados, pero falló en Mono antes de terminar; el dueño confirmó CE-36329-3.
+  No está demostrada la llamada concreta que falla, ni hay renderizado funcional.
+- Prototipo puesto en cuarentena: staging/envío bloqueados antes de cualquier
+  conexión, sin override CLI; entradas nativas BIN/PRX también deshabilitadas.
+  Las pruebas de transporte usan sockets simulados y verifican ese bloqueo.
+  Logs/archivos anteriores propios conservados; sin modificar plugins, juegos,
+  firmware, datos del usuario ni presencia Windows. No se aplican actualizaciones
+  ni restablecimiento de la PS4 para resolver un fallo de esta prueba.
+- Archivo exacto que falló en la consola renombrado de forma recuperable a
+  `arfoxia_probe.failed.disabled`, con SHA256 verificado y sin borrar logs ni
+  respaldos; ya no existe la ruta que intentaban cargar los BIN anteriores.
+- Validación final: 793 pruebas Python correctas, 13 casos C puros de ABI y
+  compilación nativa; desensamblado confirma retorno inmediato de cuarentena
+  en BIN/PRX. Estas pruebas no demuestran compatibilidad gráfica PS4.
+
 ### Añadido — Base de investigación nativa PS4/ShellUI — 2026-10-12
 
 - Sonda propia PRX de metadata Mono/PUI, limitada a `SceShellUI` y GoldHEN SDK

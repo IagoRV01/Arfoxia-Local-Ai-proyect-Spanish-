@@ -2,13 +2,16 @@
 #include "ps4.h"
 #include "goldhen_abi.h"
 int _main(void) {
+    if (ARFOXIA_PS4_PROBE_QUARANTINED) return -4;
     initKernel();
     initLibc();
-    int fd = sceKernelOpen("/data/Arfoxia/load.txt", O_WRONLY|O_CREAT|O_TRUNC, 0600);
+    int fd = sceKernelOpen("/user/data/Arfoxia/load.txt", O_WRONLY|O_CREAT|O_TRUNC, 0600);
+    if (fd < 0) fd = sceKernelOpen("/data/Arfoxia/load.txt", O_WRONLY|O_CREAT|O_TRUNC, 0600);
     if (fd < 0) return -1;
     char line[256];
     long version = arfoxia_sdk(0, NULL);
-    int n = snprintf(line, sizeof(line), "ARFOXIA_LOADER 1\nSDK %ld\n", version);
+    struct arfoxia_sdk_reply raw = arfoxia_sdk_raw(0, NULL);
+    int n = snprintf(line, sizeof(line), "ARFOXIA_LOADER 1\nSDK %ld\nRAW %ld CARRY %u\n", version, raw.value, (unsigned)raw.carry);
     write(fd, line, n);
     if (version != 0x100) { close(fd); return -2; }
     struct arfoxia_prx_request request;

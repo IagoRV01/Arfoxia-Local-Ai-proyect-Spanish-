@@ -84,3 +84,51 @@ def test_status_does_not_open_binloader_socket():
     source = inspect.getsource(transport.main)
     status = source.split("if args.action == 'status':", 1)[1].split('return', 1)[0]
     assert 'send_once' not in status and 'create_connection' not in status
+
+
+def test_send_uses_one_connection_with_real_bytes_and_no_ping(monkeypatch):
+    monkeypatch.setattr(transport, 'LIVE_LOADS_DISABLED', False)  # Mock sockets only.
+    events = []
+    class Socket:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def sendall(self, data): events.append(('send', data))
+        def shutdown(self, mode): events.append(('shutdown', mode))
+    def connect(address, timeout):
+        events.append(('connect', address, timeout))
+        return Socket()
+    monkeypatch.setattr(transport.socket, 'create_connection', connect)
+    transport.send_once('ps4.example', b'real payload')
+    assert events == [('connect', ('ps4.example', 9090), 8), ('send', b'real payload'), ('shutdown', transport.socket.SHUT_WR)]
+
+
+def test_refused_binloader_is_not_retried(monkeypatch):
+    monkeypatch.setattr(transport, 'LIVE_LOADS_DISABLED', False)  # Mock sockets only.
+    attempts = []
+    def connect(*args, **kwargs):
+        attempts.append(args)
+        raise ConnectionRefusedError('listener closed')
+    monkeypatch.setattr(transport.socket, 'create_connection', connect)
+    with pytest.raises(ConnectionRefusedError):
+        transport.send_once('ps4.example', b'payload')
+    assert len(attempts) == 1
+
+
+def test_known_system_crash_disables_all_real_payload_sending(monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail('Quarantined probe must never open a network socket')
+    monkeypatch.setattr(transport.socket, 'create_connection', forbidden)
+    assert transport.LIVE_LOADS_DISABLED
+    with pytest.raises(ValueError, match='CE-36329-3'):
+        transport.send_once('ps4.example', b'anything')
+
+
+@pytest.mark.parametrize('action', ['stage', 'send'])
+def test_quarantine_rejects_cli_before_ftp_connection(action, monkeypatch):
+    import sys
+    monkeypatch.setattr(sys, 'argv', ['probe_transport.py', action, '--host', 'ps4.example', '--home-menu'])
+    def forbidden(*args, **kwargs):
+        pytest.fail('Quarantined probe must never contact FTP for staging/sending')
+    monkeypatch.setattr(transport.ftplib, 'FTP', forbidden)
+    with pytest.raises(ValueError, match='CE-36329-3'):
+        transport.main()

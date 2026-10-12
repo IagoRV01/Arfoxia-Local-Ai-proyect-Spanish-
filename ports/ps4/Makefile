@@ -6,8 +6,12 @@ CC := clang-18
 LD := ld.lld-18
 TARGET_FLAGS := --target=x86_64-pc-freebsd12-elf -std=c11 -Wall -Wextra -Werror -fPIC -funwind-tables -isysroot $(OO_PS4_TOOLCHAIN) -isystem $(OO_PS4_TOOLCHAIN)/include
 
-.PHONY: all
+.PHONY: all test
 all: build/arfoxia_probe.prx build/arfoxia_probe_loader.bin
+test: build/test_goldhen_abi
+	./build/test_goldhen_abi
+build/test_goldhen_abi: tests/test_goldhen_abi.c native/goldhen_abi.h | build
+	gcc -std=c11 -Wall -Wextra -Werror $< -o $@
 build:
 	mkdir -p build
 build/probe.o: native/probe.c native/goldhen_abi.h | build
@@ -23,6 +27,6 @@ build/loader.o: native/loader.c native/goldhen_abi.h | build
 build/crt0.o: $(PAYLOAD_SDK)/libPS4/crt0.s | build
 	gcc -c $< -o $@
 build/loader.elf: build/crt0.o build/loader.o
-	ld -T $(PAYLOAD_SDK)/libPS4/linker.x -z max-page-size=0x4000 --gc-sections $^ -L$(PAYLOAD_SDK)/libPS4 -lPS4 -o $@
-build/arfoxia_probe_loader.bin: build/loader.elf
-	objcopy -O binary $< $@
+	ld -pie --no-dynamic-linker -T $(PAYLOAD_SDK)/libPS4/linker.x -z max-page-size=0x4000 --gc-sections $^ -L$(PAYLOAD_SDK)/libPS4 -lPS4 -o $@
+build/arfoxia_probe_loader.bin: build/loader.elf pack_payload.py
+	python3 pack_payload.py $< $@

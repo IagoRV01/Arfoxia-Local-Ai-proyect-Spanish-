@@ -16,6 +16,12 @@ REMOTE = '/data/Arfoxia'
 MAX_PRX = 256 * 1024
 MAX_PAYLOAD = 64 * 1024
 MAX_LOG = 128 * 1024
+LIVE_LOADS_DISABLED = True  # System-software crash on 12.52: offline research only.
+
+
+def require_live_enabled() -> None:
+    if LIVE_LOADS_DISABLED:
+        raise ValueError('PS4 live probe quarantined after CE-36329-3; no further payload loads')
 
 
 def read_bounded(ftp: ftplib.FTP, path: str, limit: int) -> bytes:
@@ -78,6 +84,7 @@ def verify_staged(ftp: ftplib.FTP, prx: bytes) -> None:
 
 
 def send_once(host: str, loader: bytes) -> None:
+    require_live_enabled()
     with socket.create_connection((host, 9090), timeout=8) as connection:
         connection.sendall(loader)
         connection.shutdown(socket.SHUT_WR)
@@ -91,6 +98,8 @@ def main() -> None:
     parser.add_argument('--build', type=Path, default=Path(__file__).parent / 'build')
     parser.add_argument('--home-menu', action='store_true', help='Console is at home, no game running')
     args = parser.parse_args()
+    if args.action in ('stage', 'send'):
+        require_live_enabled()  # Stop before connecting even to FTP.
     if args.action == 'send' and not args.home_menu:
         parser.error('Only home-menu tests are implemented; pass --home-menu after checking the console')
     with ftplib.FTP(timeout=8) as ftp:
@@ -117,4 +126,7 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except (EOFError, OSError, ftplib.Error, ValueError) as exc:
+        raise SystemExit(f'Probe stopped ({type(exc).__name__}): {exc}. No automatic resend.') from None

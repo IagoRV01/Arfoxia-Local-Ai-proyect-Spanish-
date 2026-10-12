@@ -109,12 +109,25 @@ de BinLoader. La investigación continúa con una sonda PRX propia de metadata
 Mono/PUI y un cargador limitado a `SceShellUI`: ambos compilados con SDKs
 públicos en un contenedor aislado del cliente Bazzite. El PRX se ha subido a
 la carpeta propia y verificado byte a byte, sin modificar plugins existentes.
-No se llegó a enviar el payload: el puerto 9090 dejó de escuchar después de la
-comprobación TCP inicial y necesita reactivarse desde la consola.
+Tras reactivar BinLoader, GoldHEN confirmó recepción y lanzamiento del cargador.
+Se detectó un fallo en `initKernel` debido al enlace ET_EXEC del SDK: una
+referencia interna se convirtió en una dirección absoluta. No llegó a solicitar
+la carga del PRX. Corregido con enlace PIE y empaquetador que verifica el ELF,
+rechaza relocaciones/dependencias y materializa la BSS. Ajustada la entrada al
+SDK oficial y comprobado `RAW 256 CARRY 1`: se acepta solo la firma exacta de
+versión 1.00, sin aceptar errores arbitrarios. La sonda llegó a `SceShellUI`,
+confirmó firmware `12520001` y recogió nombres de ensamblados.
 
-No hubo aún ejecución confirmada de la sonda ni prueba gráfica. La sonda no es
-la mascota: identifica las clases reales para diseñar un renderizador con
-despacho correcto al hilo UI, sin parches de código ni offsets de otro firmware.
+La enumeración no terminó: el registro muestra un fallo de Mono y el dueño
+confirmó **CE-36329-3**. Causa concreta de la llamada de metadata aún sin demostrar.
+Se han detenido las pruebas y bloqueado cargas/staging antes de conectar a la
+consola; los puntos de entrada nativos también están deshabilitados. Solo se
+conservan compilación offline y consulta acotada de estado. No se cambian plugins,
+firmware, juegos ni datos del usuario para intentar solventarlo. No hubo prueba
+gráfica: la sonda no es una mascota y no se considera cliente funcional.
+El archivo exacto que falló se conservó mediante renombrado recuperable a
+`arfoxia_probe.failed.disabled`; los cargadores antiguos ya no encuentran su
+ruta PRX original. Logs y respaldos propios conservados.
 No se instala Orbis-Toolbox antiguo ni se registra la PS4 como destino operativo.
 Detalles, límites, compilación y comandos explícitos en
 [ports/ps4/README.md](../ports/ps4/README.md).

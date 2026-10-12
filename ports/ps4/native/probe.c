@@ -67,6 +67,7 @@ static void assembly(MonoAssembly *value, void *unused) {
 
 int module_start(size_t argc, const void *argv) {
     (void)argc; (void)argv;
+    if (ARFOXIA_PS4_PROBE_QUARANTINED) return -4;
     struct arfoxia_process_info info;
     memset(&info, 0, sizeof(info));
     if (arfoxia_sdk(0, NULL) != 0x100 || arfoxia_sdk(4, &info) < 0 ||

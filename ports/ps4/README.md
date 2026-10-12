@@ -1,6 +1,7 @@
 # Cliente PS4: investigación del menú ShellUI
 
-Estado: **sonda nativa compilada; mascota/renderizado todavía no implementados**.
+Estado: **sonda en cuarentena tras CE-36329-3; cargas en consola deshabilitadas**.
+La mascota/renderizado PS4 todavía no están implementados ni validados.
 No es un cliente GTK ni una aplicación a pantalla completa disfrazada de overlay.
 La prueba está limitada al menú de inicio, sin juegos abiertos. No habilita
 viajes a PS4 en la interfaz Windows hasta verificar un cliente que dibuje.
@@ -38,7 +39,7 @@ Dependencias externas, fuera del repositorio:
   y el ABI de carga; no se enlaza el motor de hooks.
 - [Scene-Collective payload SDK](https://github.com/Scene-Collective/ps4-payload-sdk),
   revisión probada `b7326416c23ce14639e9180a24093bdc5eedb579`.
-- Clang/LLD 18, GCC, GNU make y binutils. Validado en un contenedor rootless
+- Clang/LLD 18, GCC, GNU make, binutils y Python 3. Compilación validada en un contenedor rootless
   Ubuntu 24.04, sin instalar compiladores ni capas en el SO inmutable Bazzite.
 
 ```sh
@@ -50,10 +51,24 @@ make -C ports/ps4 \
 ```
 
 Genera `build/arfoxia_probe.prx` y `build/arfoxia_probe_loader.bin`.
+El cargador se enlaza como PIE sin intérprete dinámico. `pack_payload.py`
+rechaza ET_EXEC, relocaciones pendientes, dependencias compartidas, solapamientos
+y tamaños inválidos; materializa BSS a cero antes de generar el binario plano.
+En la prueba de construcción aislada, Python 3 del host hizo este último paso:
+`python3 pack_payload.py build/loader.elf build/arfoxia_probe_loader.bin`.
 No publicar SDKs, bibliotecas propietarias, directorios `.git`, binarios de
 desarrollo ni logs de una consola. `build/` está excluido de Git.
 
-## Prueba manual (Python estándar, sin contraseña)
+## Transporte deshabilitado; estado de solo lectura
+
+`stage` y `send` están bloqueados **antes de abrir cualquier conexión**, también
+en la función de envío directa. No hay opción `--force`. Los puntos de entrada
+de PRX y BIN retornan antes de llamar al SDK/Mono (`ARFOXIA_PS4_PROBE_QUARANTINED`).
+No cargar binarios anteriores: la lectura de metadata provocó un fallo del
+software del sistema. La compilación actual es solo para investigación offline.
+El comando `status` conserva lectura acotada de los logs propios por FTP.
+
+### Protocolo histórico de prueba (no ejecutar stage/send)
 
 Activar FTP y BinLoader en GoldHEN y dejar la consola en el menú de inicio.
 `--host` debe ser la dirección verificada del dispositivo del dueño.
@@ -77,6 +92,36 @@ python ports/ps4/probe_transport.py status --host DIRECCION_PS4
 Si una conexión vacía hace que el cargador deje de escuchar, desactivar y
 reactivar BinLoader en la consola antes del envío real. No intentar solventarlo
 instalando plugins ajenos, cambiando offsets o alterando configuraciones.
+
+### Resultado de diagnóstico en consola (12-10-2026)
+
+GoldHEN confirmó recepción y lanzamiento del primer BIN. El log de kernel
+registró un fallo de lectura en `0x1520`: correspondía exactamente a la variable
+`libKernelHandle` del SDK. El enlace ET_EXEC había relajado la referencia PIC a
+un inmediato absoluto. No hubo `load.txt` ni `probe.txt`: el fallo estaba en
+`initKernel`, antes de pedir la carga del PRX en ShellUI.
+
+Corregido el enlace a ET_DYN/PIE, el desensamblado confirmó referencias relativas
+RIP y ausencia de relocaciones pendientes. El registro se escribe primero en
+`/user/data/Arfoxia/`, con fallback `/data/`. Ajustado el helper a la entrada
+indirecta del SDK: `RAX=0, RDI=500, RSI=comando, RDX=datos`.
+
+En consola se confirmó `RAW 256 CARRY 1`: la versión exacta SDK 1.00 llega con
+carry activado. Solo esa firma en comando 0 se acepta como versión; no se
+convierten arbitrariamente errores de otros comandos en éxito. El cargador
+registró `LOAD_RC 0 HANDLE 0`, y la sonda confirmó proceso `SceShellUI` y firmware
+`12520001` (12.52). Recogió nombres de ensamblados, pero no terminó: el registro
+de kernel mostró un fallo de Mono y el dueño observó **CE-36329-3**. No se ha
+demostrado todavía qué llamada concreta de metadata falla. No hubo renderizado.
+
+Se detuvieron las cargas y se puso el prototipo en cuarentena. No se modificaron
+plugins.ini, juegos, firmware ni datos de usuario; solo la carpeta propia de
+diagnóstico. Los logs y versiones anteriores propios se conservaron como
+respaldo. No se aplican actualizaciones ni inicialización/restablecimiento de
+la consola como solución al fallo causado por la sonda.
+El PRX exacto de la prueba se renombró, con verificación SHA256, a
+`/data/Arfoxia/arfoxia_probe.failed.disabled`. No se borró y ya no existe la ruta
+`arfoxia_probe.prx` que intentaban cargar los BIN anteriores.
 
 ## Referencias y licencias
 
