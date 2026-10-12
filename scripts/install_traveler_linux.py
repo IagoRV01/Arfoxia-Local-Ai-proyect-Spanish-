@@ -17,7 +17,8 @@ def main() -> None:
     if os.geteuid() == 0:
         raise RuntimeError("Instala como el usuario del escritorio, no como root")
     root = Path.home() / ".local/share/arfoxia-traveler"
-    if root.is_symlink() or not (root / "traveler_linux.py").is_file():
+    if root.is_symlink() or not all((root / name).is_file() for name in
+                                    ("traveler_linux.py", "traveler_geometry.py")):
         raise RuntimeError("Sube primero los archivos del cliente al directorio previsto")
     root.chmod(0o700)
     credential = json.load(sys.stdin)

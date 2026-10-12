@@ -6,6 +6,29 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Corregido y ampliado — Paseo en Bazzite — 2026-10-12
+
+- Arrastre estable en Wayland: superficie transparente fija, coordenadas
+  lógicas, ancla de pies y pausa de animación durante el gesto. Un arrastre
+  que vuelve al punto inicial ya no se interpreta como acariciar.
+  El menú se ancla al clic en esa misma superficie, sin coordenadas globales.
+- Menú Linux ampliado con dormir/despertar, sentarse/reanudar, limón, cama
+  independiente, expresiones, sonidos, estado, captura local y regreso manual
+  al PC. Posiciones de mascota/objetos y sonido persistentes en Linux;
+  se reutilizan recursos originales sin copiar modelos ni credenciales del dueño.
+- Solo las zonas de mascota/objetos reciben entrada; redibujado por daño local,
+  sin apropiarse del teclado. Interacciones se envían sin esperar el heartbeat.
+- Juego del limón con ida, recogida y regreso, interrumpible al arrastrar y
+  respetando sueño/sentado. Destinos acotados a la superficie real de la mascota.
+- PS4: diagnóstico de conexión y FTP de solo lectura para la prueba pedida en
+  el menú del SO. Sin prueba gráfica: falta un renderizador ShellUI compatible
+  con 12.52. No se cargan payloads de otra versión ni se alteran plugins/juegos.
+- Validación: 764 pruebas Python correctas; comprobación adicional en GTK real
+  sobre KDE Wayland de arrastre, objetos independientes, ida/regreso del limón,
+  posiciones persistentes y menú anclado al clic, con capturas revisadas. Los
+  gestos de esa prueba se enviaron a los callbacks GTK, no desde un ratón físico.
+
+
 ### Añadido — Paseo de Arfoxia a Linux — 2026-10-12
 
 - Cliente ligero GTK3 para Bazzite/KDE Wayland: sprites originales, expresiones,
