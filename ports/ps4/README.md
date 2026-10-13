@@ -1,11 +1,11 @@
 # Cliente PS4: investigación del menú ShellUI
 
 Estado: **sonda antigua en cuarentena; callback e hilo gráfico validados;
-prueba temporal de imagen preparada, renderizado visible todavía pendiente**.
+primer sprite estático visible confirmado; animación temporal en pruebas**.
 La mascota PS4 completa todavía no está validada.
 No es un cliente GTK ni una aplicación a pantalla completa disfrazada de overlay.
 La prueba está limitada al menú de inicio, sin juegos abiertos. No habilita
-viajes a PS4 en la interfaz Windows hasta verificar un cliente que dibuje.
+viajes a PS4 en la interfaz Windows hasta verificar un cliente estable completo.
 
 ## Despacho nuevo: primera prueba en consola superada
 
@@ -116,6 +116,39 @@ gestionadas. El diagnóstico bruto ya no contiene el aviso de imagen pendiente
 observado en v4 ni marcadores de fallo Mono. Esto prueba la secuencia de APIs,
 no por sí solo que el sprite se haya dibujado sobre el menú visible; se necesita
 confirmación física del dueño antes de habilitar una mascota persistente.
+El dueño confirmó posteriormente que **v5 sí apareció y desapareció en pantalla**
+y el menú/mando permanecieron normales. Era deliberadamente un PNG estático,
+no la mascota animada completa.
+
+### Primera animación nativa (v6)
+
+La variante experimental v6 usa `UI2.AnimationImageBox`, derivada de `UI2.Widget`,
+con constructor, asignación de imagen, ancho/alto/cantidad de fotogramas,
+intervalo, Start/Stop y cuerpos AOT comprobados offline. El perfil sustituye
+el ImageBox estático solo en esta variante; no reutiliza tokens de otra clase.
+Requiere gestor propio y disposición explícita de la imagen.
+
+Reutiliza **sin modificar** `assets/external/pmd/default/Walk-Anim.png`: hoja
+128×320, cuatro fotogramas horizontales de 32×40 y ocho filas de dirección.
+El ciclo frontal utiliza el orden Normal por defecto y 166,67 ms por fotograma
+(6 fps). La geometría de presentación respeta su proporción 32:40. La hoja
+RGBA ocupa 163.840 bytes dentro del presupuesto propio de 256 KiB.
+El motor del menú avanza los fotogramas: no se hace un Post nativo por frame,
+ni hooks, escrituras de memoria o actualizaciones UI desde el worker.
+
+Se prueba caminar **en el sitio**, todavía sin desplazamiento por el escritorio,
+menús de interacción o viajes persistentes. Tras 15 segundos, el callback UI
+detiene la animación antes de retirar/disponer widget, imagen y gestor propios.
+Los targets `build/arfoxia_sprite_candidate_v6.prx` y
+`build/dispatch_loader_animation.elf` tienen rutas/logs nuevos y quedan fuera
+de `all` y autoarranque. El generador usa `--animated` junto a las opciones de
+gestor/limpieza y escribe el perfil privado
+`ports/ps4/build/dispatch_sprite_animation_profile.h`. La animación visual
+requiere otra confirmación física; el sprite estático validado no la demuestra.
+En consola v6 se envió una sola vez y registró hoja 128×320, configuración,
+Start, Stop, retirada y limpieza completas sin excepción. El diagnóstico bruto
+no contiene nuevos marcadores fatales de Mono o imágenes sin disponer. Estos
+registros no sustituyen la comprobación visual de que los frames avanzaron.
 
 ```sh
 python ports/ps4/sprite_profile.py \
@@ -132,8 +165,8 @@ Tienen rutas/logs nuevos y exclusivos. El host prueba argumentos float, bool,
 string/referencia y un segundo callback desde un worker Mono adjunto, también
 en full-AOT. Esto **no valida el renderer PS4**. Cada prueba física requiere
 menú operativo confirmado, BinLoader activo y un único envío sin reintentos.
-La mascota visible, las animaciones y la integración persistente siguen
-pendientes; no se habilitan viajes a PS4 ni pruebas en juegos.
+El sprite estático temporal sí se vio; las animaciones completas y la integración
+persistente siguen pendientes. No se habilitan viajes a PS4 ni pruebas en juegos.
 
 ## Investigación offline después del fallo
 

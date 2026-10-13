@@ -1,5 +1,5 @@
-/* Single static UI2 sprite experiment, best-effort removal after 15 seconds.
- * Included only by the explicitly enabled, privately profiled v3 build.
+/* Passive UI2 sprite experiments, best-effort removal after 15 seconds.
+ * Included only by explicitly enabled, privately profiled experimental builds.
  */
 typedef struct MonoString MonoString;
 extern MonoString *mono_string_new(MonoDomain *, const char *);
@@ -14,6 +14,10 @@ static int preview_box_ready, preview_attached;
 static atomic_uint preview_state; /* 0 waiting, 1 attached, 2 skipped/failed */
 static MonoMethod *preview_post;
 static OrbisPthread preview_timer;
+#if ARFOXIA_PS4_ANIMATED_PREVIEW
+static MonoMethod *preview_ANIM_WIDTH, *preview_ANIM_HEIGHT, *preview_ANIM_COUNT;
+static MonoMethod *preview_ANIM_INTERVAL, *preview_ANIM_START, *preview_ANIM_STOP;
+#endif
 #if ARFOXIA_PS4_DISPOSE_IMAGE_ASSET
 static MonoClass *preview_PROXY;
 static MonoMethod *preview_ASSET_DISPOSE;
@@ -72,6 +76,14 @@ static int preview_prepare(MonoImage *pui, MonoDomain *domain, MonoMethod *post)
 #endif
 #if ARFOXIA_PS4_DISPOSE_IMAGE_ASSET
     RESOLVE_PREVIEW_METHOD(ASSET_DISPOSE, PROXY)
+#endif
+#if ARFOXIA_PS4_ANIMATED_PREVIEW
+    RESOLVE_PREVIEW_METHOD(ANIM_WIDTH, BOX)
+    RESOLVE_PREVIEW_METHOD(ANIM_HEIGHT, BOX)
+    RESOLVE_PREVIEW_METHOD(ANIM_COUNT, BOX)
+    RESOLVE_PREVIEW_METHOD(ANIM_INTERVAL, BOX)
+    RESOLVE_PREVIEW_METHOD(ANIM_START, BOX)
+    RESOLVE_PREVIEW_METHOD(ANIM_STOP, BOX)
 #endif
 #undef RESOLVE_PREVIEW_METHOD
     return 1;
@@ -146,7 +158,11 @@ static int preview_show(void) {
     MonoObject *asset = mono_object_new(preview_domain, preview_asset_class);
     if (!asset || !(preview_asset_handle = mono_gchandle_new(asset, 1))) return 0;
 #endif
+#if ARFOXIA_PS4_ANIMATED_PREVIEW
+    MonoString *uri = mono_string_new(preview_domain, "/user/data/Arfoxia/sprite-walk.png");
+#else
     MonoString *uri = mono_string_new(preview_domain, "/user/data/Arfoxia/sprite-preview.png");
+#endif
     uint32_t uri_handle = uri ? mono_gchandle_new((MonoObject *)uri, 1) : 0;
     if (!uri_handle) return 0;
     void *image_args[] = {mono_gchandle_get_target(uri_handle)};
@@ -172,16 +188,31 @@ static int preview_show(void) {
     memcpy(&pixel_height, value, sizeof(pixel_height));
     record("IMAGE_WIDTH", pixel_width);
     record("IMAGE_HEIGHT", pixel_height);
+#if ARFOXIA_PS4_ANIMATED_PREVIEW
+    /* Existing PMD Walk sheet: 4 horizontal 32x40 frames, 8 direction rows. */
+    if (pixel_width != 128 || pixel_height != 320) return 0;
+#else
     if (pixel_width != 96 || pixel_height != 96) return 0;
+#endif
     MonoObject *box = mono_object_new(preview_domain, preview_box_class);
     if (!box || !(preview_box_handle = mono_gchandle_new(box, 1))) return 0;
     preview_call("PHASE_IMAGE_BOX", preview_BOX_CTOR, box, NULL, &ok);
     if (!ok) return 0;
     preview_box_ready = 1;
+#if ARFOXIA_PS4_ANIMATED_PREVIEW
+    int frame_width = 32, frame_height = 40, frame_count = 4;
+    void *frame_width_args[] = {&frame_width}, *frame_height_args[] = {&frame_height}, *frame_count_args[] = {&frame_count};
+    record("PHASE_CONFIGURE_ANIMATION", 0);
+    if (!invoke(preview_ANIM_WIDTH, box, frame_width_args) ||
+        !invoke(preview_ANIM_HEIGHT, box, frame_height_args) ||
+        !invoke(preview_ANIM_COUNT, box, frame_count_args) ||
+        !preview_float(preview_ANIM_INTERVAL, box, 1000.0f/6.0f)) return 0;
+#endif
     record("PHASE_PASSIVE_GEOMETRY", 0);
+    float display_height = ARFOXIA_PS4_ANIMATED_PREVIEW ? 240.0f : 192.0f;
     if (!preview_bool(preview_WIDGET_TOUCH, box, 0) || !preview_bool(preview_WIDGET_FOCUS, box, 0) ||
-        !preview_float(preview_NODE_WIDTH, box, 192) || !preview_float(preview_NODE_HEIGHT, box, 192) ||
-        !preview_float(preview_NODE_X, box, width-240) || !preview_float(preview_NODE_Y, box, height-240) ||
+        !preview_float(preview_NODE_WIDTH, box, 192) || !preview_float(preview_NODE_HEIGHT, box, display_height) ||
+        !preview_float(preview_NODE_X, box, width-240) || !preview_float(preview_NODE_Y, box, height-display_height-48) ||
         !preview_bool(preview_NODE_VISIBLE, box, 1)) return 0;
     void *assign[] = {asset};
     preview_call("PHASE_ASSIGN_IMAGE", preview_BOX_IMAGE, box, assign, &ok);
@@ -191,6 +222,11 @@ static int preview_show(void) {
     /* An exception may have occurred AFTER the UI mutation. Retain for cleanup. */
     preview_attached = 1;
     if (!ok) return 0;
+#if ARFOXIA_PS4_ANIMATED_PREVIEW
+    preview_call("PHASE_START_ANIMATION", preview_ANIM_START, box, NULL, &ok);
+    if (!ok) return 0;
+    record("ANIMATION_REQUESTED_NOT_VISUAL_PROOF", 1);
+#endif
     record("PREVIEW_ATTACHED_NOT_VISUAL_PROOF", 1);
     return 1;
 }
@@ -206,6 +242,10 @@ static void preview_cleanup(void *state) {
     }
     MonoObject *box = preview_box_handle ? mono_gchandle_get_target(preview_box_handle) : NULL;
     if (box && preview_box_ready) {
+#if ARFOXIA_PS4_ANIMATED_PREVIEW
+        preview_call("PHASE_STOP_ANIMATION", preview_ANIM_STOP, box, NULL, &ok);
+        if (!ok) return;
+#endif
         if (preview_attached) {
             preview_call("PHASE_REMOVE_SPRITE", preview_WIDGET_REMOVE, box, NULL, &ok);
             if (!ok) return;

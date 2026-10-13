@@ -10,7 +10,7 @@ def mocks(monkeypatch, *, missing=None, inconsistent=False):
     classes = {owner: f'0x020000{i+1:02x}' for i, owner in enumerate(profile.TYPES)}
     def contract(data, classname, names, *, is_static):
         calls.append((classname, names, is_static))
-        owner = next(k for k, v in profile.TYPES.items() if v == classname)
+        owner = 'BOX' if classname == profile.ANIMATION_BOX else next(k for k, v in profile.TYPES.items() if v == classname)
         cls = classes[owner]
         if inconsistent and len(calls) == 2: cls = '0x020000ff'
         return cls, {name: f'0x060000{len(calls):02x}' for name in names}
@@ -88,6 +88,45 @@ def test_owned_image_is_disposed_before_releasing_roots_and_manager():
     assert cleanup.index('PHASE_DISPOSE_SPRITE') < cleanup.index('PHASE_DISPOSE_OWN_IMAGE')
     assert cleanup.index('PHASE_DISPOSE_OWN_IMAGE') < cleanup.index('mono_gchandle_free(preview_asset_handle)')
     assert cleanup.index('PHASE_DISPOSE_OWN_IMAGE') < cleanup.index('PHASE_DISPOSE_OWN_MANAGER')
+
+
+def test_animated_box_replaces_static_box_and_checks_exact_methods(monkeypatch):
+    calls = mocks(monkeypatch)
+    result = profile.preview_profile(b'', b'', b'', own_image_manager=True, dispose_image_asset=True, animated=True)
+    assert len(calls) == 31
+    assert calls[6] == (profile.ANIMATION_BOX, {'.ctor': 'void()'}, False)
+    assert calls[7] == (profile.ANIMATION_BOX, {'set_Image': 'void('+profile.PREFIX+'ImageAsset)'}, False)
+    for call, (key, owner, name, signature, static) in zip(calls[-6:], profile.ANIMATION_BINDINGS):
+        assert call == (profile.ANIMATION_BOX, {name: signature}, static)
+        assert 'ARFOXIA_SPRITE_'+key in result
+
+
+@pytest.mark.parametrize('index', range(26, 32))
+def test_each_animation_body_must_exist(monkeypatch, index):
+    mocks(monkeypatch, missing=f'0x060000{index:02x}')
+    with pytest.raises(ValueError, match='native body'):
+        profile.preview_profile(b'', b'', b'', own_image_manager=True, dispose_image_asset=True, animated=True)
+
+
+@pytest.mark.parametrize('manager, disposal', [(False, False), (True, False)])
+def test_animation_cannot_skip_owned_image_cleanup(manager, disposal):
+    with pytest.raises(ValueError, match='Animation requires'):
+        profile.preview_profile(b'', b'', b'', own_image_manager=manager, dispose_image_asset=disposal, animated=True)
+
+
+def test_animation_uses_builtin_start_stop_without_per_frame_worker_calls():
+    root = Path(__file__).resolve().parents[1] / 'ports/ps4'
+    source = (root / 'native/dispatch_probe.c').read_text()
+    header = (root / 'native/sprite_preview.h').read_text()
+    assert '#define ARFOXIA_PS4_ANIMATED_PREVIEW 0' in source
+    assert '#error Animation requires explicit owned image disposal' in source
+    assert 'pixel_width != 128 || pixel_height != 320' in header
+    assert 'frame_width = 32, frame_height = 40, frame_count = 4' in header
+    assert 'preview_ANIM_INTERVAL, box, 1000.0f/6.0f' in header
+    cleanup = header.split('static void preview_cleanup')[1]
+    assert cleanup.index('PHASE_STOP_ANIMATION') < cleanup.index('PHASE_REMOVE_SPRITE')
+    worker = header.split('static void *preview_wait_then_remove')[1]
+    assert 'ANIM_' not in worker
 
 
 def test_requires_core_and_offline_exclusive_output():

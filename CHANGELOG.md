@@ -6,6 +6,25 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Añadido — Primera animación de Arfoxia en el menú PS4 — 2026-10-13
+
+- El dueño confirmó que v5 apareció y desapareció en pantalla y que menú/mando
+  siguen normales. La prueba inicial de dibujo era intencionadamente estática.
+- Nueva variante experimental v6 con AnimationImageBox nativo UI2. Perfil
+  offline verifica constructor/métodos propios de la clase animada, firmas
+  y cuerpos AOT, además de exigir gestor propio y limpieza explícita.
+- Reutiliza la hoja Walk existente sin modificaciones: cuatro fotogramas 32×40
+  a 6 fps, caminando en el sitio, proporción preservada y presupuesto de 256 KiB.
+  El motor del menú anima sin encolar callbacks por fotograma. Stop precede
+  retirada y disposición del widget, imagen y gestor después de 15 segundos.
+- Artefactos/perfil/rutas/logs separados y compilación explícita desactivada por
+  defecto, sin autoarranque, cambios globales, reenvío de instancias anteriores
+  o pruebas en juegos. Validación: 905 pruebas Python correctas (60 de contratos
+  sprite/despacho), build OpenOrbis/PIE y comprobaciones C de ABI/GUID.
+  v6 enviada una sola vez con menú/BinLoader confirmados: hoja 128×320,
+  configuración, Start/Stop y limpieza completas sin excepción; diagnóstico
+  bruto preservado. La animación visual aún necesita confirmación física independiente.
+
 ### Corregido — Limpieza explícita de la imagen temporal PS4 — 2026-10-13
 
 - Prueba v4 ejecutada una sola vez: gestor propio 256 KiB, imagen 96×96,

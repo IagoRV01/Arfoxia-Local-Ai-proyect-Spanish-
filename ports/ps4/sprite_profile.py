@@ -17,6 +17,15 @@ TYPES = {'APP': PREFIX+'Application', 'SCENE': PREFIX+'UI2.Scene',
 TYPES['MANAGER'] = PREFIX+'AssetManager'
 TYPES['PROXY'] = PREFIX+'AssetProxy'
 DISPOSE_BINDINGS = (('ASSET_DISPOSE', 'PROXY', 'Dispose', 'void()', False),)
+ANIMATION_BOX = PREFIX+'UI2.AnimationImageBox'
+ANIMATION_BINDINGS = (
+    ('ANIM_WIDTH', 'BOX', 'set_FrameWidth', 'void(int)', False),
+    ('ANIM_HEIGHT', 'BOX', 'set_FrameHeight', 'void(int)', False),
+    ('ANIM_COUNT', 'BOX', 'set_FrameCount', 'void(int)', False),
+    ('ANIM_INTERVAL', 'BOX', 'set_FrameInterval', 'void(float)', False),
+    ('ANIM_START', 'BOX', 'Start', 'void()', False),
+    ('ANIM_STOP', 'BOX', 'Stop', 'void()', False),
+)
 MANAGER_BINDINGS = (
     ('MANAGER_CTOR', 'MANAGER', '.ctor', 'void(string, uint)', False),
     ('MANAGER_LOAD', 'MANAGER', 'LoadImageAsset', PREFIX+'ImageAsset(string)', False),
@@ -47,16 +56,21 @@ BINDINGS = (
 )
 
 
-def preview_profile(pui, corlib, core, *, own_image_manager=False, dispose_image_asset=False):
+def preview_profile(pui, corlib, core, *, own_image_manager=False, dispose_image_asset=False, animated=False):
     if dispose_image_asset and not own_image_manager:
         raise MetadataError('Explicit asset disposal requires the own image manager')
+    if animated and not (dispose_image_asset and own_image_manager):
+        raise MetadataError('Animation requires explicit disposal and own image manager')
     # Owner query and all three assembly GUID/MVID guards are mandatory.
     value = generate(pui, corlib, core)
     aot = AotImage(pui)
     classes, methods = {}, {}
-    bindings = BINDINGS + (MANAGER_BINDINGS if own_image_manager else ()) + (DISPOSE_BINDINGS if dispose_image_asset else ())
+    types = dict(TYPES, BOX=ANIMATION_BOX) if animated else TYPES
+    bindings = (BINDINGS + (MANAGER_BINDINGS if own_image_manager else ()) +
+                (DISPOSE_BINDINGS if dispose_image_asset else ()) +
+                (ANIMATION_BINDINGS if animated else ()))
     for key, owner, name, signature, static in bindings:
-        cls, matches = contract(pui, TYPES[owner], {name: signature}, is_static=static)
+        cls, matches = contract(pui, types[owner], {name: signature}, is_static=static)
         if owner in classes and classes[owner] != cls:
             raise MetadataError('Inconsistent preview class token')
         classes[owner] = cls
@@ -78,13 +92,14 @@ def main():
         parser.add_argument('--'+name, type=Path, required=True)
     parser.add_argument('--own-image-manager', action='store_true')
     parser.add_argument('--dispose-image-asset', action='store_true')
+    parser.add_argument('--animated', action='store_true')
     args = parser.parse_args()
     try:
         values = []
         for path in (args.pui, args.corlib, args.core):
             with path.open('rb') as stream: values.append(stream.read(MAX_FILE+1))
         value = preview_profile(*values, own_image_manager=args.own_image_manager,
-                                dispose_image_asset=args.dispose_image_asset)
+                                dispose_image_asset=args.dispose_image_asset, animated=args.animated)
         with args.output.open('x', encoding='utf-8') as stream: stream.write(value)
         print('Private UI2 sprite contract generated. No console contact or enabling.')
     except (OSError, MetadataError, UnicodeError) as exc:
