@@ -65,8 +65,14 @@ static void *cleanup_worker(void *unused) {
     (void)unused;
     MonoThread *thread = mono_thread_attach(fixture_domain);
     if (!thread) { atomic_store(&worker_failed, 1); return NULL; }
-    void *args[] = {mono_gchandle_get_target(callback_handle)};
-    if (!invoke(enqueue, NULL, args)) atomic_store(&worker_failed, 1);
+    struct timespec delay = {0, 1000000};
+    for (unsigned index=0; index<90; ++index) {
+        unsigned waited=0;
+        while (atomic_load(&observed) < index+1 && waited++ < 3000) nanosleep(&delay, NULL);
+        if (atomic_load(&observed) < index+1) { atomic_store(&worker_failed, 1); break; }
+        void *args[] = {mono_gchandle_get_target(callback_handle)};
+        if (!invoke(enqueue, NULL, args)) { atomic_store(&worker_failed, 1); break; }
+    }
     mono_thread_detach(thread);
     return NULL;
 }
@@ -106,12 +112,12 @@ int main(int argc, char **argv) {
     pthread_t worker;
     if (pthread_create(&worker, NULL, cleanup_worker, NULL) != 0) return 10;
     pthread_join(worker, NULL);
-    for (unsigned i=0; i < 3000 && atomic_load(&observed) < 2; i++) nanosleep(&delay, NULL);
+    for (unsigned i=0; i < 3000 && atomic_load(&observed) < 91; i++) nanosleep(&delay, NULL);
     int stopped = invoke(mono_class_get_method_from_name(fixture, "Stop", 0), NULL, NULL);
     unsigned seen = atomic_load(&observed), bad = atomic_load(&wrong_thread);
     mono_gchandle_free(handle);
     mono_jit_cleanup(domain);
-    if (!posted || !stopped || seen != 2 || bad || atomic_load(&worker_failed)) return 9;
-    puts("HOST dispatch passed: two callbacks, worker requeue and float/bool/string/reference/uint ABI on owner thread; NOT PS4 validation");
+    if (!posted || !stopped || seen != 91 || bad || atomic_load(&worker_failed)) return 9;
+    puts("HOST dispatch passed: 91 callbacks with bounded worker requeue and float/bool/string/reference/uint ABI on owner thread; NOT PS4 validation");
     return 0;
 }

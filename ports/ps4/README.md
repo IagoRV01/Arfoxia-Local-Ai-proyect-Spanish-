@@ -133,7 +133,7 @@ Reutiliza **sin modificar** `assets/external/pmd/default/Walk-Anim.png`: hoja
 El ciclo frontal utiliza el orden Normal por defecto y 166,67 ms por fotograma
 (6 fps). La geometría de presentación respeta su proporción 32:40. La hoja
 RGBA ocupa 163.840 bytes dentro del presupuesto propio de 256 KiB.
-El motor del menú avanza los fotogramas: no se hace un Post nativo por frame,
+Se delegó el avance al motor del menú: no se hizo un Post nativo por frame,
 ni hooks, escrituras de memoria o actualizaciones UI desde el worker.
 
 Se prueba caminar **en el sitio**, todavía sin desplazamiento por el escritorio,
@@ -149,6 +149,36 @@ En consola v6 se envió una sola vez y registró hoja 128×320, configuración,
 Start, Stop, retirada y limpieza completas sin excepción. El diagnóstico bruto
 no contiene nuevos marcadores fatales de Mono o imágenes sin disponer. Estos
 registros no sustituyen la comprobación visual de que los frames avanzaron.
+El dueño confirmó después que **v6 no se animó visualmente**, aunque se retiró
+y el menú/mando siguieron normales. No se considera esta vía validada. El
+Update del elemento depende del ciclo/tiempo del menú; los registros no aíslan
+cuál de esos mecanismos no avanzó. No se fuerza `Application.Update` ni se
+parchea el reloj global para corregirlo.
+
+### Fotogramas controlados y acotados (v7)
+
+v7 vuelve al ImageBox estático que ya dibujó en consola. `frame_assets.py`
+extrae los cuatro fotogramas frontales de Walk preservando sus píxeles,
+sin tocar la hoja original, y escribe PNG/manifiesto en una carpeta nueva
+exclusiva. Comprueba dimensiones, fotogramas distintos y conserva SHA256.
+Los cuatro frames RGBA suman 20.480 bytes dentro del gestor propio de 256 KiB.
+
+El worker adjunto a Mono solo encola hasta 90 cambios a intervalos de 166,67 ms
+(15 segundos), con **un único callback pendiente** por guarda atómica. Si el
+menú se retrasa, se salta ese slot; no se acumula una cola de animación.
+Cada callback consulta propiedad del hilo UI y cambia únicamente la imagen
+del widget propio. Error o hilo incorrecto detienen los cambios. La limpieza
+activa parada antes de retirar el widget y dispone cada fotograma antes del
+gestor. Callbacks tardíos se vuelven no-op; se retienen raíces de delegado y
+PRX para evitar descargar código pendiente. No se llama el ciclo global UI.
+
+Los targets nuevos son `build/arfoxia_sprite_candidate_v7.prx` y
+`build/dispatch_loader_scheduled.elf`. El perfil privado usa
+`--scheduled-frames --own-image-manager --dispose-image-asset` y salida
+`build/dispatch_sprite_scheduled_profile.h`; rechaza combinarlo con `--animated`.
+El fixture propio de host verificó 91 callbacks con reencolado acotado y
+consultas/argumentos dentro del hilo propietario, normal y full-AOT.
+El éxito del host no demuestra animación visible ni compatibilidad Sony.
 
 ```sh
 python ports/ps4/sprite_profile.py \

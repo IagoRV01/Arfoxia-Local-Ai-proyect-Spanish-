@@ -6,6 +6,23 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Corregido — Fotogramas PS4 controlados sin depender del ciclo nativo — 2026-10-13
+
+- El dueño confirmó que la variante nativa v6 no se animó, aunque se retiró y
+  menú/mando siguieron normales. No se confunde Start/Stop correctos con avance
+  visual. La dependencia del ciclo/tiempo UI no se fuerza ni se parchea.
+- Preparada v7 con el ImageBox estático ya validado: cuatro fotogramas PMD
+  precargados y cambios de imagen en callbacks verificados del hilo gráfico.
+  Máximo 90 slots/15 segundos y un solo callback pendiente; se saltan slots
+  atrasados, se para al fallar y los callbacks tardíos no acceden al UI retirado.
+- Generador de assets con extracción de píxeles originales, dimensiones/SHA256
+  y salida exclusiva. No modifica la hoja; cuatro imágenes suman 20 KiB RGBA.
+  Limpieza detiene cambios y dispone cada imagen antes del gestor propio.
+- Perfiles, rutas/logs y builds distintos, sin autoarranque ni cambios del sistema,
+  juegos o transporte antiguo. Validación: 917 pruebas Python correctas (72 de
+  assets/contratos sprite/despacho), build OpenOrbis/PIE y fixture host de 91
+  callbacks acotados en Mono normal/full-AOT. Prueba física v7 pendiente.
+
 ### Añadido — Primera animación de Arfoxia en el menú PS4 — 2026-10-13
 
 - El dueño confirmó que v5 apareció y desapareció en pantalla y que menú/mando

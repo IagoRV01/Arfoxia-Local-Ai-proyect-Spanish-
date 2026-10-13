@@ -14,6 +14,11 @@ static int preview_box_ready, preview_attached;
 static atomic_uint preview_state; /* 0 waiting, 1 attached, 2 skipped/failed */
 static MonoMethod *preview_post;
 static OrbisPthread preview_timer;
+#if ARFOXIA_PS4_SCHEDULED_FRAMES
+static uint32_t preview_frame_handles[4], preview_tick_handle;
+static atomic_uint preview_tick_pending, preview_frames_halted;
+static unsigned preview_frame_step;
+#endif
 #if ARFOXIA_PS4_ANIMATED_PREVIEW
 static MonoMethod *preview_ANIM_WIDTH, *preview_ANIM_HEIGHT, *preview_ANIM_COUNT;
 static MonoMethod *preview_ANIM_INTERVAL, *preview_ANIM_START, *preview_ANIM_STOP;
@@ -120,6 +125,65 @@ static int preview_bounds(MonoObject *parent, float *width, float *height) {
     return *width >= 320 && *width <= 8192 && *height >= 320 && *height <= 8192;
 }
 
+#if ARFOXIA_PS4_SCHEDULED_FRAMES
+static int preview_load_frames(MonoObject *manager) {
+    for (unsigned index=0; index<4; ++index) {
+        char path[96];
+        snprintf(path, sizeof(path), "/user/data/Arfoxia/walk-v7-%u.png", index);
+        MonoString *uri = mono_string_new(preview_domain, path);
+        uint32_t uri_handle = uri ? mono_gchandle_new((MonoObject *)uri, 1) : 0;
+        if (!uri_handle) return 0;
+        void *args[] = {mono_gchandle_get_target(uri_handle)};
+        int ok;
+        MonoObject *asset = preview_call("PHASE_LOAD_WALK_FRAME", preview_MANAGER_LOAD, manager, args, &ok);
+        mono_gchandle_free(uri_handle);
+        if (!ok || !asset || !mono_object_isinst(asset, preview_asset_class) ||
+            !(preview_frame_handles[index] = mono_gchandle_new(asset, 1))) return 0;
+        MonoObject *boxed = preview_call("PHASE_FRAME_WIDTH", preview_ASSET_WIDTH, asset, NULL, &ok);
+        void *value = ok && boxed ? mono_object_unbox(boxed) : NULL;
+        int width, height;
+        if (!value) return 0;
+        memcpy(&width, value, sizeof(width));
+        boxed = preview_call("PHASE_FRAME_HEIGHT", preview_ASSET_HEIGHT, asset, NULL, &ok);
+        value = ok && boxed ? mono_object_unbox(boxed) : NULL;
+        if (!value) return 0;
+        memcpy(&height, value, sizeof(height));
+        if (width != 32 || height != 40) return 0;
+    }
+    record("WALK_FRAMES_LOADED", 4);
+    return 1;
+}
+
+static void preview_tick(void *state) {
+    (void)state;
+    if (atomic_load(&preview_frames_halted) || atomic_load(&preview_state) != 1) goto done;
+    MonoObject *exception = NULL;
+    MonoObject *owner = mono_runtime_invoke(owner_query, NULL, NULL, &exception);
+    void *value = owner && !exception ? mono_object_unbox(owner) : NULL;
+    if (!value || !*(const unsigned char *)value) {
+        record("FRAME_NOT_ON_UI_HALTED", 1);
+        atomic_store(&preview_frames_halted, 1);
+        goto done;
+    }
+    MonoObject *box = preview_box_handle ? mono_gchandle_get_target(preview_box_handle) : NULL;
+    unsigned next = (preview_frame_step+1)%4;
+    MonoObject *asset = mono_gchandle_get_target(preview_frame_handles[next]);
+    if (!box || !asset) { atomic_store(&preview_frames_halted, 1); goto done; }
+    void *args[] = {asset};
+    if (!invoke(preview_BOX_IMAGE, box, args)) {
+        atomic_store(&preview_frames_halted, 1);
+        goto done;
+    }
+    ++preview_frame_step;
+    if (preview_frame_step <= 8 || preview_frame_step%6 == 0) {
+        record("FRAME_CHANGE_COUNT", (int)preview_frame_step);
+        record("FRAME_IMAGE_INDEX", (int)next);
+    }
+done:
+    atomic_store(&preview_tick_pending, 0);
+}
+#endif
+
 static int preview_show(void) {
     int ok;
     MonoObject *app = preview_call("PHASE_APPLICATION", preview_APP_INSTANCE, NULL, NULL, &ok);
@@ -158,6 +222,11 @@ static int preview_show(void) {
     MonoObject *asset = mono_object_new(preview_domain, preview_asset_class);
     if (!asset || !(preview_asset_handle = mono_gchandle_new(asset, 1))) return 0;
 #endif
+#if ARFOXIA_PS4_SCHEDULED_FRAMES
+    if (!preview_load_frames(manager)) return 0;
+    MonoObject *asset = mono_gchandle_get_target(preview_frame_handles[0]);
+    if (!asset) return 0;
+#else
 #if ARFOXIA_PS4_ANIMATED_PREVIEW
     MonoString *uri = mono_string_new(preview_domain, "/user/data/Arfoxia/sprite-walk.png");
 #else
@@ -176,6 +245,7 @@ static int preview_show(void) {
     mono_gchandle_free(uri_handle);
     if (!ok) return 0;
 #endif
+#endif /* Static/sheet load; scheduled frame handles are separately owned. */
     MonoObject *image_width = preview_call("PHASE_IMAGE_WIDTH", preview_ASSET_WIDTH, asset, NULL, &ok);
     void *value = ok && image_width ? mono_object_unbox(image_width) : NULL;
     if (!value) return 0;
@@ -188,7 +258,9 @@ static int preview_show(void) {
     memcpy(&pixel_height, value, sizeof(pixel_height));
     record("IMAGE_WIDTH", pixel_width);
     record("IMAGE_HEIGHT", pixel_height);
-#if ARFOXIA_PS4_ANIMATED_PREVIEW
+#if ARFOXIA_PS4_SCHEDULED_FRAMES
+    if (pixel_width != 32 || pixel_height != 40) return 0;
+#elif ARFOXIA_PS4_ANIMATED_PREVIEW
     /* Existing PMD Walk sheet: 4 horizontal 32x40 frames, 8 direction rows. */
     if (pixel_width != 128 || pixel_height != 320) return 0;
 #else
@@ -209,7 +281,7 @@ static int preview_show(void) {
         !preview_float(preview_ANIM_INTERVAL, box, 1000.0f/6.0f)) return 0;
 #endif
     record("PHASE_PASSIVE_GEOMETRY", 0);
-    float display_height = ARFOXIA_PS4_ANIMATED_PREVIEW ? 240.0f : 192.0f;
+    float display_height = (ARFOXIA_PS4_ANIMATED_PREVIEW || ARFOXIA_PS4_SCHEDULED_FRAMES) ? 240.0f : 192.0f;
     if (!preview_bool(preview_WIDGET_TOUCH, box, 0) || !preview_bool(preview_WIDGET_FOCUS, box, 0) ||
         !preview_float(preview_NODE_WIDTH, box, 192) || !preview_float(preview_NODE_HEIGHT, box, display_height) ||
         !preview_float(preview_NODE_X, box, width-240) || !preview_float(preview_NODE_Y, box, height-display_height-48) ||
@@ -233,6 +305,10 @@ static int preview_show(void) {
 
 static void preview_cleanup(void *state) {
     (void)state;
+#if ARFOXIA_PS4_SCHEDULED_FRAMES
+    /* A pending/late frame callback must never access disposed UI objects. */
+    atomic_store(&preview_frames_halted, 1);
+#endif
     int ok;
     MonoObject *owner = preview_call("PHASE_CLEANUP_UI_OWNER", owner_query, NULL, NULL, &ok);
     void *value = ok && owner ? mono_object_unbox(owner) : NULL;
@@ -255,11 +331,23 @@ static void preview_cleanup(void *state) {
         if (!ok) return;
     }
 #if ARFOXIA_PS4_DISPOSE_IMAGE_ASSET
+#if ARFOXIA_PS4_SCHEDULED_FRAMES
+    for (unsigned index=0; index<4; ++index) {
+        MonoObject *asset = preview_frame_handles[index] ? mono_gchandle_get_target(preview_frame_handles[index]) : NULL;
+        if (asset) {
+            preview_call("PHASE_DISPOSE_OWN_FRAME", preview_ASSET_DISPOSE, asset, NULL, &ok);
+            if (!ok) return;
+            mono_gchandle_free(preview_frame_handles[index]);
+            preview_frame_handles[index] = 0;
+        }
+    }
+#else
     MonoObject *asset = preview_asset_handle ? mono_gchandle_get_target(preview_asset_handle) : NULL;
     if (asset) {
         preview_call("PHASE_DISPOSE_OWN_IMAGE", preview_ASSET_DISPOSE, asset, NULL, &ok);
         if (!ok) return; /* Retain image/manager roots if explicit cleanup fails. */
     }
+#endif
 #endif
     if (preview_box_handle) mono_gchandle_free(preview_box_handle);
     if (preview_asset_handle) mono_gchandle_free(preview_asset_handle);
@@ -283,9 +371,27 @@ static void *preview_wait_then_remove(void *unused) {
     for (unsigned i=0; i<100 && !atomic_load(&preview_state); ++i) sceKernelUsleep(100000);
     unsigned state = atomic_load(&preview_state);
     if (!state) { record("PREVIEW_START_TIMEOUT_RETAIN_ROOTS", 1); return NULL; }
+#if !ARFOXIA_PS4_SCHEDULED_FRAMES
     if (state == 1) sceKernelUsleep(15000000); /* Never sleep on the UI thread. */
+#endif
     MonoThread *thread = mono_thread_attach(preview_domain);
     if (!thread) { record("CLEANUP_THREAD_ATTACH_FAILED", 1); return NULL; }
+#if ARFOXIA_PS4_SCHEDULED_FRAMES
+    if (state == 1) {
+        for (unsigned tick=0; tick<90; ++tick) {
+            sceKernelUsleep(166667); /* Worker only; 15 seconds total. */
+            if (atomic_load(&preview_frames_halted)) break;
+            unsigned expected = 0;
+            if (!atomic_compare_exchange_strong(&preview_tick_pending, &expected, 1)) continue;
+            void *frame_args[] = {mono_gchandle_get_target(preview_tick_handle), NULL};
+            if (!invoke(preview_post, mono_gchandle_get_target(context_handle), frame_args)) {
+                record("FRAME_POST_FAILED_HALTED", 1);
+                atomic_store(&preview_frames_halted, 1);
+                break;
+            }
+        }
+    }
+#endif
     void *args[] = {mono_gchandle_get_target(preview_cleanup_handle), NULL};
     record("PHASE_QUEUE_CLEANUP", 0);
     if (invoke(preview_post, mono_gchandle_get_target(context_handle), args)) record("CLEANUP_POST_RETURNED", 1);
@@ -298,12 +404,26 @@ static int preview_start_timer(MonoClass *callback_class, MonoMethod *callback_c
     if (!cleanup || !(preview_cleanup_handle = mono_gchandle_new(cleanup, 1))) return 0;
     void *address = (void *)(uintptr_t)&preview_cleanup;
     void *args[] = {NULL, &address};
-    if (!invoke(callback_ctor, cleanup, args) ||
-        scePthreadCreate(&preview_timer, NULL, preview_wait_then_remove, NULL, "ArfoxiaPreview") != 0) {
+    if (!invoke(callback_ctor, cleanup, args)) {
         mono_gchandle_free(preview_cleanup_handle);
         preview_cleanup_handle = 0;
         return 0;
     }
+#if ARFOXIA_PS4_SCHEDULED_FRAMES
+    MonoObject *tick = mono_object_new(preview_domain, callback_class);
+    if (!tick || !(preview_tick_handle = mono_gchandle_new(tick, 1))) goto fail_timer;
+    address = (void *)(uintptr_t)&preview_tick;
+    if (!invoke(callback_ctor, tick, args)) goto fail_timer;
+#endif
+    if (scePthreadCreate(&preview_timer, NULL, preview_wait_then_remove, NULL, "ArfoxiaPreview") != 0) goto fail_timer;
     scePthreadDetach(preview_timer);
     return 1;
+fail_timer:
+#if ARFOXIA_PS4_SCHEDULED_FRAMES
+    if (preview_tick_handle) mono_gchandle_free(preview_tick_handle);
+    preview_tick_handle = 0;
+#endif
+    mono_gchandle_free(preview_cleanup_handle);
+    preview_cleanup_handle = 0;
+    return 0;
 }

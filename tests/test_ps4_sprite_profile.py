@@ -126,7 +126,38 @@ def test_animation_uses_builtin_start_stop_without_per_frame_worker_calls():
     cleanup = header.split('static void preview_cleanup')[1]
     assert cleanup.index('PHASE_STOP_ANIMATION') < cleanup.index('PHASE_REMOVE_SPRITE')
     worker = header.split('static void *preview_wait_then_remove')[1]
-    assert 'ANIM_' not in worker
+    assert 'preview_ANIM_' not in worker
+
+
+def test_scheduled_frames_use_the_proven_static_box(monkeypatch):
+    calls = mocks(monkeypatch)
+    profile.preview_profile(b'',b'',b'',own_image_manager=True,dispose_image_asset=True,scheduled_frames=True)
+    assert len(calls) == 25
+    assert calls[6][0] == profile.TYPES['BOX']
+
+
+@pytest.mark.parametrize('manager, disposal, animated', [(False,False,False),(True,False,False),(True,True,True)])
+def test_scheduled_mode_rejects_unsafe_or_conflicting_configuration(manager,disposal,animated):
+    with pytest.raises(ValueError, match='Scheduled frames'):
+        profile.preview_profile(b'',b'',b'',own_image_manager=manager,dispose_image_asset=disposal,
+                                animated=animated,scheduled_frames=True)
+
+
+def test_scheduled_mode_is_bounded_owner_checked_and_halts_before_cleanup():
+    root = Path(__file__).resolve().parents[1]/'ports/ps4'
+    header = (root/'native/sprite_preview.h').read_text()
+    tick = header.split('static void preview_tick')[1].split('static int preview_show')[0]
+    assert 'mono_runtime_invoke(owner_query' in tick
+    assert tick.index('FRAME_NOT_ON_UI_HALTED') < tick.index('invoke(preview_BOX_IMAGE')
+    assert 'atomic_load(&preview_frames_halted)' in tick
+    assert 'atomic_store(&preview_tick_pending, 0)' in tick
+    worker = header.split('static void *preview_wait_then_remove')[1]
+    assert 'tick<90' in worker and 'sceKernelUsleep(166667)' in worker
+    assert 'atomic_compare_exchange_strong(&preview_tick_pending' in worker
+    assert 'preview_BOX_IMAGE' not in worker
+    cleanup = header.split('static void preview_cleanup')[1].split('static void *preview_wait_then_remove')[0]
+    assert cleanup.index('atomic_store(&preview_frames_halted, 1)') < cleanup.index('PHASE_REMOVE_SPRITE')
+    assert cleanup.index('PHASE_DISPOSE_OWN_FRAME') < cleanup.index('PHASE_DISPOSE_OWN_MANAGER')
 
 
 def test_requires_core_and_offline_exclusive_output():

@@ -56,11 +56,13 @@ BINDINGS = (
 )
 
 
-def preview_profile(pui, corlib, core, *, own_image_manager=False, dispose_image_asset=False, animated=False):
+def preview_profile(pui, corlib, core, *, own_image_manager=False, dispose_image_asset=False, animated=False, scheduled_frames=False):
     if dispose_image_asset and not own_image_manager:
         raise MetadataError('Explicit asset disposal requires the own image manager')
     if animated and not (dispose_image_asset and own_image_manager):
         raise MetadataError('Animation requires explicit disposal and own image manager')
+    if scheduled_frames and (animated or not (dispose_image_asset and own_image_manager)):
+        raise MetadataError('Scheduled frames require static box, explicit disposal and own manager')
     # Owner query and all three assembly GUID/MVID guards are mandatory.
     value = generate(pui, corlib, core)
     aot = AotImage(pui)
@@ -93,13 +95,15 @@ def main():
     parser.add_argument('--own-image-manager', action='store_true')
     parser.add_argument('--dispose-image-asset', action='store_true')
     parser.add_argument('--animated', action='store_true')
+    parser.add_argument('--scheduled-frames', action='store_true')
     args = parser.parse_args()
     try:
         values = []
         for path in (args.pui, args.corlib, args.core):
             with path.open('rb') as stream: values.append(stream.read(MAX_FILE+1))
         value = preview_profile(*values, own_image_manager=args.own_image_manager,
-                                dispose_image_asset=args.dispose_image_asset, animated=args.animated)
+                                dispose_image_asset=args.dispose_image_asset, animated=args.animated,
+                                scheduled_frames=args.scheduled_frames)
         with args.output.open('x', encoding='utf-8') as stream: stream.write(value)
         print('Private UI2 sprite contract generated. No console contact or enabling.')
     except (OSError, MetadataError, UnicodeError) as exc:
