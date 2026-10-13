@@ -92,16 +92,39 @@ presupuesto cero que rechazaba los 36.864 bytes de imagen. La excepción
 gestionada se capturó y la limpieza terminó; se preservó el diagnóstico bruto.
 No se debe confundir `LOAD_RC 0` con «Arfoxia visible».
 
-La variante v4 preparada usa un **AssetManager propio de 256 KiB**, constructor
+La variante v4 usa un **AssetManager propio de 256 KiB**, constructor
 con nombre y presupuesto, comprueba `get_MaxSize` y carga con su propio
 `LoadImageAsset(string)`. No reinicializa gestores del sistema ni desactiva
 sus límites. La limpieza dispone únicamente el widget y gestor propios.
+
+**v4 se ejecutó una vez en consola:** presupuesto 262.144, PNG 96×96,
+inserción/retirada y limpieza completas, sin excepción gestionada. El dueño
+confirmó menú/mando normales, pero no estaba mirando la pantalla durante los
+15 segundos: **el dibujo visible todavía no está confirmado**. El diagnóstico
+registró un aviso de imagen no dispuesta antes del gestor propio.
+
+La variante v5 añade `AssetProxy.Dispose(): void` para liberar explícitamente
+la imagen propia después de retirar/disponer el widget y antes de liberar
+raíces GC o el gestor. El contrato heredado se verifica offline, sin buscar
+clases globalmente ni descargar instancias previas. Usa rutas, logs y targets
+nuevos (`build/arfoxia_sprite_candidate_v5.prx`,
+`build/dispatch_loader_dispose.elf`); no debe reenviarse v4.
+
+**v5 también se ejecutó una sola vez:** inserción, retirada, disposición
+explícita de imagen y gestor completas (`PREVIEW_CLEANED 1`), sin excepciones
+gestionadas. El diagnóstico bruto ya no contiene el aviso de imagen pendiente
+observado en v4 ni marcadores de fallo Mono. Esto prueba la secuencia de APIs,
+no por sí solo que el sprite se haya dibujado sobre el menú visible; se necesita
+confirmación física del dueño antes de habilitar una mascota persistente.
 
 ```sh
 python ports/ps4/sprite_profile.py \
   --pui RUTA_PUI_PRIVADA --corlib RUTA_CORLIB_PRIVADA --core RUTA_CORE_PRIVADA \
   --own-image-manager --output ports/ps4/build/dispatch_sprite_manager_profile.h
 ```
+
+Para v5 se añade `--dispose-image-asset` y la salida privada es
+`ports/ps4/build/dispatch_sprite_dispose_profile.h`.
 
 Los targets `build/arfoxia_sprite_candidate_v4.prx` y
 `build/dispatch_loader_manager.elf` son explícitos y ajenos a `all`/autoarranque.

@@ -14,6 +14,10 @@ static int preview_box_ready, preview_attached;
 static atomic_uint preview_state; /* 0 waiting, 1 attached, 2 skipped/failed */
 static MonoMethod *preview_post;
 static OrbisPthread preview_timer;
+#if ARFOXIA_PS4_DISPOSE_IMAGE_ASSET
+static MonoClass *preview_PROXY;
+static MonoMethod *preview_ASSET_DISPOSE;
+#endif
 #if ARFOXIA_PS4_OWN_IMAGE_MANAGER
 static MonoClass *preview_MANAGER;
 static MonoMethod *preview_MANAGER_CTOR, *preview_MANAGER_LOAD, *preview_MANAGER_LIMIT, *preview_MANAGER_DISPOSE;
@@ -48,6 +52,9 @@ static int preview_prepare(MonoImage *pui, MonoDomain *domain, MonoMethod *post)
 #if ARFOXIA_PS4_OWN_IMAGE_MANAGER
     RESOLVE_PREVIEW_CLASS(MANAGER)
 #endif
+#if ARFOXIA_PS4_DISPOSE_IMAGE_ASSET
+    RESOLVE_PREVIEW_CLASS(PROXY)
+#endif
 #undef RESOLVE_PREVIEW_CLASS
     preview_scene_class = preview_SCENE;
     preview_asset_class = preview_ASSET;
@@ -62,6 +69,9 @@ static int preview_prepare(MonoImage *pui, MonoDomain *domain, MonoMethod *post)
     RESOLVE_PREVIEW_METHOD(MANAGER_LOAD, MANAGER)
     RESOLVE_PREVIEW_METHOD(MANAGER_LIMIT, MANAGER)
     RESOLVE_PREVIEW_METHOD(MANAGER_DISPOSE, MANAGER)
+#endif
+#if ARFOXIA_PS4_DISPOSE_IMAGE_ASSET
+    RESOLVE_PREVIEW_METHOD(ASSET_DISPOSE, PROXY)
 #endif
 #undef RESOLVE_PREVIEW_METHOD
     return 1;
@@ -204,6 +214,13 @@ static void preview_cleanup(void *state) {
         preview_call("PHASE_DISPOSE_SPRITE", preview_WIDGET_DISPOSE, box, NULL, &ok);
         if (!ok) return;
     }
+#if ARFOXIA_PS4_DISPOSE_IMAGE_ASSET
+    MonoObject *asset = preview_asset_handle ? mono_gchandle_get_target(preview_asset_handle) : NULL;
+    if (asset) {
+        preview_call("PHASE_DISPOSE_OWN_IMAGE", preview_ASSET_DISPOSE, asset, NULL, &ok);
+        if (!ok) return; /* Retain image/manager roots if explicit cleanup fails. */
+    }
+#endif
     if (preview_box_handle) mono_gchandle_free(preview_box_handle);
     if (preview_asset_handle) mono_gchandle_free(preview_asset_handle);
     preview_box_handle = preview_asset_handle = 0;

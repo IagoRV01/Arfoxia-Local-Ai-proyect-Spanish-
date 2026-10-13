@@ -6,6 +6,25 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Corregido — Limpieza explícita de la imagen temporal PS4 — 2026-10-13
+
+- Prueba v4 ejecutada una sola vez: gestor propio 256 KiB, imagen 96×96,
+  inserción, retirada y limpieza registradas sin excepción. El dueño confirmó
+  menú y mando normales; no observó la pantalla, así que el dibujo sigue sin
+  confirmación visual. Diagnóstico bruto conservado en almacenamiento privado.
+- Detectado aviso al disponer el gestor con una imagen todavía no liberada.
+  Preparada v5 que dispone explícitamente la imagen propia después del widget
+  y antes de liberar raíces/gestor. Firma heredada exacta y cuerpo AOT validados,
+  sin tocar imágenes/gestores globales o descargar módulos anteriores.
+- Nuevos targets, perfil privado y rutas/logs independientes. Se mantienen
+  consulta del hilo UI, widget pasivo, prueba breve, cuarentena y ausencia de
+  autoarranque/reintentos. 895 pruebas Python correctas y compilación OpenOrbis/PIE
+  verificadas. v5 enviada una sola vez con menú/BinLoader confirmados: inserción,
+  retirada, disposición explícita de imagen y gestor completas, sin excepciones.
+  El diagnóstico bruto no repite el aviso de imagen pendiente; se conserva privado.
+  Confirmación visual y de estado posterior pendiente, sin afirmar dibujo visible
+  ni habilitar integración persistente o pruebas en juegos.
+
 ### Añadido — Hilo gráfico PS4 validado y prueba de sprite temporal — 2026-10-13
 
 - v2 ejecutada una sola vez en la consola: `CORE_IS_MAIN_THREAD 1`, sin

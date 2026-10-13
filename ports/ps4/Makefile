@@ -103,3 +103,16 @@ build/dispatch_loader_manager.elf: build/crt0.o build/dispatch_loader_manager.o
 	ld -pie --no-dynamic-linker -T $(PAYLOAD_SDK)/libPS4/linker.x -z max-page-size=0x4000 --gc-sections $^ -L$(PAYLOAD_SDK)/libPS4 -lPS4 -o $@
 build/arfoxia_sprite_loader_candidate_v4.bin: build/dispatch_loader_manager.elf pack_payload.py
 	python3 pack_payload.py $< $@
+# Explicitly release the owned image before its manager (v5, fresh paths/logs).
+build/sprite_dispose.o: native/dispatch_probe.c native/sprite_preview.h native/dispatch_contract.h native/goldhen_abi.h build/dispatch_sprite_dispose_profile.h | build
+	$(CC) $(TARGET_FLAGS) -DARFOXIA_PS4_DISPATCH_PROBE_ENABLED=1 -DARFOXIA_PS4_QUERY_UI_OWNER=1 -DARFOXIA_PS4_SPRITE_PREVIEW=1 -DARFOXIA_PS4_OWN_IMAGE_MANAGER=1 -DARFOXIA_PS4_DISPOSE_IMAGE_ASSET=1 -Ibuild -c $< -o $@
+build/sprite_dispose.elf: build/sprite_dispose.o build/crtprx.o
+	$(LD) -m elf_x86_64 -pie -e _init --script $(OO_PS4_TOOLCHAIN)/link.x --eh-frame-hdr -L$(OO_PS4_TOOLCHAIN)/lib $^ -lkernel -lSceLibcInternal -lmonosgen -o $@
+build/arfoxia_sprite_candidate_v5.prx: build/sprite_dispose.elf
+	$(OO_PS4_TOOLCHAIN)/bin/linux/create-fself -in=$< -out=build/sprite_dispose.oelf --lib=$@ --paid 0x3800000000000011
+build/dispatch_loader_dispose.o: native/dispatch_loader.c native/goldhen_abi.h build/dispatch_sprite_dispose_profile.h | build
+	gcc -std=c11 -Os -ffreestanding -fno-builtin -fno-stack-protector -fPIE -masm=intel -m64 -mabi=sysv -DARFOXIA_PS4_DISPATCH_LOADER_ENABLED=1 -DARFOXIA_PS4_QUERY_UI_OWNER=1 -DARFOXIA_PS4_SPRITE_PREVIEW=1 -DARFOXIA_PS4_OWN_IMAGE_MANAGER=1 -DARFOXIA_PS4_DISPOSE_IMAGE_ASSET=1 -Ibuild -I$(PAYLOAD_SDK)/libPS4/include -c $< -o $@
+build/dispatch_loader_dispose.elf: build/crt0.o build/dispatch_loader_dispose.o
+	ld -pie --no-dynamic-linker -T $(PAYLOAD_SDK)/libPS4/linker.x -z max-page-size=0x4000 --gc-sections $^ -L$(PAYLOAD_SDK)/libPS4 -lPS4 -o $@
+build/arfoxia_sprite_loader_candidate_v5.bin: build/dispatch_loader_dispose.elf pack_payload.py
+	python3 pack_payload.py $< $@

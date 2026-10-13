@@ -66,6 +66,30 @@ def test_own_manager_requires_each_native_body(monkeypatch, index):
         profile.preview_profile(b'', b'', b'', own_image_manager=True)
 
 
+def test_image_disposal_contract_is_exact_and_native(monkeypatch):
+    calls = mocks(monkeypatch)
+    result = profile.preview_profile(b'', b'', b'', own_image_manager=True, dispose_image_asset=True)
+    assert len(calls) == 25
+    assert calls[-1] == (profile.TYPES['PROXY'], {'Dispose': 'void()'}, False)
+    assert 'ARFOXIA_SPRITE_ASSET_DISPOSE' in result
+    mocks(monkeypatch, missing='0x06000019')
+    with pytest.raises(ValueError, match='native body'):
+        profile.preview_profile(b'', b'', b'', own_image_manager=True, dispose_image_asset=True)
+
+
+def test_explicit_image_disposal_requires_owned_manager():
+    with pytest.raises(ValueError, match='own image manager'):
+        profile.preview_profile(b'', b'', b'', dispose_image_asset=True)
+
+
+def test_owned_image_is_disposed_before_releasing_roots_and_manager():
+    root = Path(__file__).resolve().parents[1] / 'ports/ps4'
+    cleanup = (root / 'native/sprite_preview.h').read_text().split('static void preview_cleanup')[1]
+    assert cleanup.index('PHASE_DISPOSE_SPRITE') < cleanup.index('PHASE_DISPOSE_OWN_IMAGE')
+    assert cleanup.index('PHASE_DISPOSE_OWN_IMAGE') < cleanup.index('mono_gchandle_free(preview_asset_handle)')
+    assert cleanup.index('PHASE_DISPOSE_OWN_IMAGE') < cleanup.index('PHASE_DISPOSE_OWN_MANAGER')
+
+
 def test_requires_core_and_offline_exclusive_output():
     assert inspect.signature(profile.preview_profile).parameters['core'].default is inspect.Parameter.empty
     source = inspect.getsource(profile)

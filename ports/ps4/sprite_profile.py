@@ -15,6 +15,8 @@ TYPES = {'APP': PREFIX+'Application', 'SCENE': PREFIX+'UI2.Scene',
          'ASSET': PREFIX+'ImageAsset', 'BOX': PREFIX+'UI2.ImageBox',
          'WIDGET': PREFIX+'UI2.Widget', 'NODE': PREFIX+'UINode'}
 TYPES['MANAGER'] = PREFIX+'AssetManager'
+TYPES['PROXY'] = PREFIX+'AssetProxy'
+DISPOSE_BINDINGS = (('ASSET_DISPOSE', 'PROXY', 'Dispose', 'void()', False),)
 MANAGER_BINDINGS = (
     ('MANAGER_CTOR', 'MANAGER', '.ctor', 'void(string, uint)', False),
     ('MANAGER_LOAD', 'MANAGER', 'LoadImageAsset', PREFIX+'ImageAsset(string)', False),
@@ -45,12 +47,15 @@ BINDINGS = (
 )
 
 
-def preview_profile(pui, corlib, core, *, own_image_manager=False):
+def preview_profile(pui, corlib, core, *, own_image_manager=False, dispose_image_asset=False):
+    if dispose_image_asset and not own_image_manager:
+        raise MetadataError('Explicit asset disposal requires the own image manager')
     # Owner query and all three assembly GUID/MVID guards are mandatory.
     value = generate(pui, corlib, core)
     aot = AotImage(pui)
     classes, methods = {}, {}
-    for key, owner, name, signature, static in BINDINGS + (MANAGER_BINDINGS if own_image_manager else ()):
+    bindings = BINDINGS + (MANAGER_BINDINGS if own_image_manager else ()) + (DISPOSE_BINDINGS if dispose_image_asset else ())
+    for key, owner, name, signature, static in bindings:
         cls, matches = contract(pui, TYPES[owner], {name: signature}, is_static=static)
         if owner in classes and classes[owner] != cls:
             raise MetadataError('Inconsistent preview class token')
@@ -72,12 +77,14 @@ def main():
     for name in ('pui', 'corlib', 'core', 'output'):
         parser.add_argument('--'+name, type=Path, required=True)
     parser.add_argument('--own-image-manager', action='store_true')
+    parser.add_argument('--dispose-image-asset', action='store_true')
     args = parser.parse_args()
     try:
         values = []
         for path in (args.pui, args.corlib, args.core):
             with path.open('rb') as stream: values.append(stream.read(MAX_FILE+1))
-        value = preview_profile(*values, own_image_manager=args.own_image_manager)
+        value = preview_profile(*values, own_image_manager=args.own_image_manager,
+                                dispose_image_asset=args.dispose_image_asset)
         with args.output.open('x', encoding='utf-8') as stream: stream.write(value)
         print('Private UI2 sprite contract generated. No console contact or enabling.')
     except (OSError, MetadataError, UnicodeError) as exc:
