@@ -152,12 +152,33 @@ def test_scheduled_mode_is_bounded_owner_checked_and_halts_before_cleanup():
     assert 'atomic_load(&preview_frames_halted)' in tick
     assert 'atomic_store(&preview_tick_pending, 0)' in tick
     worker = header.split('static void *preview_wait_then_remove')[1]
-    assert 'tick<90' in worker and 'sceKernelUsleep(166667)' in worker
+    assert 'ARFOXIA_PS4_VISIBLE_TEST ? 360 : 90' in worker and 'sceKernelUsleep(166667)' in worker
     assert 'atomic_compare_exchange_strong(&preview_tick_pending' in worker
     assert 'preview_BOX_IMAGE' not in worker
     cleanup = header.split('static void preview_cleanup')[1].split('static void *preview_wait_then_remove')[0]
     assert cleanup.index('atomic_store(&preview_frames_halted, 1)') < cleanup.index('PHASE_REMOVE_SPRITE')
     assert cleanup.index('PHASE_DISPOSE_OWN_FRAME') < cleanup.index('PHASE_DISPOSE_OWN_MANAGER')
+
+
+def test_visible_mode_has_exact_scaling_contract(monkeypatch):
+    calls = mocks(monkeypatch)
+    result = profile.preview_profile(b'',b'',b'',own_image_manager=True,dispose_image_asset=True,
+                                    scheduled_frames=True,visible_test=True)
+    assert len(calls) == 26
+    assert calls[-1] == (profile.TYPES['BOX'], {'set_ImageScaleType': 'void('+profile.PREFIX+'UI2.ImageScaleType)'}, False)
+    assert 'ARFOXIA_SPRITE_BOX_SCALE' in result
+
+
+def test_visible_mode_cannot_skip_bounded_scheduler():
+    with pytest.raises(ValueError, match='Visible test'):
+        profile.preview_profile(b'',b'',b'',visible_test=True)
+
+
+def test_visible_mode_scaling_method_requires_native_body(monkeypatch):
+    mocks(monkeypatch,missing='0x0600001a')
+    with pytest.raises(ValueError, match='native body'):
+        profile.preview_profile(b'',b'',b'',own_image_manager=True,dispose_image_asset=True,
+                                scheduled_frames=True,visible_test=True)
 
 
 def test_requires_core_and_offline_exclusive_output():

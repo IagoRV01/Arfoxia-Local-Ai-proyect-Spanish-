@@ -14,6 +14,9 @@ static int preview_box_ready, preview_attached;
 static atomic_uint preview_state; /* 0 waiting, 1 attached, 2 skipped/failed */
 static MonoMethod *preview_post;
 static OrbisPthread preview_timer;
+#if ARFOXIA_PS4_VISIBLE_TEST
+static MonoMethod *preview_BOX_SCALE;
+#endif
 #if ARFOXIA_PS4_SCHEDULED_FRAMES
 static uint32_t preview_frame_handles[4], preview_tick_handle;
 static atomic_uint preview_tick_pending, preview_frames_halted;
@@ -81,6 +84,9 @@ static int preview_prepare(MonoImage *pui, MonoDomain *domain, MonoMethod *post)
 #endif
 #if ARFOXIA_PS4_DISPOSE_IMAGE_ASSET
     RESOLVE_PREVIEW_METHOD(ASSET_DISPOSE, PROXY)
+#endif
+#if ARFOXIA_PS4_VISIBLE_TEST
+    RESOLVE_PREVIEW_METHOD(BOX_SCALE, BOX)
 #endif
 #if ARFOXIA_PS4_ANIMATED_PREVIEW
     RESOLVE_PREVIEW_METHOD(ANIM_WIDTH, BOX)
@@ -271,6 +277,14 @@ static int preview_show(void) {
     preview_call("PHASE_IMAGE_BOX", preview_BOX_CTOR, box, NULL, &ok);
     if (!ok) return 0;
     preview_box_ready = 1;
+#if ARFOXIA_PS4_VISIBLE_TEST
+    /* Verified private enum: AspectInside=2. Scale rendering, not asset pixels. */
+    int scale_type = 2;
+    void *scale_args[] = {&scale_type};
+    if (!invoke(preview_BOX_SCALE, box, scale_args)) return 0;
+    record("ASPECT_INSIDE_SCALE", scale_type);
+    record("VISIBLE_TEST_SECONDS", 60);
+#endif
 #if ARFOXIA_PS4_ANIMATED_PREVIEW
     int frame_width = 32, frame_height = 40, frame_count = 4;
     void *frame_width_args[] = {&frame_width}, *frame_height_args[] = {&frame_height}, *frame_count_args[] = {&frame_count};
@@ -378,8 +392,9 @@ static void *preview_wait_then_remove(void *unused) {
     if (!thread) { record("CLEANUP_THREAD_ATTACH_FAILED", 1); return NULL; }
 #if ARFOXIA_PS4_SCHEDULED_FRAMES
     if (state == 1) {
-        for (unsigned tick=0; tick<90; ++tick) {
-            sceKernelUsleep(166667); /* Worker only; 15 seconds total. */
+        unsigned slots = ARFOXIA_PS4_VISIBLE_TEST ? 360 : 90;
+        for (unsigned tick=0; tick<slots; ++tick) {
+            sceKernelUsleep(166667); /* Worker only; bounded 15/60 seconds. */
             if (atomic_load(&preview_frames_halted)) break;
             unsigned expected = 0;
             if (!atomic_compare_exchange_strong(&preview_tick_pending, &expected, 1)) continue;

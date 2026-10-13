@@ -18,6 +18,8 @@ TYPES['MANAGER'] = PREFIX+'AssetManager'
 TYPES['PROXY'] = PREFIX+'AssetProxy'
 DISPOSE_BINDINGS = (('ASSET_DISPOSE', 'PROXY', 'Dispose', 'void()', False),)
 ANIMATION_BOX = PREFIX+'UI2.AnimationImageBox'
+VISIBLE_BINDINGS = (('BOX_SCALE', 'BOX', 'set_ImageScaleType',
+                     'void('+PREFIX+'UI2.ImageScaleType)', False),)
 ANIMATION_BINDINGS = (
     ('ANIM_WIDTH', 'BOX', 'set_FrameWidth', 'void(int)', False),
     ('ANIM_HEIGHT', 'BOX', 'set_FrameHeight', 'void(int)', False),
@@ -56,13 +58,15 @@ BINDINGS = (
 )
 
 
-def preview_profile(pui, corlib, core, *, own_image_manager=False, dispose_image_asset=False, animated=False, scheduled_frames=False):
+def preview_profile(pui, corlib, core, *, own_image_manager=False, dispose_image_asset=False, animated=False, scheduled_frames=False, visible_test=False):
     if dispose_image_asset and not own_image_manager:
         raise MetadataError('Explicit asset disposal requires the own image manager')
     if animated and not (dispose_image_asset and own_image_manager):
         raise MetadataError('Animation requires explicit disposal and own image manager')
     if scheduled_frames and (animated or not (dispose_image_asset and own_image_manager)):
         raise MetadataError('Scheduled frames require static box, explicit disposal and own manager')
+    if visible_test and not scheduled_frames:
+        raise MetadataError('Visible test requires bounded scheduled frames')
     # Owner query and all three assembly GUID/MVID guards are mandatory.
     value = generate(pui, corlib, core)
     aot = AotImage(pui)
@@ -70,7 +74,8 @@ def preview_profile(pui, corlib, core, *, own_image_manager=False, dispose_image
     types = dict(TYPES, BOX=ANIMATION_BOX) if animated else TYPES
     bindings = (BINDINGS + (MANAGER_BINDINGS if own_image_manager else ()) +
                 (DISPOSE_BINDINGS if dispose_image_asset else ()) +
-                (ANIMATION_BINDINGS if animated else ()))
+                (ANIMATION_BINDINGS if animated else ()) +
+                (VISIBLE_BINDINGS if visible_test else ()))
     for key, owner, name, signature, static in bindings:
         cls, matches = contract(pui, types[owner], {name: signature}, is_static=static)
         if owner in classes and classes[owner] != cls:
@@ -96,6 +101,7 @@ def main():
     parser.add_argument('--dispose-image-asset', action='store_true')
     parser.add_argument('--animated', action='store_true')
     parser.add_argument('--scheduled-frames', action='store_true')
+    parser.add_argument('--visible-test', action='store_true')
     args = parser.parse_args()
     try:
         values = []
@@ -103,7 +109,7 @@ def main():
             with path.open('rb') as stream: values.append(stream.read(MAX_FILE+1))
         value = preview_profile(*values, own_image_manager=args.own_image_manager,
                                 dispose_image_asset=args.dispose_image_asset, animated=args.animated,
-                                scheduled_frames=args.scheduled_frames)
+                                scheduled_frames=args.scheduled_frames, visible_test=args.visible_test)
         with args.output.open('x', encoding='utf-8') as stream: stream.write(value)
         print('Private UI2 sprite contract generated. No console contact or enabling.')
     except (OSError, MetadataError, UnicodeError) as exc:

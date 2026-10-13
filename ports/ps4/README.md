@@ -1,7 +1,7 @@
 # Cliente PS4: investigación del menú ShellUI
 
 Estado: **sonda antigua en cuarentena; callback e hilo gráfico validados;
-primer sprite estático visible confirmado; animación temporal en pruebas**.
+sprite estático y ciclo de caminar visibles confirmados; cliente completo en desarrollo**.
 La mascota PS4 completa todavía no está validada.
 No es un cliente GTK ni una aplicación a pantalla completa disfrazada de overlay.
 La prueba está limitada al menú de inicio, sin juegos abiertos. No habilita
@@ -179,6 +179,30 @@ Los targets nuevos son `build/arfoxia_sprite_candidate_v7.prx` y
 El fixture propio de host verificó 91 callbacks con reencolado acotado y
 consultas/argumentos dentro del hilo propietario, normal y full-AOT.
 El éxito del host no demuestra animación visible ni compatibilidad Sony.
+v7 se ejecutó una vez: cuatro imágenes cargadas, **90 cambios de imagen** en
+callbacks del hilo UI, retirada y disposición de todos los frames/gestor sin
+excepción. El dueño confirmó estabilidad, pero no estaba mirando el monitor;
+el movimiento sigue sin confirmación visual.
+
+Para facilitar esa comprobación, v8 mantiene la misma cola acotada pero durante
+**60 segundos / 360 slots**. Usa `ImageBox.set_ImageScaleType(AspectInside)`
+(valor 2 verificado en la biblioteca privada) para ampliar las imágenes al
+área 192×240 preservando proporción; no modifica sus píxeles ni el presupuesto.
+Tiene rutas/logs y targets distintos (`build/arfoxia_sprite_candidate_v8.prx`,
+`build/dispatch_loader_visible.elf`); el perfil privado añade `--visible-test`
+y se guarda como `build/dispatch_sprite_visible_profile.h`. No forma parte
+de `all` ni convierte el experimento en mascota persistente. Solo se envía
+tras confirmar que el dueño está observando la PS4 en el menú, sin juegos.
+
+**v8 validada visualmente por el dueño:** Arfoxia ampliada y animada, retirada
+al terminar el minuto, menú/mando normales. Registros: presupuesto propio
+262.144, cuatro imágenes 32×40, AspectInside 2, 360 cambios de imagen y
+disposición de widget/cuatro frames/gestor completas, sin excepción. El
+diagnóstico bruto no contiene nuevos marcadores fatales de Mono o imagen
+pendiente. Se preservan PRX/raíces de callback y logs; no se recarga/descarga
+el módulo para repetir la prueba. La validación cubre caminar en el sitio
+durante un minuto, **no desplazamiento, interacciones, viajes/autoarranque,
+permanencia ni aparición en juegos**.
 
 ```sh
 python ports/ps4/sprite_profile.py \

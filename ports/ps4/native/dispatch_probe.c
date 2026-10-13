@@ -23,6 +23,12 @@
 #ifndef ARFOXIA_PS4_SCHEDULED_FRAMES
 #define ARFOXIA_PS4_SCHEDULED_FRAMES 0
 #endif
+#ifndef ARFOXIA_PS4_VISIBLE_TEST
+#define ARFOXIA_PS4_VISIBLE_TEST 0
+#endif
+#if ARFOXIA_PS4_VISIBLE_TEST && !ARFOXIA_PS4_SCHEDULED_FRAMES
+#error Visible test requires bounded scheduled frames
+#endif
 #if ARFOXIA_PS4_SCHEDULED_FRAMES && (ARFOXIA_PS4_ANIMATED_PREVIEW || !ARFOXIA_PS4_DISPOSE_IMAGE_ASSET)
 #error Scheduled frames require static box and explicit image disposal
 #endif
@@ -51,7 +57,9 @@ int module_stop(size_t argc, const void *argv) { (void)argc; (void)argv; return 
 #include "goldhen_abi.h"
 #include "dispatch_contract.h"
 #if ARFOXIA_PS4_SPRITE_PREVIEW
-#if ARFOXIA_PS4_SCHEDULED_FRAMES
+#if ARFOXIA_PS4_VISIBLE_TEST
+#include "dispatch_sprite_visible_profile.h"
+#elif ARFOXIA_PS4_SCHEDULED_FRAMES
 #include "dispatch_sprite_scheduled_profile.h"
 #elif ARFOXIA_PS4_ANIMATED_PREVIEW
 #include "dispatch_sprite_animation_profile.h"
@@ -189,7 +197,9 @@ int module_start(size_t argc, const void *argv) {
     memset(&firmware, 0, sizeof(firmware));
     firmware.Size = sizeof(firmware);
     if (sceKernelGetSystemSwVersion(&firmware) < 0 || firmware.Version != 0x12520001) return -2;
-#if ARFOXIA_PS4_SCHEDULED_FRAMES
+#if ARFOXIA_PS4_VISIBLE_TEST
+    descriptor = sceKernelOpen("/user/data/Arfoxia/dispatch-v8.txt", 0xa01, 0600);
+#elif ARFOXIA_PS4_SCHEDULED_FRAMES
     descriptor = sceKernelOpen("/user/data/Arfoxia/dispatch-v7.txt", 0xa01, 0600);
 #elif ARFOXIA_PS4_ANIMATED_PREVIEW
     descriptor = sceKernelOpen("/user/data/Arfoxia/dispatch-v6.txt", 0xa01, 0600);
@@ -206,7 +216,7 @@ int module_start(size_t argc, const void *argv) {
 #endif
     if (descriptor < 0) return -3;  /* EXCLUSIVE: never overwrite a prior run. */
     sender_thread = (uintptr_t)scePthreadSelf();
-    record("ARFOXIA_DISPATCH_PROBE", ARFOXIA_PS4_SCHEDULED_FRAMES ? 7 : (ARFOXIA_PS4_ANIMATED_PREVIEW ? 6 : (ARFOXIA_PS4_DISPOSE_IMAGE_ASSET ? 5 : (ARFOXIA_PS4_OWN_IMAGE_MANAGER ? 4 : (ARFOXIA_PS4_SPRITE_PREVIEW ? 3 : (ARFOXIA_PS4_QUERY_UI_OWNER ? 2 : 1))))));
+    record("ARFOXIA_DISPATCH_PROBE", ARFOXIA_PS4_VISIBLE_TEST ? 8 : (ARFOXIA_PS4_SCHEDULED_FRAMES ? 7 : (ARFOXIA_PS4_ANIMATED_PREVIEW ? 6 : (ARFOXIA_PS4_DISPOSE_IMAGE_ASSET ? 5 : (ARFOXIA_PS4_OWN_IMAGE_MANAGER ? 4 : (ARFOXIA_PS4_SPRITE_PREVIEW ? 3 : (ARFOXIA_PS4_QUERY_UI_OWNER ? 2 : 1)))))));
     record("PHASE_ROOT_DOMAIN", 0);
     MonoDomain *domain = mono_get_root_domain();
     if (!domain || !mono_thread_attach(domain)) return stopped(-5);

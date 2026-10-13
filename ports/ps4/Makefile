@@ -143,3 +143,16 @@ build/dispatch_loader_scheduled.elf: build/crt0.o build/dispatch_loader_schedule
 	ld -pie --no-dynamic-linker -T $(PAYLOAD_SDK)/libPS4/linker.x -z max-page-size=0x4000 --gc-sections $^ -L$(PAYLOAD_SDK)/libPS4 -lPS4 -o $@
 build/arfoxia_sprite_loader_candidate_v7.bin: build/dispatch_loader_scheduled.elf pack_payload.py
 	python3 pack_payload.py $< $@
+# One-minute observable preview, with explicit aspect-preserving image scaling.
+build/sprite_visible.o: native/dispatch_probe.c native/sprite_preview.h native/dispatch_contract.h native/goldhen_abi.h build/dispatch_sprite_visible_profile.h | build
+	$(CC) $(TARGET_FLAGS) $(SCHEDULED_FLAGS) -DARFOXIA_PS4_VISIBLE_TEST=1 -Ibuild -c $< -o $@
+build/sprite_visible.elf: build/sprite_visible.o build/crtprx.o
+	$(LD) -m elf_x86_64 -pie -e _init --script $(OO_PS4_TOOLCHAIN)/link.x --eh-frame-hdr -L$(OO_PS4_TOOLCHAIN)/lib $^ -lkernel -lSceLibcInternal -lmonosgen -o $@
+build/arfoxia_sprite_candidate_v8.prx: build/sprite_visible.elf
+	$(OO_PS4_TOOLCHAIN)/bin/linux/create-fself -in=$< -out=build/sprite_visible.oelf --lib=$@ --paid 0x3800000000000011
+build/dispatch_loader_visible.o: native/dispatch_loader.c native/goldhen_abi.h build/dispatch_sprite_visible_profile.h | build
+	gcc -std=c11 -Os -ffreestanding -fno-builtin -fno-stack-protector -fPIE -masm=intel -m64 -mabi=sysv $(SCHEDULED_FLAGS) -DARFOXIA_PS4_VISIBLE_TEST=1 -DARFOXIA_PS4_DISPATCH_LOADER_ENABLED=1 -Ibuild -I$(PAYLOAD_SDK)/libPS4/include -c $< -o $@
+build/dispatch_loader_visible.elf: build/crt0.o build/dispatch_loader_visible.o
+	ld -pie --no-dynamic-linker -T $(PAYLOAD_SDK)/libPS4/linker.x -z max-page-size=0x4000 --gc-sections $^ -L$(PAYLOAD_SDK)/libPS4 -lPS4 -o $@
+build/arfoxia_sprite_loader_candidate_v8.bin: build/dispatch_loader_visible.elf pack_payload.py
+	python3 pack_payload.py $< $@

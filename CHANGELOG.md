@@ -6,6 +6,24 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Mejorado — Prueba visual PS4 ampliada y tiempo para observar — 2026-10-13
+
+- v7 registró 90 cambios de imagen en callbacks del hilo UI, retirada y limpieza
+  completas sin excepción; el dueño confirmó estabilidad del mando pero no
+  llegó a observar la pantalla. No se afirma que la animación visual esté validada.
+- v8: un minuto / 360 slots, una sola actualización pendiente, misma
+  memoria propia y limpieza. Escalado AspectInside verificado para ampliar los
+  frames al área 192×240 sin modificar píxeles ni deformar su proporción.
+- Nuevo perfil, artefactos/rutas/logs independientes, sin autoarranque/reintentos,
+  con confirmación de que el dueño está frente a la PS4 antes de enviar.
+  Compilación OpenOrbis/PIE y 75 pruebas de assets/contratos correctas; no se
+  fuerza el ciclo gráfico global ni se prueban juegos.
+- Validación completa: 920 pruebas Python correctas. Prueba v8 enviada una vez,
+  360 cambios registrados y limpieza completa sin excepción/avisos de imagen
+  pendiente. El dueño confirmó **Arfoxia visible, ampliada y animada**, retirada
+  al final y menú/mando normales. Solo se valida la prueba temporal caminando
+  en el sitio; desplazamiento, interacción y cliente persistente siguen pendientes.
+
 ### Corregido — Fotogramas PS4 controlados sin depender del ciclo nativo — 2026-10-13
 
 - El dueño confirmó que la variante nativa v6 no se animó, aunque se retiró y
