@@ -55,3 +55,24 @@ def test_identical_frames_rejected(tmp_path):
     source = tmp_path/'Walk.png'
     Image.new('RGBA',(128,320)).save(source)
     with pytest.raises(ValueError, match='distinct'): export_walk(source,tmp_path/'frames')
+
+def test_client_frames_preserve_walk_pixels_and_bottom_align_sit(tmp_path,monkeypatch):
+    import glaceon_companion.sprites as sprites
+    from types import SimpleNamespace
+    from ports.ps4.frame_assets import export_client
+    class Library:
+        def __init__(self,directory):
+            self.specs={'Walk':SimpleNamespace(width=32,height=40,durations=(10,10,10,10),copy_of=None),
+                        'Sit':SimpleNamespace(width=32,height=32),'Idle':SimpleNamespace(width=32,height=40)}
+        def frames(self,name,direction):
+            size=(32,32) if name=='Sit' else (32,40)
+            return [Image.new('RGBA',size,(direction*20,index*40,100,255)) for index in range(4 if name=='Walk' else 1)],(167,)
+    monkeypatch.setattr(sprites,'SpriteLibrary',Library)
+    for name in ('Walk','Sit','Idle'): (tmp_path/(name+'-Anim.png')).write_bytes(b'owned')
+    output=tmp_path/'client'
+    result=export_client(tmp_path,output)
+    assert result['count']==10
+    assert Image.open(output/'pet-v9-0.png').getpixel((0,0))==(40,0,100,255)
+    assert Image.open(output/'pet-v9-4.png').getpixel((0,0))==(120,0,100,255)
+    sitting=Image.open(output/'pet-v9-8.png')
+    assert sitting.getpixel((0,0))==(0,0,0,0) and sitting.getpixel((0,8))==(0,0,100,255)

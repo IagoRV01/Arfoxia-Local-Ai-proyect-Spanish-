@@ -8,9 +8,11 @@ TARGET_FLAGS := --target=x86_64-pc-freebsd12-elf -std=c11 -Wall -Wextra -Werror 
 
 .PHONY: all test test-mono
 all: build/arfoxia_probe.prx build/arfoxia_probe_loader.bin
-test: build/test_goldhen_abi build/test_dispatch_contract
+test: build/test_goldhen_abi build/test_dispatch_contract build/test_client_control build/test_client_lease
 	./build/test_goldhen_abi
 	./build/test_dispatch_contract
+	./build/test_client_control
+	./build/test_client_lease
 test-mono: build/dispatch_fixture.dll build/test_dispatch_mono
 	./build/test_dispatch_mono build/dispatch_fixture.dll
 build/dispatch_fixture.dll: tests/dispatch_fixture.cs | build
@@ -20,6 +22,10 @@ build/test_dispatch_mono: tests/test_dispatch_mono.c | build
 build/test_goldhen_abi: tests/test_goldhen_abi.c native/goldhen_abi.h | build
 	gcc -std=c11 -Wall -Wextra -Werror $< -o $@
 build/test_dispatch_contract: tests/test_dispatch_contract.c native/dispatch_contract.h | build
+	gcc -std=c11 -Wall -Wextra -Werror $< -o $@
+build/test_client_control: tests/test_client_control.c native/client_control.h | build
+	gcc -std=c11 -Wall -Wextra -Werror $< -o $@
+build/test_client_lease: tests/test_client_lease.c native/client_lease.h native/client_control.h | build
 	gcc -std=c11 -Wall -Wextra -Werror $< -o $@
 build:
 	mkdir -p build
@@ -155,4 +161,17 @@ build/dispatch_loader_visible.o: native/dispatch_loader.c native/goldhen_abi.h b
 build/dispatch_loader_visible.elf: build/crt0.o build/dispatch_loader_visible.o
 	ld -pie --no-dynamic-linker -T $(PAYLOAD_SDK)/libPS4/linker.x -z max-page-size=0x4000 --gc-sections $^ -L$(PAYLOAD_SDK)/libPS4 -lPS4 -o $@
 build/arfoxia_sprite_loader_candidate_v8.bin: build/dispatch_loader_visible.elf pack_payload.py
+	python3 pack_payload.py $< $@
+# Controlled five-minute trial: own lease, two-axis walk, poses and stop.
+build/sprite_resident.o: native/dispatch_probe.c native/sprite_preview.h native/client_control.h native/client_lease.h native/dispatch_contract.h native/goldhen_abi.h build/dispatch_sprite_resident_profile.h | build
+	$(CC) $(TARGET_FLAGS) $(SCHEDULED_FLAGS) -DARFOXIA_PS4_VISIBLE_TEST=1 -DARFOXIA_PS4_RESIDENT_CLIENT=1 -Ibuild -c $< -o $@
+build/sprite_resident.elf: build/sprite_resident.o build/crtprx.o
+	$(LD) -m elf_x86_64 -pie -e _init --script $(OO_PS4_TOOLCHAIN)/link.x --eh-frame-hdr -L$(OO_PS4_TOOLCHAIN)/lib $^ -lkernel -lSceLibcInternal -lmonosgen -o $@
+build/arfoxia_sprite_candidate_v9.prx: build/sprite_resident.elf
+	$(OO_PS4_TOOLCHAIN)/bin/linux/create-fself -in=$< -out=build/sprite_resident.oelf --lib=$@ --paid 0x3800000000000011
+build/dispatch_loader_resident.o: native/dispatch_loader.c native/goldhen_abi.h build/dispatch_sprite_resident_profile.h | build
+	gcc -std=c11 -Os -ffreestanding -fno-builtin -fno-stack-protector -fPIE -masm=intel -m64 -mabi=sysv $(SCHEDULED_FLAGS) -DARFOXIA_PS4_VISIBLE_TEST=1 -DARFOXIA_PS4_RESIDENT_CLIENT=1 -DARFOXIA_PS4_DISPATCH_LOADER_ENABLED=1 -Ibuild -I$(PAYLOAD_SDK)/libPS4/include -c $< -o $@
+build/dispatch_loader_resident.elf: build/crt0.o build/dispatch_loader_resident.o
+	ld -pie --no-dynamic-linker -T $(PAYLOAD_SDK)/libPS4/linker.x -z max-page-size=0x4000 --gc-sections $^ -L$(PAYLOAD_SDK)/libPS4 -lPS4 -o $@
+build/arfoxia_sprite_loader_candidate_v9.bin: build/dispatch_loader_resident.elf pack_payload.py
 	python3 pack_payload.py $< $@

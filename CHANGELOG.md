@@ -6,6 +6,28 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Añadido — Sesión PS4 con movimiento, poses y retirada controlada — 2026-10-13
+
+- Cliente experimental v9 con desplazamiento acotado en dos ejes, fotogramas
+  derecha/izquierda y poses sentada/quieta. Diez imágenes precargadas dentro
+  del gestor propio de 256 KiB; se conservan foco y respuesta táctil desactivados.
+- Panel en PC para Caminar, Sentarse, Quieta y Retirar. Solo escribe órdenes
+  limitadas por FTP en el archivo propio, sin cargar payloads/instalar plugins.
+  Secuencia creciente, formato acotado, verificación y reemplazo atómico;
+  archivos desconocidos/temporales interrumpidos se conservan.
+- Lease renovable con retirada si falta señal, llega Stop, el control es inválido
+  o cambia la escena raíz. Máximo experimental cinco minutos, sin autoarranque,
+  integración Viajar o reinicio de una instancia terminada. No se declara
+  detección de juegos en primer plano; pruebas limitadas a menú sin juegos.
+- Prueba física de un minuto superada: caminar→sentarse→quieta→caminar→Stop,
+  retirada y liberación de diez imágenes/gestor completas sin excepción.
+  El dueño confirmó visualmente todos los estados y menú/mando normales;
+  diagnóstico y binarios enviados conservados privados, sin reenvíos.
+- Validación: 968 pruebas Python, C de protocolo y 300.000 pasos de movimiento,
+  test C de la implementación real de lease con kernel simulado (replay,
+  ausencia, invalidación, caducidad y Stop), compilación OpenOrbis/PIE.
+  Reanudación, permanencia y cliente completo siguen pendientes.
+
 ### Mejorado — Prueba visual PS4 ampliada y tiempo para observar — 2026-10-13
 
 - v7 registró 90 cambios de imagen en callbacks del hilo UI, retirada y limpieza

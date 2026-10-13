@@ -58,7 +58,7 @@ BINDINGS = (
 )
 
 
-def preview_profile(pui, corlib, core, *, own_image_manager=False, dispose_image_asset=False, animated=False, scheduled_frames=False, visible_test=False):
+def preview_profile(pui, corlib, core, *, own_image_manager=False, dispose_image_asset=False, animated=False, scheduled_frames=False, visible_test=False, resident_client=False):
     if dispose_image_asset and not own_image_manager:
         raise MetadataError('Explicit asset disposal requires the own image manager')
     if animated and not (dispose_image_asset and own_image_manager):
@@ -67,6 +67,8 @@ def preview_profile(pui, corlib, core, *, own_image_manager=False, dispose_image
         raise MetadataError('Scheduled frames require static box, explicit disposal and own manager')
     if visible_test and not scheduled_frames:
         raise MetadataError('Visible test requires bounded scheduled frames')
+    if resident_client and not visible_test:
+        raise MetadataError('Resident client requires owner-controlled scaled frame mode')
     # Owner query and all three assembly GUID/MVID guards are mandatory.
     value = generate(pui, corlib, core)
     aot = AotImage(pui)
@@ -102,6 +104,7 @@ def main():
     parser.add_argument('--animated', action='store_true')
     parser.add_argument('--scheduled-frames', action='store_true')
     parser.add_argument('--visible-test', action='store_true')
+    parser.add_argument('--resident-client',action='store_true')
     args = parser.parse_args()
     try:
         values = []
@@ -109,7 +112,8 @@ def main():
             with path.open('rb') as stream: values.append(stream.read(MAX_FILE+1))
         value = preview_profile(*values, own_image_manager=args.own_image_manager,
                                 dispose_image_asset=args.dispose_image_asset, animated=args.animated,
-                                scheduled_frames=args.scheduled_frames, visible_test=args.visible_test)
+                                scheduled_frames=args.scheduled_frames, visible_test=args.visible_test,
+                                resident_client=args.resident_client)
         with args.output.open('x', encoding='utf-8') as stream: stream.write(value)
         print('Private UI2 sprite contract generated. No console contact or enabling.')
     except (OSError, MetadataError, UnicodeError) as exc:

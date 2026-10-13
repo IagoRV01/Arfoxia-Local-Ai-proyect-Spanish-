@@ -180,6 +180,28 @@ def test_visible_mode_scaling_method_requires_native_body(monkeypatch):
         profile.preview_profile(b'',b'',b'',own_image_manager=True,dispose_image_asset=True,
                                 scheduled_frames=True,visible_test=True)
 
+def test_resident_requires_scaled_owner_control_mode():
+    with pytest.raises(ValueError,match='Resident client'):
+        profile.preview_profile(b'',b'',b'',resident_client=True)
+
+def test_resident_uses_known_contracts_without_extra_runtime_probes(monkeypatch):
+    calls=mocks(monkeypatch)
+    profile.preview_profile(b'',b'',b'',own_image_manager=True,dispose_image_asset=True,
+                            scheduled_frames=True,visible_test=True,resident_client=True)
+    assert len(calls)==26
+
+def test_resident_scene_lease_and_owned_resources_guards():
+    root=Path(__file__).resolve().parents[1]/'ports/ps4'
+    header=(root/'native/sprite_preview.h').read_text()
+    lease=(root/'native/client_lease.h').read_text()
+    assert 'PREVIEW_FRAME_COUNT 10' in header
+    assert 'scene != mono_gchandle_get_target(preview_scene_handle)' in header
+    assert 'CLIENT_SCENE_CHANGED_STOP' in header
+    assert 'CLIENT_MANUAL_STOP' in lease and 'CLIENT_LEASE_EXPIRED_STOP' in lease
+    assert 'received > *sequence' in lease and '*remaining=60' in lease
+    assert 'ARFOXIA_PS4_RESIDENT_CLIENT ? 1800' in header
+    assert 'arfoxia_motion_step' in header
+
 
 def test_requires_core_and_offline_exclusive_output():
     assert inspect.signature(profile.preview_profile).parameters['core'].default is inspect.Parameter.empty

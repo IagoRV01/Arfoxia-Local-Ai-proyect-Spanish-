@@ -1,7 +1,7 @@
 # Cliente PS4: investigación del menú ShellUI
 
 Estado: **sonda antigua en cuarentena; callback e hilo gráfico validados;
-sprite estático y ciclo de caminar visibles confirmados; cliente completo en desarrollo**.
+animación, desplazamiento y poses controladas confirmados; cliente completo en desarrollo**.
 La mascota PS4 completa todavía no está validada.
 No es un cliente GTK ni una aplicación a pantalla completa disfrazada de overlay.
 La prueba está limitada al menú de inicio, sin juegos abiertos. No habilita
@@ -203,6 +203,59 @@ pendiente. Se preservan PRX/raíces de callback y logs; no se recarga/descarga
 el módulo para repetir la prueba. La validación cubre caminar en el sitio
 durante un minuto, **no desplazamiento, interacciones, viajes/autoarranque,
 permanencia ni aparición en juegos**.
+
+### Sesión controlada desde el PC (v9)
+
+v9 añade caminar con desplazamiento en dos ejes, sentarse, quedarse quieta y
+retirarse. Se mantienen el foco/respuesta táctil desactivados y el hilo UI
+verificado antes de cambiar imágenes o posición. La trayectoria rebota dentro
+de los límites comprobados del monitor y de una franja inferior; diez imágenes
+precargadas (derecha/izquierda/sentarse/quieta) ocupan 51.200 bytes RGBA,
+todavía dentro del gestor propio de 256 KiB. La pose de sentarse conserva sus
+píxeles en una celda transparente alineada por abajo.
+
+El panel de PC `lease_control.py` tiene botones Caminar, Sentarse, Quieta y
+Retirar. No envía payloads, instala plugins, lee chats ni exporta herramientas
+del PC: solo actualiza `control-v9.txt` por el FTP ya habilitado. El protocolo
+ASCII es acotado (22 bytes), admite únicamente cuatro modos y exige contador
+creciente. El escritor verifica bytes antes de reemplazar atómicamente este
+archivo propio; conserva archivos desconocidos o temporales interrumpidos.
+
+La señal se renueva cada dos segundos y el cliente se retira cuando caduca
+(aproximadamente diez segundos), llega Stop, hay datos inválidos o cambia la
+identidad de la escena raíz. La prueba tiene además un máximo de cinco minutos.
+El detector de escena **no demuestra detección fiable de un juego en primer
+plano**: solo se usa con menú confirmado y sin juegos; retirar antes de jugar.
+No se inventan firmas de APIs de foreground ni se aplican hooks/autoarranque.
+
+```sh
+python -m ports.ps4.lease_control --host IP_PRIVADA_PS4 --panel
+# Demostración de un minuto: caminar, sentarse, quieta, caminar y Stop.
+python -m ports.ps4.lease_control --host IP_PRIVADA_PS4 --panel --demo
+```
+
+El panel requiere un cliente ya cargado. **Por sí solo no instala ni reinicia
+la mascota**, y su indicación «señal enviada» no confirma dibujo. v9 es una
+prueba de una sesión: tras Stop/caducidad termina el worker y se conserva el
+PRX por seguridad; no recargarlo o borrar marcas para reiniciar. Los botones
+se deshabilitan al acabar. Cerrar el panel intenta Stop, con caducidad como
+respaldo. Reanudación, sesiones repetidas y botón Viajar de Windows siguen
+pendientes. No se habilita un destino PS4 permanente en `TravelManager`.
+
+Los targets `build/arfoxia_sprite_candidate_v9.prx` y
+`build/dispatch_loader_resident.elf` requieren un perfil privado generado con
+`--resident-client` además de los flags de v8. `frame_assets.py --client-assets`
+prepara las diez imágenes sin modificar las fuentes. Los tests C usan la
+implementación real de lease con kernel simulado: renovación, replay, archivo
+ausente/inválido, caducidad y Stop; el movimiento pasó 300.000 pasos acotados.
+
+**v9 validada visualmente:** el dueño vio desplazamiento, sentarse, quieta y
+retirada, con menú/mando normales. Registros de las órdenes 1→2→3→1→0, limpieza
+de las diez imágenes/gestor y ausencia de excepciones. Diagnóstico bruto privado
+sin nuevos marcadores fatales/imagen pendiente. Se conservaron los artefactos
+exactos enviados; el helper de lease se aisló después para pruebas de fallo,
+sin volver a enviar una instancia. Esta evidencia no convierte la sesión de
+prueba en cliente persistente para juegos o arranque automático.
 
 ```sh
 python ports/ps4/sprite_profile.py \
