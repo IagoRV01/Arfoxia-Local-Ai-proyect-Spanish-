@@ -1,8 +1,8 @@
 # Cliente PS4: investigación del menú ShellUI
 
-Estado: **sonda antigua en cuarentena; nuevo callback validado en consola;
-propiedad del hilo gráfico y renderizado todavía pendientes**.
-La mascota/renderizado PS4 todavía no están implementados ni validados.
+Estado: **sonda antigua en cuarentena; callback e hilo gráfico validados;
+prueba temporal de imagen preparada, renderizado visible todavía pendiente**.
+La mascota PS4 completa todavía no está validada.
 No es un cliente GTK ni una aplicación a pantalla completa disfrazada de overlay.
 La prueba está limitada al menú de inicio, sin juegos abiertos. No habilita
 viajes a PS4 en la interfaz Windows hasta verificar un cliente que dibuje.
@@ -32,8 +32,9 @@ deshabilitado en **full-AOT**, en un contenedor Mono 6.8 aislado. El runtime
 de la consola se identifica como PlayStation4 Mono 5.2: **el éxito del host
 no valida esa variante ni demuestra que el hilo sea el gráfico de PS4**.
 
-El reemplazo `native/dispatch_probe.c` se limita a un único callback, sin
-widgets, renderizado, hooks, parches ni aserciones del hilo principal.
+El reemplazo `native/dispatch_probe.c` por defecto no crea widgets; los
+experimentos visuales requieren flags y perfiles privados adicionales.
+No usa hooks, parches ni desactiva aserciones del hilo principal.
 Antes de resolver tokens verifica firmware, proceso y los GUID de ambas
 bibliotecas cargadas. Solo consulta el ensamblado PUI ya cargado, sin buscar
 clases en todos los ensamblados ni cargar una DLL nueva. Registra fases con
@@ -68,12 +69,48 @@ separados; nunca se sustituye o recarga la instancia v1 pendiente de descarga.
 El host también verifica la invocación gestionada anidada y desempaquetado de
 un booleano dentro del callback, en Mono normal/full-AOT.
 
-**v2 está preparada, todavía no enviada.** Cada prueba nueva requiere confirmar
-menú operativo y BinLoader activo, guardar diagnóstico bruto y un solo envío
-sin reintentos. Una nueva carga aún puede causar otro error del sistema.
-El callback v1 no demuestra propiedad del hilo UI ni renderizado: no hay una
-mascota PS4 visible/operativa todavía. No descargar módulos a la fuerza ni
-eliminar sus logs/marcas para repetir una ejecución.
+**v2 se ejecutó una sola vez:** `CORE_IS_MAIN_THREAD 1`, sin excepción y con
+menú/mando normales confirmados por el dueño. Esta consulta sí identifica el
+hilo gráfico; no demuestra todavía dibujo. No descargar módulos a la fuerza
+ni eliminar sus logs/marcas para repetir una ejecución.
+
+### Prueba de sprite pasivo y gestor de imágenes propio
+
+`sprite_profile.py` verifica firmas, staticness y cuerpos AOT de los métodos
+de aplicación, escena UI2, imagen, widget y geometría. Los tokens solo valen
+para las bibliotecas con los GUID verificados. No se publican perfiles Sony.
+`native/sprite_preview.h` valida tipo de escena y dimensiones antes de crear
+un sprite estático existente, desactiva foco/respuesta táctil y programa su
+retirada después de 15 segundos desde un worker independiente. Tanto la
+inserción como la limpieza consultan propiedad del hilo UI. Un fallo de
+despacho conserva raíces/módulo, no fuerza descarga ni hace llamadas UI
+desde el worker. La retirada es best-effort, no una garantía contra fallos.
+
+La primera prueba visual v3 llegó a la escena UI2 y decodificó el PNG 96×96,
+pero no creó un widget: el registro identificó un gestor por defecto con
+presupuesto cero que rechazaba los 36.864 bytes de imagen. La excepción
+gestionada se capturó y la limpieza terminó; se preservó el diagnóstico bruto.
+No se debe confundir `LOAD_RC 0` con «Arfoxia visible».
+
+La variante v4 preparada usa un **AssetManager propio de 256 KiB**, constructor
+con nombre y presupuesto, comprueba `get_MaxSize` y carga con su propio
+`LoadImageAsset(string)`. No reinicializa gestores del sistema ni desactiva
+sus límites. La limpieza dispone únicamente el widget y gestor propios.
+
+```sh
+python ports/ps4/sprite_profile.py \
+  --pui RUTA_PUI_PRIVADA --corlib RUTA_CORLIB_PRIVADA --core RUTA_CORE_PRIVADA \
+  --own-image-manager --output ports/ps4/build/dispatch_sprite_manager_profile.h
+```
+
+Los targets `build/arfoxia_sprite_candidate_v4.prx` y
+`build/dispatch_loader_manager.elf` son explícitos y ajenos a `all`/autoarranque.
+Tienen rutas/logs nuevos y exclusivos. El host prueba argumentos float, bool,
+string/referencia y un segundo callback desde un worker Mono adjunto, también
+en full-AOT. Esto **no valida el renderer PS4**. Cada prueba física requiere
+menú operativo confirmado, BinLoader activo y un único envío sin reintentos.
+La mascota visible, las animaciones y la integración persistente siguen
+pendientes; no se habilitan viajes a PS4 ni pruebas en juegos.
 
 ## Investigación offline después del fallo
 

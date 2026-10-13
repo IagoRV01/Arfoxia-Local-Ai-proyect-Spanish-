@@ -1,4 +1,4 @@
-/* NEW, one-callback experiment. No widget creation, patches, hooks or renderer.
+/* Guarded dispatch experiments. Default builds do not create widgets.
  * Kept disabled in all normal builds. Host/AOT tests are not PS4 validation.
  */
 #include <stddef.h>
@@ -7,6 +7,18 @@
 #endif
 #ifndef ARFOXIA_PS4_QUERY_UI_OWNER
 #define ARFOXIA_PS4_QUERY_UI_OWNER 0
+#endif
+#ifndef ARFOXIA_PS4_SPRITE_PREVIEW
+#define ARFOXIA_PS4_SPRITE_PREVIEW 0
+#endif
+#ifndef ARFOXIA_PS4_OWN_IMAGE_MANAGER
+#define ARFOXIA_PS4_OWN_IMAGE_MANAGER 0
+#endif
+#if ARFOXIA_PS4_OWN_IMAGE_MANAGER && !ARFOXIA_PS4_SPRITE_PREVIEW
+#error Own image manager requires the sprite preview
+#endif
+#if ARFOXIA_PS4_SPRITE_PREVIEW && !ARFOXIA_PS4_QUERY_UI_OWNER
+#error Sprite preview requires the UI owner query
 #endif
 
 #if !ARFOXIA_PS4_DISPATCH_PROBE_ENABLED
@@ -20,7 +32,16 @@ int module_stop(size_t argc, const void *argv) { (void)argc; (void)argv; return 
 #include <orbis/libkernel.h>
 #include "goldhen_abi.h"
 #include "dispatch_contract.h"
-#if ARFOXIA_PS4_QUERY_UI_OWNER
+#if ARFOXIA_PS4_SPRITE_PREVIEW
+#if ARFOXIA_PS4_OWN_IMAGE_MANAGER
+#include "dispatch_sprite_manager_profile.h"
+#else
+#include "dispatch_sprite_profile.h"
+#endif
+#if !ARFOXIA_SPRITE_PROFILE_PRESENT || !ARFOXIA_OWNER_PROFILE_PRESENT
+#error A private validated sprite and owner profile is required
+#endif
+#elif ARFOXIA_PS4_QUERY_UI_OWNER
 #include "dispatch_owner_profile.h"
 #if !ARFOXIA_OWNER_PROFILE_PRESENT
 #error A private validated UI owner profile is required
@@ -93,6 +114,10 @@ static int invoke(MonoMethod *method, MonoObject *target, void **args) {
     return exception == NULL;
 }
 
+#if ARFOXIA_PS4_SPRITE_PREVIEW
+#include "sprite_preview.h"
+#endif
+
 static void callback(void *state) {
     uintptr_t thread = (uintptr_t)scePthreadSelf();
     record("PTHREAD_IDENTITY_AVAILABLE", thread != 0 && sender_thread != 0);
@@ -105,14 +130,27 @@ static void callback(void *state) {
     MonoObject *boxed = mono_runtime_invoke(owner_query, NULL, NULL, &exception);
     if (exception) {
         record("UI_OWNER_MANAGED_EXCEPTION", 1);
+#if ARFOXIA_PS4_SPRITE_PREVIEW
+        atomic_store(&preview_state, 2);
+#endif
         return;
     }
     void *value = boxed ? mono_object_unbox(boxed) : NULL;
     if (!value) {
         record("UI_OWNER_MISSING_RESULT", 1);
+#if ARFOXIA_PS4_SPRITE_PREVIEW
+        atomic_store(&preview_state, 2);
+#endif
         return;
     }
     record("CORE_IS_MAIN_THREAD", *(const unsigned char *)value != 0);
+#if ARFOXIA_PS4_SPRITE_PREVIEW
+    if (!*(const unsigned char *)value) {
+        atomic_store(&preview_state, 2);
+        return;
+    }
+    atomic_store(&preview_state, preview_show() ? 1 : 2);
+#endif
 #endif
     /* Not a proof of UI ownership or rendering, just one queued callback. */
 }
@@ -127,14 +165,18 @@ int module_start(size_t argc, const void *argv) {
     memset(&firmware, 0, sizeof(firmware));
     firmware.Size = sizeof(firmware);
     if (sceKernelGetSystemSwVersion(&firmware) < 0 || firmware.Version != 0x12520001) return -2;
-#if ARFOXIA_PS4_QUERY_UI_OWNER
+#if ARFOXIA_PS4_OWN_IMAGE_MANAGER
+    descriptor = sceKernelOpen("/user/data/Arfoxia/dispatch-v4.txt", 0xa01, 0600);
+#elif ARFOXIA_PS4_SPRITE_PREVIEW
+    descriptor = sceKernelOpen("/user/data/Arfoxia/dispatch-v3.txt", 0xa01, 0600);
+#elif ARFOXIA_PS4_QUERY_UI_OWNER
     descriptor = sceKernelOpen("/user/data/Arfoxia/dispatch-v2.txt", 0xa01, 0600);
 #else
     descriptor = sceKernelOpen("/user/data/Arfoxia/dispatch-v1.txt", 0xa01, 0600);
 #endif
     if (descriptor < 0) return -3;  /* EXCLUSIVE: never overwrite a prior run. */
     sender_thread = (uintptr_t)scePthreadSelf();
-    record("ARFOXIA_DISPATCH_PROBE", ARFOXIA_PS4_QUERY_UI_OWNER ? 2 : 1);
+    record("ARFOXIA_DISPATCH_PROBE", ARFOXIA_PS4_OWN_IMAGE_MANAGER ? 4 : (ARFOXIA_PS4_SPRITE_PREVIEW ? 3 : (ARFOXIA_PS4_QUERY_UI_OWNER ? 2 : 1)));
     record("PHASE_ROOT_DOMAIN", 0);
     MonoDomain *domain = mono_get_root_domain();
     if (!domain || !mono_thread_attach(domain)) return stopped(-5);
@@ -190,6 +232,16 @@ int module_start(size_t argc, const void *argv) {
     void *address = (void *)(uintptr_t)&callback;
     void *constructor_args[] = {NULL, &address};
     if (!callback_handle || !invoke(callback_ctor, delegate, constructor_args)) return stopped(-14);
+#if ARFOXIA_PS4_SPRITE_PREVIEW
+    record("PHASE_PREPARE_SPRITE", 0);
+    if (!preview_prepare(pui, domain, post)) return stopped(-19);
+    /* Protect executable code before any worker or callback can reference it. */
+    atomic_store(&posted, 1);
+    if (!preview_start_timer(callback_class, callback_ctor)) {
+        atomic_store(&posted, 0);
+        return stopped(-20);
+    }
+#endif
     record("PHASE_POST", 0);
     void *args[] = {mono_gchandle_get_target(callback_handle), NULL};
     atomic_store(&posted, 1);

@@ -5,6 +5,13 @@ using System.Threading;
 
 public static class ArfoxiaDispatchFixture
 {
+    // Owned ABI test, not a Sony image provider or renderer.
+    public static bool CheckPreviewArguments(float size, bool passive, string uri, object reference, uint budget)
+    {
+        return IsOwnerThread() && size == 192.0f && !passive &&
+            uri == "owned-preview.png" && reference is string && budget == 262144;
+    }
+
     private sealed class Pending
     {
         public SendOrPostCallback Callback;

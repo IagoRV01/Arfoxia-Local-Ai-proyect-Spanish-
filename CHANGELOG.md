@@ -6,6 +6,29 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Añadido — Hilo gráfico PS4 validado y prueba de sprite temporal — 2026-10-13
+
+- v2 ejecutada una sola vez en la consola: `CORE_IS_MAIN_THREAD 1`, sin
+  excepción gestionada; el dueño confirmó menú y mando normales. Se mantienen
+  las comprobaciones originales del sistema y la cuarentena del prototipo viejo.
+- Perfil offline de métodos UI2 y experimento visual separado: escena/tamaño
+  verificados, sprite sin foco ni respuesta táctil y retirada best-effort tras
+  15 segundos. Worker de espera no dibuja; limpieza consulta nuevamente el
+  hilo gráfico. Logs/marcas exclusivos, sin cargas/reintentos/autoarranque.
+- Prueba v3 identifica por diagnóstico bruto el fallo de imagen: PNG decodificado
+  correctamente, pero el gestor por defecto tiene presupuesto cero. Excepción
+  capturada antes de crear el widget y limpieza completada; no hubo sprite visible.
+- Preparada v4 con gestor de imágenes propio de 256 KiB y límite comprobado;
+  no modifica gestores globales ni ignora sus límites. Construcción nativa y
+  empaquetado PIE sin relocaciones verificados, prueba visual v4 pendiente.
+- Pruebas propias para contratos/overloads, rechazo de cuerpos AOT ausentes,
+  presupuesto y guardas pasivas. Fixture Mono normal/full-AOT verifica argumentos
+  float/bool/string/referencia/uint y segundo callback desde worker adjunto/desadjunto.
+  Validación: 892 pruebas Python correctas, build OpenOrbis y pruebas Mono
+  normal/full-AOT; bibliotecas, perfiles, binarios y registros privados excluidos.
+  No se afirma compatibilidad completa de renderizado ni se alteran juegos,
+  plugins, firmware, cliente Windows, móvil o configuración de modelos/GPU.
+
 ### Añadido — Callback PS4 validado y consulta de propiedad del hilo — 2026-10-13
 
 - Primera prueba limitada del reemplazo en la PS4: un solo envío, carga
