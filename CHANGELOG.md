@@ -6,6 +6,32 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Añadido — Sesiones PS4 repetibles y explícitas — 2026-10-21
+
+- Variante experimental v10: iniciar, retirar y volver a mostrar sin recargar
+  el módulo ni recrear imágenes/widgets. Recursos propios constantes de 256 KiB,
+  arranque oculto y primera orden usada solo como referencia, sin activación.
+- Protocolo acotado con identificador de sesión y secuencia crecientes. Una
+  sesión retirada/caducada no reaparece por heartbeats antiguos; datos inválidos
+  finalizan la prueba. Límites independientes por sesión (~5 min), lease (~10 s)
+  y cliente (~15 min). El cambio de escena o fallo UI mantiene la retirada final.
+- Panel nuevo con Mostrar, Caminar, Sentarse, Quieta, Retirar y Finalizar prueba;
+  finalizar/cerrar solicita limpieza definitiva sin esperar al límite. Inicio manual,
+  comprobación del log propio y acuse de la sesión nueva (no basta un log antiguo),
+  verificación de bytes y escritura atómica por FTP.
+  No sobrescribe sesiones sustituidas, archivos desconocidos ni temporales;
+  no envía payloads, activa autoarranque o cambia el cliente Windows/Linux.
+- Validación: 1.050 pruebas Python, tests C del motor real de sesiones con
+  990.000 inicios/retiradas, replay, caducidad y límites; compilación OpenOrbis
+  y cargador PIE. Un solo envío v10 confirmó dos sesiones en el hilo UI y
+  limpieza definitiva de todos los recursos gráficos propios sin excepción
+  gestionada. El dueño no estaba mirando: validación visual y confirmación
+  física posterior de estabilidad pendientes para v10. Repetición v11 con el
+  mismo motor y rutas/logs/marcas independientes, comprobadas en tests C:
+  dos sesiones y limpieza completas con una sola carga. El dueño confirmó las
+  dos apariciones, retirada final y menú/mando normales, sin recargar v10.
+  Sigue limitado al menú sin juegos, sin detector fiable de foreground ni Viajar.
+
 ### Añadido — Sesión PS4 con movimiento, poses y retirada controlada — 2026-10-13
 
 - Cliente experimental v9 con desplazamiento acotado en dos ejes, fotogramas

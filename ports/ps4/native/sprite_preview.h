@@ -20,6 +20,10 @@ static struct arfoxia_motion preview_motion;
 static atomic_uint preview_pet_mode = ARFOXIA_WALK;
 static uint32_t preview_scene_handle;
 static unsigned preview_display_index;
+#if ARFOXIA_PS4_REPEATABLE_CLIENT
+#include "client_sessions.h"
+static unsigned preview_display_visible;
+#endif
 #define PREVIEW_FRAME_COUNT 10
 #else
 #define PREVIEW_FRAME_COUNT 4
@@ -196,6 +200,18 @@ static void preview_tick(void *state) {
         goto done;
     }
     unsigned mode=atomic_load(&preview_pet_mode);
+#if ARFOXIA_PS4_REPEATABLE_CLIENT
+    if (!box) { atomic_store(&preview_frames_halted,1); goto done; }
+    unsigned visible=mode!=ARFOXIA_STOP;
+    if (visible!=preview_display_visible) {
+        if (!preview_bool(preview_NODE_VISIBLE,box,(unsigned char)visible)) {
+            atomic_store(&preview_frames_halted,1); goto done;
+        }
+        preview_display_visible=visible;
+        record("CLIENT_UI_VISIBLE",(int)visible);
+    }
+    if (!visible) goto done;
+#endif
     unsigned next=arfoxia_motion_step(&preview_motion,preview_frame_step+1,mode);
 #else
     unsigned next = (preview_frame_step+1)%4;
@@ -245,6 +261,10 @@ static int preview_show(void) {
     if (!(preview_scene_handle=mono_gchandle_new(scene,1)) || !arfoxia_motion_init(&preview_motion,width,height)) return 0;
     record("CLIENT_CONTROL_LEASE_SECONDS", 10);
     record("CLIENT_TRIAL_MAX_SECONDS", 300);
+#if ARFOXIA_PS4_REPEATABLE_CLIENT
+    atomic_store(&preview_pet_mode,ARFOXIA_STOP);
+    record("CLIENT_PROCESS_MAX_SECONDS",900);
+#endif
 #endif
 #if ARFOXIA_PS4_OWN_IMAGE_MANAGER
     MonoObject *manager = mono_object_new(preview_domain, preview_MANAGER);
@@ -344,7 +364,7 @@ static int preview_show(void) {
     if (!preview_bool(preview_WIDGET_TOUCH, box, 0) || !preview_bool(preview_WIDGET_FOCUS, box, 0) ||
         !preview_float(preview_NODE_WIDTH, box, 192) || !preview_float(preview_NODE_HEIGHT, box, display_height) ||
         !preview_float(preview_NODE_X, box, start_x) || !preview_float(preview_NODE_Y, box, start_y) ||
-        !preview_bool(preview_NODE_VISIBLE, box, 1)) return 0;
+        !preview_bool(preview_NODE_VISIBLE, box, ARFOXIA_PS4_REPEATABLE_CLIENT ? 0 : 1)) return 0;
     void *assign[] = {asset};
     preview_call("PHASE_ASSIGN_IMAGE", preview_BOX_IMAGE, box, assign, &ok);
     if (!ok) return 0;
@@ -429,8 +449,20 @@ static void preview_cleanup(void *state) {
     /* Callback/context roots and PRX remain alive; no forced unload. */
 }
 
-#if ARFOXIA_PS4_RESIDENT_CLIENT
+#if ARFOXIA_PS4_RESIDENT_CLIENT && !ARFOXIA_PS4_REPEATABLE_CLIENT
 #include "client_lease.h"
+#endif
+
+#if ARFOXIA_PS4_REPEATABLE_CLIENT
+/* Worker-owned reads only. All mutations remain in the serial UI callbacks. */
+static void preview_read_session(struct arfoxia_sessions *session) {
+    char data[35];
+    int fd=sceKernelOpen(ARFOXIA_TRIAL_CONTROL,0,0);
+    if (fd<0) { arfoxia_session_step(session,NULL,0); return; }
+    size_t count=sceKernelRead(fd,data,sizeof(data));
+    sceKernelClose(fd);
+    arfoxia_session_step(session,data,count);
+}
 #endif
 
 static void *preview_wait_then_remove(void *unused) {
@@ -445,14 +477,32 @@ static void *preview_wait_then_remove(void *unused) {
     if (!thread) { record("CLEANUP_THREAD_ATTACH_FAILED", 1); return NULL; }
 #if ARFOXIA_PS4_SCHEDULED_FRAMES
     if (state == 1) {
+#if ARFOXIA_PS4_REPEATABLE_CLIENT
+        unsigned slots = ARFOXIA_CLIENT_LIMIT;
+#else
         unsigned slots = ARFOXIA_PS4_RESIDENT_CLIENT ? 1800 : (ARFOXIA_PS4_VISIBLE_TEST ? 360 : 90);
-#if ARFOXIA_PS4_RESIDENT_CLIENT
+#endif
+#if ARFOXIA_PS4_REPEATABLE_CLIENT
+        struct arfoxia_sessions session={0};
+#elif ARFOXIA_PS4_RESIDENT_CLIENT
         uint32_t sequence=0; unsigned remaining=60;
 #endif
         for (unsigned tick=0; tick<slots; ++tick) {
             sceKernelUsleep(166667); /* Worker only; bounded 15/60 seconds. */
             if (atomic_load(&preview_frames_halted)) break;
-#if ARFOXIA_PS4_RESIDENT_CLIENT
+#if ARFOXIA_PS4_REPEATABLE_CLIENT
+            unsigned initialized=session.initialized,active=session.active;
+            uint32_t epoch=session.session;
+            preview_read_session(&session);
+            atomic_store(&preview_pet_mode,session.active ? session.mode : ARFOXIA_STOP);
+            if (!initialized && session.initialized) record("CLIENT_CONTROL_BASELINE",1);
+            if (session.active && (!active || epoch!=session.session)) record("CLIENT_SESSION_STARTED",(int)session.session);
+            if (active && !session.active) record("CLIENT_SESSION_HIDDEN",1);
+            if (session.terminal) {
+                record("CLIENT_PROCESS_FINISHED",1);
+                atomic_store(&preview_frames_halted,1); break;
+            }
+#elif ARFOXIA_PS4_RESIDENT_CLIENT
             if (!preview_refresh_lease(&sequence,&remaining)) {
                 atomic_store(&preview_frames_halted,1);
                 break;

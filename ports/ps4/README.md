@@ -275,6 +275,79 @@ menú operativo confirmado, BinLoader activo y un único envío sin reintentos.
 El sprite estático temporal sí se vio; las animaciones completas y la integración
 persistente siguen pendientes. No se habilitan viajes a PS4 ni pruebas en juegos.
 
+### Sesiones repetibles (v10/v11, repetición visual confirmada)
+
+v10 separa **Retirar** de finalizar el cliente. Un único widget y las diez
+imágenes ya verificadas se crean una vez; Retirar/caducidad lo oculta sin
+recargar PRX, disponer y recrear objetos, ni cambiar callbacks entre sesiones.
+Solo **Mostrar / Iniciar nueva sesión** puede abrir un identificador mayor.
+Un heartbeat de una sesión retirada o caducada nunca la vuelve a mostrar.
+**Finalizar prueba / Liberar recursos** termina el worker y solicita la limpieza
+definitiva, incluso estando oculta; cerrar el panel también la solicita para la
+última sesión propia. Una sesión de otro controlador no puede finalizarse.
+La posición se conserva entre sesiones y no se aumenta el presupuesto de imagen.
+
+El cliente arranca oculto. La primera orden válida establece una referencia
+sin activarlo, incluso si un archivo antiguo pedía caminar. El protocolo nuevo
+`ARFOXIA10` contiene secuencia, sesión y modo en exactamente 34 bytes; no acepta
+rutas, comandos ni acciones arbitrarias. Datos inválidos finalizan la prueba;
+archivo ausente deja caducar la señal. El modo adicional `finish` solo solicita
+limpieza propia; no es un comando arbitrario. Otra sesión sustituida no puede ser
+sobrescrita por el panel anterior. El panel empieza sin enviar órdenes, comprueba
+el log propio de disponibilidad y exige acuse del identificador de sesión nuevo
+antes de mantener su señal. Un log histórico o FTP operativo no basta. Si falta
+acuse, no envía heartbeats y deja caducar la orden, sin reenvío automático.
+No intenta recargar ni reconectar tras un fallo.
+La disponibilidad y «orden enviada» **no son prueba de dibujo en el televisor**.
+
+```sh
+python -m ports.ps4.repeat_control --host IP_PRIVADA_PS4 --panel
+# Solo tras una carga v10 independiente, controlada y confirmada en el menú.
+```
+
+Cada sesión sigue limitada a 1.800 slots (~5 minutos), lease de 60 slots
+(~10 segundos); el cliente entero a 5.400 slots (~15 minutos desde cargarlo,
+incluida la espera oculto). Son tiempos nominales a 6 Hz, no un reloj de tiempo
+real garantizado. Al finalizar se retiran/disponen los recursos gráficos propios;
+el módulo y las raíces de callbacks se conservan por seguridad. No hay una nueva
+carga automática al llegar al límite. La nueva variante usa rutas/logs v10 y
+no altera los artefactos ni las marcas de las pruebas anteriores.
+
+Se mantiene la comprobación del hilo gráfico y de identidad de la escena antes
+de mostrar/ocultar/mover. **No es detección de juego en primer plano**: sigue
+siendo solo para menú sin juegos, sin autoarranque ni integración Viajar.
+El target explícito `build/arfoxia_sprite_candidate_v10.prx` y su cargador
+requieren `dispatch_sprite_repeatable_profile.h`, generado con las mismas opciones
+de `sprite_profile.py` de v9 (`--resident-client` y dependencias); no hay nuevas
+firmas de API ni reflexión de sistema. El flag `ARFOXIA_PS4_REPEATABLE_CLIENT`
+está desactivado en compilaciones normales.
+
+Validación offline: tests C del mismo motor de sesiones (referencia inicial,
+replay, retirada, caducidad, reinicio explícito, límites, datos inválidos y
+10.000 ciclos de 99 inicios/retiradas, finalización manual oculta/activa),
+tests Python de formato/FTP, acuse nuevo frente a log histórico y compilación
+con OpenOrbis/Clang/LLD y cargador PIE. 1.050 pruebas Python pasan.
+
+**v10 enviada una sola vez:** dos sesiones aceptadas con la misma carga;
+el log del hilo UI registra mostrar→ocultar→mostrar→ocultar. La orden Finalizar
+terminó el worker y se dispusieron widget, diez imágenes y gestor propio, sin
+excepción gestionada. Se conserva el diagnóstico privado y no se recarga la
+instancia terminada. El dueño no estaba mirando la pantalla: **no hay aún
+validación visual de las dos sesiones ni confirmación física posterior de
+estabilidad para esta versión**. No confundir los registros con esa confirmación.
+
+El dueño solicitó repetirla al no haber visto v10. Se preparó **v11 con el
+mismo motor**, rutas/marcas independientes y revisión de compilación explícita
+(`ARFOXIA_TRIAL_REVISION=11`); no se recargó ni se borró el estado de v10.
+Las rutas de PRX, control y ambos logs se comprueban en tests C para v10/v11.
+Tras confirmar de nuevo menú/BinLoader y presencia ante la pantalla, hubo un
+único envío: dos sesiones aceptadas, mostrar→ocultar→mostrar→ocultar, finalización
+y disposición completa del widget, diez imágenes y gestor, sin excepción.
+**El dueño confirmó las dos apariciones, retirada final y menú/mando normales.**
+No equivale todavía a cliente permanente, autoload o compatibilidad con juegos.
+El panel público usa las rutas v10 por defecto; v11 es la repetición aislada de
+validación, no un selector de carga/reintento en la app.
+
 ## Investigación offline después del fallo
 
 La consola volvió al menú y responde al mando, según confirmó el dueño.

@@ -8,11 +8,14 @@ TARGET_FLAGS := --target=x86_64-pc-freebsd12-elf -std=c11 -Wall -Wextra -Werror 
 
 .PHONY: all test test-mono
 all: build/arfoxia_probe.prx build/arfoxia_probe_loader.bin
-test: build/test_goldhen_abi build/test_dispatch_contract build/test_client_control build/test_client_lease
+test: build/test_goldhen_abi build/test_dispatch_contract build/test_client_control build/test_client_lease build/test_client_sessions build/test_trial10 build/test_trial11
 	./build/test_goldhen_abi
 	./build/test_dispatch_contract
 	./build/test_client_control
 	./build/test_client_lease
+	./build/test_client_sessions
+	./build/test_trial10
+	./build/test_trial11
 test-mono: build/dispatch_fixture.dll build/test_dispatch_mono
 	./build/test_dispatch_mono build/dispatch_fixture.dll
 build/dispatch_fixture.dll: tests/dispatch_fixture.cs | build
@@ -27,6 +30,12 @@ build/test_client_control: tests/test_client_control.c native/client_control.h |
 	gcc -std=c11 -Wall -Wextra -Werror $< -o $@
 build/test_client_lease: tests/test_client_lease.c native/client_lease.h native/client_control.h | build
 	gcc -std=c11 -Wall -Wextra -Werror $< -o $@
+build/test_client_sessions: tests/test_client_sessions.c native/client_sessions.h native/client_control.h | build
+	gcc -std=c11 -Wall -Wextra -Werror $< -o $@
+build/test_trial10: tests/test_trial_revision.c native/trial_revision.h | build
+	gcc -std=c11 -Wall -Wextra -Werror $< -o $@
+build/test_trial11: tests/test_trial_revision.c native/trial_revision.h | build
+	gcc -std=c11 -Wall -Wextra -Werror -DARFOXIA_TRIAL_REVISION=11 $< -o $@
 build:
 	mkdir -p build
 build/probe.o: native/probe.c native/goldhen_abi.h | build
@@ -174,4 +183,35 @@ build/dispatch_loader_resident.o: native/dispatch_loader.c native/goldhen_abi.h 
 build/dispatch_loader_resident.elf: build/crt0.o build/dispatch_loader_resident.o
 	ld -pie --no-dynamic-linker -T $(PAYLOAD_SDK)/libPS4/linker.x -z max-page-size=0x4000 --gc-sections $^ -L$(PAYLOAD_SDK)/libPS4 -lPS4 -o $@
 build/arfoxia_sprite_loader_candidate_v9.bin: build/dispatch_loader_resident.elf pack_payload.py
+	python3 pack_payload.py $< $@
+# Repeatable, explicit sessions. Separate v10 artifacts; never reload older PRX.
+REPEATABLE_FLAGS := $(SCHEDULED_FLAGS) -DARFOXIA_PS4_VISIBLE_TEST=1 -DARFOXIA_PS4_RESIDENT_CLIENT=1 -DARFOXIA_PS4_REPEATABLE_CLIENT=1
+build/sprite_repeatable.o: native/dispatch_probe.c native/sprite_preview.h native/client_control.h native/client_sessions.h native/dispatch_contract.h native/goldhen_abi.h build/dispatch_sprite_repeatable_profile.h | build
+	$(CC) $(TARGET_FLAGS) $(REPEATABLE_FLAGS) -Ibuild -c $< -o $@
+build/sprite_repeatable.elf: build/sprite_repeatable.o build/crtprx.o
+	$(LD) -m elf_x86_64 -pie -e _init --script $(OO_PS4_TOOLCHAIN)/link.x --eh-frame-hdr -L$(OO_PS4_TOOLCHAIN)/lib $^ -lkernel -lSceLibcInternal -lmonosgen -o $@
+build/arfoxia_sprite_candidate_v10.prx: build/sprite_repeatable.elf
+	$(OO_PS4_TOOLCHAIN)/bin/linux/create-fself -in=$< -out=build/sprite_repeatable.oelf --lib=$@ --paid 0x3800000000000011
+build/dispatch_loader_repeatable.o: native/dispatch_loader.c native/goldhen_abi.h build/dispatch_sprite_repeatable_profile.h | build
+	gcc -std=c11 -Os -ffreestanding -fno-builtin -fno-stack-protector -fPIE -masm=intel -m64 -mabi=sysv $(REPEATABLE_FLAGS) -DARFOXIA_PS4_DISPATCH_LOADER_ENABLED=1 -Ibuild -I$(PAYLOAD_SDK)/libPS4/include -c $< -o $@
+build/dispatch_loader_repeatable.elf: build/crt0.o build/dispatch_loader_repeatable.o
+	ld -pie --no-dynamic-linker -T $(PAYLOAD_SDK)/libPS4/linker.x -z max-page-size=0x4000 --gc-sections $^ -L$(PAYLOAD_SDK)/libPS4 -lPS4 -o $@
+build/arfoxia_sprite_loader_candidate_v10.bin: build/dispatch_loader_repeatable.elf pack_payload.py
+	python3 pack_payload.py $< $@
+
+# All dispatch objects depend on the compile-time path isolation header.
+$(wildcard build/dispatch*.o build/sprite*.o): native/trial_revision.h
+build/sprite_repeatable.o build/dispatch_loader_repeatable.o: native/trial_revision.h
+# Same bounded client, distinct one-shot paths for an owner-requested visual repeat.
+build/sprite_repeat11.o: native/dispatch_probe.c native/sprite_preview.h native/client_control.h native/client_sessions.h native/trial_revision.h native/dispatch_contract.h native/goldhen_abi.h build/dispatch_sprite_repeatable_profile.h | build
+	$(CC) $(TARGET_FLAGS) $(REPEATABLE_FLAGS) -DARFOXIA_TRIAL_REVISION=11 -Ibuild -c $< -o $@
+build/sprite_repeat11.elf: build/sprite_repeat11.o build/crtprx.o
+	$(LD) -m elf_x86_64 -pie -e _init --script $(OO_PS4_TOOLCHAIN)/link.x --eh-frame-hdr -L$(OO_PS4_TOOLCHAIN)/lib $^ -lkernel -lSceLibcInternal -lmonosgen -o $@
+build/arfoxia_sprite_candidate_v11.prx: build/sprite_repeat11.elf
+	$(OO_PS4_TOOLCHAIN)/bin/linux/create-fself -in=$< -out=build/sprite_repeat11.oelf --lib=$@ --paid 0x3800000000000011
+build/dispatch_loader_repeat11.o: native/dispatch_loader.c native/goldhen_abi.h native/trial_revision.h build/dispatch_sprite_repeatable_profile.h | build
+	gcc -std=c11 -Os -ffreestanding -fno-builtin -fno-stack-protector -fPIE -masm=intel -m64 -mabi=sysv $(REPEATABLE_FLAGS) -DARFOXIA_TRIAL_REVISION=11 -DARFOXIA_PS4_DISPATCH_LOADER_ENABLED=1 -Ibuild -I$(PAYLOAD_SDK)/libPS4/include -c $< -o $@
+build/dispatch_loader_repeat11.elf: build/crt0.o build/dispatch_loader_repeat11.o
+	ld -pie --no-dynamic-linker -T $(PAYLOAD_SDK)/libPS4/linker.x -z max-page-size=0x4000 --gc-sections $^ -L$(PAYLOAD_SDK)/libPS4 -lPS4 -o $@
+build/arfoxia_sprite_loader_candidate_v11.bin: build/dispatch_loader_repeat11.elf pack_payload.py
 	python3 pack_payload.py $< $@
