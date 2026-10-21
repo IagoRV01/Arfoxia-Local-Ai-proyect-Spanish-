@@ -86,6 +86,24 @@ def test_separate_reviewed_trial_namespace_preserves_previous_logs(monkeypatch):
     assert all(files[key] == value for key, value in previous.items())
 
 
+@pytest.mark.parametrize('revision', [10, 11])
+def test_configure_reviewed_revision_only_changes_control_paths(monkeypatch, revision):
+    for name in ('CONTROL', 'TEMP', 'LOG', 'LOAD_LOG'):
+        monkeypatch.setattr(control, name, getattr(control, name))
+    control.configure_revision(revision)
+    assert control.CONTROL == f'control-v{revision}.txt'
+    assert control.LOG == f'dispatch-v{revision}.txt'
+    assert control.LOAD_LOG == f'dispatch-load-v{revision}.txt'
+    assert control.TEMP == f'control-v{revision}.upload-verify'
+
+
+@pytest.mark.parametrize('revision', [9, 12, True, '11'])
+def test_unknown_revision_preserves_existing_namespace(revision):
+    before = control.CONTROL, control.LOG, control.TEMP, control.LOAD_LOG
+    with pytest.raises(ValueError): control.configure_revision(revision)
+    assert before == (control.CONTROL, control.LOG, control.TEMP, control.LOAD_LOG)
+
+
 def test_explicit_start_and_repeated_sessions():
     files = {control.CONTROL: control.encode(1, 1, 0), control.LOG: READY}
     assert invoke(files, start=True) == (2, 2)

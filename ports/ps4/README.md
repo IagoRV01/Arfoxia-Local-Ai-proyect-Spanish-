@@ -345,8 +345,24 @@ Tras confirmar de nuevo menú/BinLoader y presencia ante la pantalla, hubo un
 y disposición completa del widget, diez imágenes y gestor, sin excepción.
 **El dueño confirmó las dos apariciones, retirada final y menú/mando normales.**
 No equivale todavía a cliente permanente, autoload o compatibilidad con juegos.
-El panel público usa las rutas v10 por defecto; v11 es la repetición aislada de
-validación, no un selector de carga/reintento en la app.
+El panel usa las rutas v10 por defecto. `--revision 11` selecciona únicamente
+los archivos de control de la prueba v11; no prepara, carga ni repite payloads.
+
+### Acceso desde la ventana Paseo de Windows
+
+«Paseo entre dispositivos» incluye **PS4 · GoldHEN · menú experimental**.
+Seleccionarla ofrece **Abrir control experimental de PS4**, no el envío SSH de
+Bazzite. Una ventana explica los requisitos y permite introducir la IPv4 privada
+de la consola y elegir el cliente revisado v10/v11. La IP y revisión se guardan
+en `ps4-menu-control.json` dentro de los datos locales de Arfoxia; no se publican.
+
+El clic explícito abre el panel de sesiones, inicialmente sin emitir órdenes.
+Requiere un cliente cargado y todavía activo: **no reinicia las pruebas ya
+finalizadas ni envía payloads**, y no establece una lease en `TravelManager`,
+oculta la mascota del PC o anuncia una conexión por el mero hecho de seleccionar
+la entrada. No equivale todavía a «viajar a PS4» permanentemente. El botón
+«Volver a este PC» sigue siendo el retorno del viaje SSH; para retirar de la
+prueba PS4 se usa Retirar/Finalizar en su panel independiente.
 
 ## Investigación offline después del fallo
 

@@ -6,6 +6,22 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Añadido — Acceso a PS4 desde Paseo entre dispositivos — 2026-10-21
+
+- PS4/GoldHEN aparece en la lista como control de menú experimental, con un
+  botón específico y ventana de configuración de IPv4 privada y cliente v10/v11.
+  La selección de Bazzite/SSH se conserva al refrescar y mantiene su flujo actual.
+- Acceso al panel de sesiones existente, solo mediante clic explícito, sin
+  carga de payloads, autoarranque, falso estado conectado ni ocultar la mascota
+  del PC. Se informa que requiere una prueba ya cargada y que las finalizadas
+  no se reinician; no se anuncia todavía paseo permanente ni soporte en juegos.
+- Dirección y versión se guardan únicamente en configuración local, sin
+  publicarlas. Se rechazan direcciones públicas/ambiguas, revisiones desconocidas
+  y configuración dañada; no se duplican paneles desde la misma ventana.
+- Validación: pruebas de launcher, interfaz Qt sin pantalla, conservación de
+  selección y flujo SSH, ausencia de viajes/cargas implícitos y protocolo PS4.
+  1.077 pruebas Python pasan y ambas ventanas se revisaron visualmente.
+
 ### Añadido — Sesiones PS4 repetibles y explícitas — 2026-10-21
 
 - Variante experimental v10: iniciar, retirar y volver a mostrar sin recargar

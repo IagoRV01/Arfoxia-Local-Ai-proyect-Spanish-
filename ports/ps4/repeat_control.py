@@ -21,6 +21,17 @@ LOG = 'dispatch-v10.txt'
 LOAD_LOG = 'dispatch-load-v10.txt'
 
 
+def configure_revision(revision):
+    """Select reviewed control paths only; this never stages/loads native code."""
+    if type(revision) is not int or revision not in (10, 11):
+        raise ValueError('Unknown reviewed trial revision')
+    global CONTROL, TEMP, LOG, LOAD_LOG
+    CONTROL = f'control-v{revision}.txt'
+    TEMP = f'control-v{revision}.upload-verify'
+    LOG = f'dispatch-v{revision}.txt'
+    LOAD_LOG = f'dispatch-load-v{revision}.txt'
+
+
 def encode(sequence, session, mode):
     for value in (sequence, session):
         if type(value) is not int or not 1 <= value <= 4294967295:
@@ -196,11 +207,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--host', required=True)
     parser.add_argument('--panel', action='store_true')
+    parser.add_argument('--revision', type=int, choices=(10, 11), default=10)
     parser.add_argument('--mode', choices=MODES, default='walk')
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--start', action='store_true')
     group.add_argument('--session', type=int)
     args = parser.parse_args()
+    configure_revision(args.revision)
     if args.panel:
         panel(args.host)
     else:

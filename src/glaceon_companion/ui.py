@@ -53,6 +53,7 @@ from PySide6.QtGui import (
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QApplication,
+    QComboBox,
     QDialog,
     QFileDialog,
     QHBoxLayout,
@@ -97,6 +98,7 @@ from .icons import snowflake_icon
 from .services import CompanionService
 from .sprites import SpriteLibrary
 from .pet_motion import EXPRESSION_LABELS, direction_for_delta, expression_choices, step_towards
+from .ps4_control import launch_controls as launch_ps4_controls, load_settings as load_ps4_settings
 
 
 MOBILE_UI_REVISION = "11"
@@ -2501,10 +2503,67 @@ class GpuManagerDialog(QDialog):
         super().hideEvent(event)
 
 
+class PS4MenuDialog(QDialog):
+    """Explicit experimental controls, not a TravelManager display lease."""
+    def __init__(self, service: CompanionService, parent: QDialog) -> None:
+        super().__init__(parent)
+        self.service = service
+        self.process = None
+        self.setWindowTitle("PS4 · Control experimental del menú")
+        self.setWindowIcon(snowflake_icon())
+        self.setStyleSheet(parent.styleSheet())
+        self.resize(500, 330)
+        layout = QVBoxLayout(self)
+        info = QLabel("Las pruebas de aparición, movimiento y sesiones repetidas ya se han validado.\n\n"
+            "Solo menú de inicio, sin juegos. Requiere un cliente de prueba cargado y activo; "
+            "las pruebas finalizadas no se reinician con este botón.\n"
+            "No carga payloads, instala plugins ni modifica juegos o firmware. "
+            "Arfoxia y la IA permanecen en este PC.")
+        info.setWordWrap(True)
+        layout.addWidget(info)
+        layout.addWidget(QLabel("IPv4 privada de la PS4:"))
+        self.host = QLineEdit()
+        self.host.setPlaceholderText("Dirección de la consola en tu red local")
+        layout.addWidget(self.host)
+        self.revision = QComboBox()
+        self.revision.addItem("Cliente v11 · última prueba validada", 11)
+        self.revision.addItem("Cliente v10 · prueba anterior", 10)
+        layout.addWidget(self.revision)
+        self.feedback = QLabel("Abrir el panel no significa que el cliente de PS4 esté conectado.")
+        self.feedback.setWordWrap(True)
+        layout.addWidget(self.feedback)
+        self.open_button = QPushButton("Abrir control de PS4")
+        self.open_button.clicked.connect(self.open_controls)
+        layout.addWidget(self.open_button)
+        try:
+            host, revision = load_ps4_settings(service.store.data_dir)
+            self.host.setText(host)
+            self.revision.setCurrentIndex(self.revision.findData(revision))
+        except (OSError, ValueError, TypeError, UnicodeError) as exc:
+            self.feedback.setText(f"No se modifica la configuración existente: {exc}")
+            self.open_button.setEnabled(False)
+
+    def open_controls(self) -> None:
+        if self.process is not None and self.process.poll() is None:
+            self.feedback.setText("El panel de PS4 ya está abierto; úsalo para mostrar o retirar a Arfoxia.")
+            return
+        try:
+            self.process = launch_ps4_controls(self.service.store.data_dir,
+                self.host.text(), self.revision.currentData())
+        except (OSError, ValueError, TypeError, UnicodeError) as exc:
+            self.feedback.setText(f"No se ha abierto el control: {exc}")
+            return
+        self.feedback.setText("Panel abierto, sin cargar ningún payload. Pulsa Mostrar allí solo "
+            "con la PS4 en el menú. Si la prueba terminó, el panel lo indicará.")
+
+
 class TravelDialog(QDialog):
+    PS4_CONTROL_ID = "__ps4_menu_control__"
+
     def __init__(self, service: CompanionService, parent: QWidget) -> None:
         super().__init__(parent)
         self.service = service
+        self.ps4_dialog: PS4MenuDialog | None = None
         self.setWindowTitle("Paseo entre dispositivos")
         self.setWindowIcon(snowflake_icon())
         self.setStyleSheet(parent.chat_window.styleSheet())
@@ -2518,15 +2577,16 @@ class TravelDialog(QDialog):
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         self.devices = QListWidget()
+        self.devices.currentItemChanged.connect(self.update_action)
         layout.addWidget(self.devices)
-        travel = QPushButton("Enviar al dispositivo seleccionado")
-        travel.clicked.connect(self.go)
-        layout.addWidget(travel)
+        self.travel_button = QPushButton("Enviar al dispositivo seleccionado")
+        self.travel_button.clicked.connect(self.go)
+        layout.addWidget(self.travel_button)
         home = QPushButton("Volver a este PC")
         home.clicked.connect(lambda: self.service.travel.home())
         layout.addWidget(home)
-        note = QLabel("PS4: el overlay global de juegos/menú no está implementado.\n"
-            "No se envían plugins ni se modifican juegos o firmware.")
+        note = QLabel("PS4: control de menú experimental; no es un paseo permanente.\n"
+            "Sin juegos, sin carga automática de payloads y sin modificar firmware.")
         note.setWordWrap(True)
         layout.addWidget(note)
         self.timer = QTimer(self)
@@ -2549,12 +2609,36 @@ class TravelDialog(QDialog):
             self.devices.addItem(item)
             if row["id"] == key:
                 self.devices.setCurrentItem(item)
+        ps4 = QListWidgetItem("PS4 · GoldHEN · menú experimental")
+        ps4.setData(Qt.ItemDataRole.UserRole, self.PS4_CONTROL_ID)
+        ps4.setToolTip("Abrir controles de una prueba ya cargada; no anuncia conexión ni envía payloads.")
+        self.devices.addItem(ps4)
+        if key == self.PS4_CONTROL_ID:
+            self.devices.setCurrentItem(ps4)
         if self.devices.currentRow() < 0 and self.devices.count():
             self.devices.setCurrentRow(0)
+        self.update_action()
+
+    def update_action(self, *_args) -> None:
+        # clear()/refresh also emit selection changes before the button exists.
+        if not hasattr(self, "travel_button"):
+            return
+        selected = self.devices.currentItem()
+        ps4 = selected and selected.data(Qt.ItemDataRole.UserRole) == self.PS4_CONTROL_ID
+        self.travel_button.setText("Abrir control experimental de PS4" if ps4
+            else "Enviar al dispositivo seleccionado")
+        self.travel_button.setEnabled(selected is not None)
 
     def go(self) -> None:
         item = self.devices.currentItem()
         if item:
+            if item.data(Qt.ItemDataRole.UserRole) == self.PS4_CONTROL_ID:
+                if self.ps4_dialog is None:
+                    self.ps4_dialog = PS4MenuDialog(self.service, self)
+                self.ps4_dialog.show()
+                self.ps4_dialog.raise_()
+                self.ps4_dialog.activateWindow()
+                return
             try:
                 self.service.travel.select(item.data(Qt.ItemDataRole.UserRole))
             except (ValueError, OSError) as exc:
