@@ -51,6 +51,12 @@ si no cumple el requisito de capas en GPU; no se considera una sesión cargada.
 
 ## Operación y pruebas
 
+Para encargos de programación, el Qwen de 27B dispone de un
+[agente de código integrado](CODING_AGENT.md): inspección, edición puntual con
+hash, ejecución de pruebas, registro de avances y cierre con evidencia. No
+modifica estos presupuestos GPU ni instala otro modelo. Se activa al pedir
+implementar/reparar código en Dual, tanto desde Windows como desde Expo Go.
+
 Verificación de 0.14 (2026-09-17): 447 pruebas Python y 50 móviles correctas,
 TypeScript y exportación iOS correctos. Llamada real `think: high` aceptada por
 Ollama, con propuesta estructurada de `run_powershell`. Reinicio de la interfaz

@@ -6,6 +6,30 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Mejorado — Agente de código integrado para Qwen 3.8 27B Dual — 2026-10-21
+
+- Perfil automático para encargos explícitos de programación: inspeccionar,
+  plan breve, cambios incrementales, comandos/tests y cierre con comprobación.
+  Compartido por PC/móvil; preguntas normales y otros modelos no se convierten
+  en encargos. No añade pesos, entrenamiento, dependencias globales ni nube.
+- `replace_text` con ancla única y SHA-256 de `read_file`, escritura atómica y
+  mismas autorizaciones/protecciones. Rechaza versiones obsoletas, ambigüedad y
+  no-ops; conserva BOM/CRLF y oculta fragmentos de código en auditoría/contexto.
+- Registro acotado de cambios/comprobaciones para tareas largas. El cierre de
+  código exige ejecución correcta posterior a la última edición; leer o calcular
+  no vale y las ejecuciones fallidas no se ocultan con una lectura posterior.
+- Documentación web y herramientas locales pueden coexistir en un encargo de
+  código. Adjuntos no otorgan autoridad; solo una petición explícita del dueño
+  habilita implementación. Apertura/captura para verificar interfaces; solo la
+  última captura de herramienta se mantiene en inferencia, sin borrar archivos.
+- Mayor margen antes de recuperar una generación sin progreso (300 s/24.000
+  caracteres en código). Conserva Extra High inicial, contexto 32K, parámetros
+  GPU, residencia manual y vigilancia cada 20 s; no habilita offload a RAM.
+- Validación: pruebas de perfil/edición/autorización/continuidad y ciclo real
+  `unittest` fallido → cambio puntual → `unittest` correcto. El modelo se simula
+  en esa integración; no se presenta como benchmark nuevo de Qwen o de VRAM.
+  1.101 pruebas Python superadas, con las opciones GPU/residencia sin cambios.
+
 ### Añadido — Acceso a PS4 desde Paseo entre dispositivos — 2026-10-21
 
 - PS4/GoldHEN aparece en la lista como control de menú experimental, con un

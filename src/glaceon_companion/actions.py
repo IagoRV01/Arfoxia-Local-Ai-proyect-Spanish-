@@ -333,7 +333,7 @@ class ActionDispatcher:
                 )
             operation = str(prepared.get("operation") or "").casefold()
             path = Path(str(prepared.get("path") or ""))
-            if operation in {"write_text", "append_text"} and path.is_file():
+            if operation in {"write_text", "append_text", "replace_text"} and path.is_file():
                 prepared["_expected_sha256"] = self._file_sha256(path)
         return prepared
 
@@ -395,16 +395,19 @@ class ActionDispatcher:
             command = str(redacted.pop(key))
             redacted[key] = {"redacted": True, "length": len(command),
                                    "sha256": hashlib.sha256(command.encode("utf-8")).hexdigest()}
-        if action == "file_operation" and "content" in redacted:
-            content = redacted.pop("content")
-            replacement: dict[str, Any] = {"redacted": True}
-            if isinstance(content, str):
-                try:
-                    replacement["length_bytes"] = len(content.encode("utf-8"))
-                except UnicodeError:
-                    replacement["invalid_utf8"] = True
-                    replacement["length_characters"] = len(content)
-            redacted["content"] = replacement
+        if action == "file_operation":
+            for field in ("content", "old_text", "new_text"):
+                if field not in redacted:
+                    continue
+                content = redacted.pop(field)
+                replacement: dict[str, Any] = {"redacted": True}
+                if isinstance(content, str):
+                    try:
+                        replacement["length_bytes"] = len(content.encode("utf-8"))
+                    except UnicodeError:
+                        replacement["invalid_utf8"] = True
+                        replacement["length_characters"] = len(content)
+                redacted[field] = replacement
         return redacted
 
     def _run_powershell(self, args: dict[str, Any]) -> ActionResult:
@@ -764,6 +767,7 @@ class ActionDispatcher:
             "create_directory": self._create_directory,
             "write_text": self._write_text,
             "append_text": self._append_text,
+            "replace_text": self._replace_text,
             "copy": self._copy_path,
             "move": self._move_path,
             "rename": self._rename_path,
@@ -779,6 +783,9 @@ class ActionDispatcher:
         if not isinstance(operation, str):
             raise ActionValidationError("La operación de archivo no es válida.")
         operation = operation.strip().casefold()
+        if operation == "replace_text":
+            self._replacement_content(args)
+            return
         if operation == "create_directory":
             self._require_keys(
                 args, required={"operation", "path"}, allowed={"operation", "path"}
@@ -953,6 +960,46 @@ class ActionDispatcher:
         return ActionResult(
             True, "file_operation", "He añadido texto al archivo.", {"operation": "append_text"}
         )
+
+    def _replacement_content(self, args: dict[str, Any]) -> tuple[Path, str]:
+        self._require_keys(args, required={"operation", "path", "old_text", "new_text", "expected_sha256"},
+            allowed={"operation", "path", "old_text", "new_text", "expected_sha256"})
+        path = self._validated_path(args["path"])
+        self._ensure_file_path_allowed(path, "replace_text")
+        if not path.is_file() or path.is_symlink() or path.stat().st_size > MAX_TEXT_WRITE_BYTES:
+            raise ActionValidationError("replace_text requiere un archivo de texto existente de hasta 1 MiB, no un enlace.")
+        expected = args["expected_sha256"]
+        if not isinstance(expected, str) or not re.fullmatch(r"[0-9a-f]{64}", expected):
+            raise ActionValidationError("Indica el sha256 exacto devuelto por read_file.")
+        raw = path.read_bytes()
+        if not hmac.compare_digest(hashlib.sha256(raw).hexdigest(), expected):
+            raise ActionValidationError("El archivo cambió desde read_file; vuelve a leerlo antes de editar.")
+        old, new = self._validated_text(args["old_text"]), self._validated_text(args["new_text"])
+        if not old or old == new or "\0" in old + new or b"\0" in raw:
+            raise ActionValidationError("El reemplazo debe tener un ancla no vacía, cambiar texto y no contener NUL.")
+        try:
+            content = raw.decode("utf-8")
+        except UnicodeError as exc:
+            raise ActionValidationError("Solo se puede editar texto UTF-8.") from exc
+        newline = "\r\n" if b"\r\n" in raw else "\n"
+        old = old.replace("\r\n", "\n").replace("\n", newline)
+        new = new.replace("\r\n", "\n").replace("\n", newline)
+        if old == new:
+            raise ActionValidationError("El reemplazo no cambiaría el contenido del archivo.")
+        if content.count(old) != 1:
+            raise ActionValidationError("El ancla debe aparecer exactamente una vez; relee y usa más contexto.")
+        return path, self._validated_text(content.replace(old, new, 1))
+
+    def _replace_text(self, args: dict[str, Any]) -> ActionResult:
+        public = {key: value for key, value in args.items() if key != "_expected_sha256"}
+        path, content = self._replacement_content(public)
+        self._verify_file_precondition(path, args)
+        # Recheck the owner's read version immediately before atomic replacement.
+        self._verify_file_precondition(path, {"_expected_sha256": public["expected_sha256"]})
+        self._atomic_write_text(path, content, overwrite=True)
+        return ActionResult(True, "file_operation", "Cambio puntual aplicado.", data={
+            "operation": "replace_text", "path": str(path), "replacements": 1,
+            "sha256": hashlib.sha256(content.encode("utf-8")).hexdigest()})
 
     @staticmethod
     def _validated_text(value: Any) -> str:
