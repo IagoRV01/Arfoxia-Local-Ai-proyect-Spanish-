@@ -6,6 +6,28 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Corregido — Respuestas web bloqueadas por el modo de trabajo continuo — 2026-10-22
+
+- Las consultas informativas pueden terminar con una respuesta normal tras
+  buscar o usar herramientas de lectura, sin exigir `finish_task`. Corrige el
+  falso aviso de «El modelo no está avanzando» de las consultas de tiempo y
+  comparación de modelos; si falla el proveedor, permite explicar la limitación.
+- Reconoce peticiones como «me gustaría que buscaras» y limpia el saludo de la
+  consulta. Conserva negaciones, fechas relativas y la conversación seleccionada.
+- Mantiene la detección de promesas sin acción, generaciones truncadas y el
+  cierre verificado de encargos que requieren archivos o acciones del PC. Las
+  búsquedas informativas no reciben herramientas de ejecución local adicionales.
+  No cambia modelos, configuración GPU ni residencia manual.
+- Regresiones con las dos consultas de la captura, respuestas tras búsquedas,
+  errores del proveedor y separación entre consultas y encargos. El modelo se
+  simula en estos tests; comprobación independiente de búsqueda real: tres
+  resultados con enlaces verificados. Fixture de programación sin caché `.pyc`
+  para evitar resultados obsoletos al editar archivos del mismo tamaño.
+- Validación: 78 pruebas focalizadas y 1.133 pruebas Python de la batería completa
+  superadas. En intentos anteriores tres tests de adjuntos se detuvieron por
+  espacio libre inferior a la reserva; la ejecución final pasa con espacio real
+  suficiente, sin reducir la reserva ni borrar datos.
+
 ### Mejorado — Agente de código integrado para Qwen 3.8 27B Dual — 2026-10-21
 
 - Perfil automático para encargos explícitos de programación: inspeccionar,

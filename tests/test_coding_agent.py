@@ -121,7 +121,7 @@ def test_real_python_tests_fail_then_patch_and_pass_without_model_download(tmp_p
     path=tmp_path/'calculator.py'
     source='def add(a, b):\n    return a - b\n'
     test_source='import unittest\nfrom calculator import add\nclass TestAdd(unittest.TestCase):\n    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n'
-    runner='import unittest,sys; result=unittest.TextTestRunner().run(unittest.defaultTestLoader.discover(".",pattern="test_*.py")); sys.exit(not result.wasSuccessful())'
+    runner='import unittest,sys; sys.dont_write_bytecode=True; result=unittest.TextTestRunner().run(unittest.defaultTestLoader.discover(".",pattern="test_*.py")); sys.exit(not result.wasSuccessful())'
     service.ollama=FakeOllama([
         call('file_operation',{'operation':'write_text','path':str(path),'content':source}),
         call('file_operation',{'operation':'write_text','path':str(tmp_path/'test_calculator.py'),'content':test_source}),

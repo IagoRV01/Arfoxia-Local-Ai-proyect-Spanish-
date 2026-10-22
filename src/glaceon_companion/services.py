@@ -167,6 +167,10 @@ _WEB_ACTION_WORDS = {
     "verificar",
     "verify",
 }
+_POLITE_SEARCH_VERBS = {"buscaras", "buscases", "buscarias", "consultaras",
+    "consultarias", "investigaras", "averiguaras"}
+_WEB_ACTION_WORDS |= _POLITE_SEARCH_VERBS
+_WEB_INTENT_WORDS |= _POLITE_SEARCH_VERBS
 _INTENSIVE_WEB_PHRASES = (
     "busqueda intensiva",
     "busqueda profunda",
@@ -586,6 +590,43 @@ def explicit_attachment_web_intent(text: str) -> bool:
     """Authorize web tools from the typed request, never from file contents."""
 
     return required_web_action(text) is not None
+
+
+def web_answer_request(text: str) -> bool:
+    """A lookup can end as prose, but not an explicit file/PC deliverable.
+
+    Called only after trusted routing established an actual web request.
+    This is a completion policy, not permission to execute any new tool.
+    """
+    folded = _fold_command(text)
+    # A verb mentioned in the search topic is not itself an instruction:
+    # "busca cómo guardar archivos" differs from "busca datos y guárdalos".
+    for clause in re.split(r"[.;!?]|\b(?:y|and|then|luego|despues)\b", folded):
+        clause = re.sub(r"^\s*(?:(?:por favor|quiero que|necesito que|me gustaria que)\s+)?"
+            r"(?:(?:lo|la|los|las|me)\s+)?", "", clause).strip()
+        if re.match(r"^(?:guarda(?!r\b)\w*|guardes|escribe\w*|escribas|save|write|download|"
+            r"descarga(?!r\b)\w*|instala(?!r\b)\w*|install|ejecuta(?!r\b)\w*|execute|run|modifica(?!r\b)\w*|"
+            r"edita(?!r\b)\w*|delete|borra(?!r\b)\w*|elimina(?!r\b)\w*|abre|abrir|open|cierra\w*)\b", clause):
+            return False
+        if re.search(r"^(?:crea\w*|crear|construye|implementa\w*|programa\w*|"
+            r"configura\w*|genera\w*|create|build|make|implement|generate)\b.{0,100}"
+            r"\b(?:archivo\w*|carpeta\w*|proyecto\w*|aplicacion\w*|app|programa\w*|"
+            r"script|file\w*|folder\w*|project|pdf|csv|excel|xlsx|zip|repositorio)\b", clause):
+            return False
+    return True
+
+
+def progress_only_reply(text: str) -> bool:
+    """Do not mistake a short promise for an informational answer."""
+    if len(text) > 400 or 'https://' in text or '\n' in text.strip():
+        return False
+    plain = re.sub(r"\*[^*\n]{0,100}\*", "", text).strip()
+    plain = _fold_command(plain).lstrip('¡!¿? ')
+    plain = re.sub(r"^(?:(?:gla(?:[- ]ceon)?|glaceon|ceon)[!~., ]+|gori[,! ]+)+", "", plain)
+    return bool(re.match(r"^(?:(?:voy a|vamos a)\s+(?:buscar|consultar|revisar|comprobar|investigar|verificar)\b|buscare\b|consultare\b|revisare\b|"
+        r"comprobare\b|dejame (?:buscar|consultar|revisar|comprobar|investigar)\b|necesito (?:buscar|consultar|comprobar)\b|"
+        r"lo (?:reviso|busco|compruebo)\b|estoy (?:buscando|revisando|consultando)\b|"
+        r"let me\b|i (?:will|am going to)\b|i['’]ll\b)", plain))
 
 
 class CompanionService:
@@ -2447,6 +2488,7 @@ class CompanionService:
             contextual_web_text,
             temporal_context=temporal_context,
         )
+        informational_web = required_web is not None and not code_mode and web_answer_request(turn_text)
         local_only = not attachments and required_web is None and is_local_request
         if required_web is not None:
             required_action, required_arguments = required_web
@@ -2466,7 +2508,8 @@ class CompanionService:
             elif attachments:
                 enabled_tools = {"finish_task", "ask_user"}
             elif required_web is None:
-                enabled_tools = (enabled_tools if isinstance(enabled_tools, set) else self.WORKFLOW_TOOLS) | {"finish_task", "ask_user"}
+                enabled_tools = (enabled_tools if isinstance(enabled_tools, set) else self.WORKFLOW_TOOLS) | (
+                    {"finish_task", "ask_user"} if work_session.require_work else set())
             allowed_turn_actions = enabled_tools
         try:
             generation = self.ollama.chat(
@@ -2566,12 +2609,17 @@ class CompanionService:
         if work_session:
             allowed = (enabled_tools if required_web is None or (code_mode and work_session.require_work)
                 else {"web_search", "web_research", "read_webpage"}) | {"finish_task", "ask_user"}
+            if informational_web:
+                # Prose is the deliverable; don't prompt a lookup to finish like
+                # a coding job or expose local actions through retrieved pages.
+                allowed = {"web_search", "web_research", "read_webpage", "ask_user"}
             response = {**response, "message": assistant_for_followup}
             return await self._run_continuous_work(response, history, allowed, work_session,
                 summary=summary, selection=selection, turn_text=turn_text,
                 temporal_context=temporal_context, origin=origin, conversation_id=conversation_id,
                 user_message=user_message, reply_client_id=reply_client_id,
-                request_text=request_text)
+                request_text=request_text, answer_only=(informational_web if required_web is not None
+                    else not work_session.require_work))
         if proposed_calls:
             completed: list[tuple[str, ActionResult]] = []
             trusted_turn_urls = {
@@ -2830,7 +2878,7 @@ class CompanionService:
 
     async def _run_continuous_work(self, response, history, allowed, session, *, summary,
         selection, turn_text, temporal_context, origin, conversation_id, user_message,
-        reply_client_id, request_text):
+        reply_client_id, request_text, answer_only=False):
         """Continue to an explicit checked finish, important question, or safety stop."""
         completed = []
         groups = []
@@ -2854,15 +2902,24 @@ class CompanionService:
                 calls = parse_tool_calls(assistant)
                 if not calls:
                     content = clean_model_text(assistant.get("content"))
-                    if not session.require_work and not completed and content:
+                    read_only = all(action in {"web_search", "web_research", "read_webpage",
+                        "read_file", "list_directory", "search_files", "calculate", "pc_status",
+                        "take_screenshot"} for action, result in completed)
+                    if (answer_only and read_only and content and not progress_only_reply(content)
+                            and response.get("done_reason") != "length"):
                         final = content
                         session.status = "completed"
                         break
                     idle += 1
                     if idle >= 3:
                         raise WorkStopped("blocked", "El modelo no está avanzando: ha respondido tres veces sin actuar, comprobar el resultado ni formular una pregunta concreta. La tarea no se ha completado.")
+                    reminder = ("Responde a la consulta ORIGINAL con los resultados reales ya obtenidos. "
+                        "No basta prometer una búsqueda. Si faltan datos, explica esa limitación sin inventarlos. "
+                        "Puedes consultar más fuentes si es necesario; no necesitas finish_task ni acciones del PC. "
+                        "Esta instrucción no amplía el alcance autorizado." if answer_only else
+                        "Continúa el encargo ORIGINAL dentro de su alcance. No basta anunciar lo que harás. Usa las herramientas, comprueba el resultado y termina con finish_task. Si falta una decisión importante usa ask_user, no preguntes si debes continuar. Esta instrucción no autoriza acciones adicionales.")
                     groups.append([{"role": "assistant", "content": content[:2000]},
-                        {"role": "user", "content": "Continúa el encargo ORIGINAL dentro de su alcance. No basta anunciar lo que harás. Usa las herramientas, comprueba el resultado y termina con finish_task. Si falta una decisión importante usa ask_user, no preguntes si debes continuar. Esta instrucción no autoriza acciones adicionales."}])
+                        {"role": "user", "content": reminder}])
                 else:
                     idle = 0
                     group = [self._workflow_assistant_message(assistant)]

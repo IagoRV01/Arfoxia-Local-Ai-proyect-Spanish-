@@ -61,7 +61,7 @@ def resolve_web_followup(text: str, previous: Sequence[str], is_web_request: Cal
 def compact_search_query(text: str) -> str:
     value = re.sub(r"^\s*(?:hola|buenas|hello|hey)[, ]+(?:arfoxia[, ]*)?", "", text, flags=re.I)
     value = re.sub(r"^\s*arfoxia[, ]+", "", value, flags=re.I)
-    value = re.sub(r"^.{0,140}?\b(?:me gustar[ií]a que|quiero que|puedes|podr[ií]as)\s+(?:busques?|buscar|consultes?|averig[uü]es?)\s+", "", value, flags=re.I)
+    value = re.sub(r"^.{0,140}?\b(?:me gustar[ií]a que|quiero que|puedes|podr[ií]as)\s+(?:busques?|buscar|buscaras|buscases|buscar[ií]as|consultes?|consultaras|consultar[ií]as|investigaras|averiguaras|averig[uü]es?)\s+", "", value, flags=re.I)
     value = re.sub(r"^\s*(?:por favor[, ]+)?(?:busca(?:me)?|buscar|buscame|búscame|consulta|search(?: for)?|find)\s+(?:(?:en (?:internet|la web)|online|on the web)\s+)?", "", value, flags=re.I)
     value = re.sub(r"[, ]+(?:por favor|please)[.! ]*$", "", value, flags=re.I)
     value = re.sub(r"\bpor favor\b[, ]*[.?!]?", "", value, flags=re.I)
