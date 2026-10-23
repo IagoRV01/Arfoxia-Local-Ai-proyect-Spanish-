@@ -6,6 +6,28 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Corregido — Compatibilidad con Expo Go SDK 58 — 2026-10-23
+
+- Migración de SDK 57 a Expo 58.0.17, React Native 0.88.0 y React 19.3.0;
+  módulos nativos, tipos, áreas seguras y WebView 14.0.1 alineados mediante la
+  CLI oficial. Corrige los encabezados/pies opcionales de las listas para los
+  tipos estrictos de React Native, sin cambiar selección ni creación de chats.
+- Servidor Metro del proyecto reiniciado tras verificar raíz, proceso y puerto;
+  manifiesto `exposdk:58.0.0` y bundle iOS responden en local y por Tailscale.
+  No cambia identificadores, llavero SecureStore, emparejamiento, datos de chats,
+  API privada ni configuración/residencia de modelos y GPU. El propietario
+  confirma que Arfoxia vuelve a cargar correctamente en Expo Go del iPhone.
+- Automatización local de Codex configurada para revisar cada seis horas las
+  versiones estables con soporte confirmado de Expo Go y realizar migraciones
+  comprobadas antes de publicar. Requiere PC encendido y Codex abierto; no es
+  detección instantánea del cliente iPhone ni se instala al clonar el proyecto.
+  Solo avisa ante migraciones, fallos relevantes o decisiones necesarias.
+- Parches compatibles de `markdown-it` y `brace-expansion`; auditoría final:
+  cuatro avisos altos, ninguno crítico, en `node-forge` y la cadena de firma de
+  Expo CLI. No se fuerza la degradación a Expo 44 propuesta por npm.
+- Validación: tipos TypeScript, 65 tests móviles, 20/20 controles de Expo Doctor,
+  dependencias compatibles, exportación iOS y siete tests del supervisor Metro.
+
 ### Corregido — Respuestas web bloqueadas por el modo de trabajo continuo — 2026-10-22
 
 - Las consultas informativas pueden terminar con una respuesta normal tras

@@ -183,7 +183,7 @@ class MobileRuntimeManager:
             "2",
         ]
         environment = os.environ.copy()
-        # Expo Go 57 on iOS needs the CLI's signed-in development session.
+        # Expo Go 57+ on iOS needs the CLI's signed-in development session.
         # Do not inherit an old offline setting that disables its registration.
         environment.pop("EXPO_OFFLINE", None)
         environment["REACT_NATIVE_PACKAGER_HOSTNAME"] = hostname

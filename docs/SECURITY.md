@@ -179,12 +179,12 @@ Se reducen a un máximo de 1600×1000, se guardan como WebP con un identificador
   credenciales administrativas.
 - Una ruta Tailscale indirecta mediante DERP puede añadir demasiada latencia para
   jugar; conviene verificar que PC e iPhone establecen una conexión directa.
-- Expo SDK 57 conserva 11 avisos moderados de `npm audit` (sin altos ni críticos,
-  comprobado el 2026-09-10), derivados de `uuid` a través de `xcode` y las
-  herramientas de configuración/prebuild. No se fuerza la degradación a Expo
-  46 que propone npm ni se procesan proyectos Xcode de terceros. Se revisará
-  la corrección compatible cuando la publiquen estas dependencias.
-- Expo Go 57 en iOS requiere una sesión de Expo en el PC y en el móvil. La CLI
+- Expo SDK 58 conserva cuatro avisos altos de `npm audit` (sin críticos,
+  comprobado el 2026-10-23), correspondientes a `node-forge` y su cadena de
+  certificados/firma en la CLI de Expo. Los parches compatibles de `markdown-it`
+  y `brace-expansion` ya están instalados. No se fuerza la degradación a Expo
+  44 que propone npm. Esta actualización no declara el árbol libre de avisos.
+- Expo Go 57 y posteriores en iOS requieren una sesión de Expo en el PC y en el móvil. La CLI
   registra el servidor de desarrollo con Expo, pero la API y los chats siguen
   alojados en el PC y accesibles por Tailscale. Las credenciales de Expo son
   locales al usuario y no se incluyen en el repositorio.

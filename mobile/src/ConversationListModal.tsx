@@ -228,7 +228,7 @@ export function ConversationListModal({
                   <ActivityIndicator size="small" color={colors.ice} />
                   <Text style={styles.loadingText}>Cargando más chats…</Text>
                 </View>
-              ) : null
+              ) : undefined
             }
             renderItem={({ item }) => {
               const selected = item.id === selectedId;

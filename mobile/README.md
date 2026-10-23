@@ -6,7 +6,7 @@ Internet.
 
 ## Abrirla en el iPhone
 
-1. Usa Expo Go compatible con **SDK 57** e inicia sesión en la app.
+1. Usa Expo Go compatible con **SDK 58** e inicia sesión en la app.
 2. En el PC, desde la carpeta `mobile`, ejecuta `npx expo login --browser` e
    inicia sesión con **la misma cuenta**. Solo hace falta repetirlo si caduca
    o se cierra la sesión. No guardes credenciales de Expo en el proyecto.
@@ -29,7 +29,7 @@ Internet.
    ese segundo QR desde la app.
 
 Arfoxia anuncia Metro mediante el MagicDNS privado de Tailscale y lo reinicia si
-se cierra. Expo Go 57 en iOS exige autenticación en ambos dispositivos; el
+se cierra. Expo Go 57 y posteriores en iOS exigen autenticación en ambos dispositivos; el
 arranque ya no fuerza el modo `--offline`, para registrar la sesión de
 desarrollo con Expo. El tráfico de Arfoxia continúa por Tailscale, sin túnel
 público de Expo. El QR de emparejamiento conecta de forma privada la app con la API
@@ -108,12 +108,34 @@ npx expo-doctor@latest
 npx expo export --platform ios
 ```
 
-La app utiliza Expo SDK 57, React Native 0.86 y React 19.2. Una actualización
+La app utiliza Expo SDK 58, React Native 0.88 y React 19.3. Una actualización
 futura de Expo Go puede exigir otra migración de SDK; actualizar la app de
-Expo Go no actualiza automáticamente este proyecto. La migración no borra
+Expo Go no modifica por sí solo este proyecto. La migración no borra
 los chats del PC ni cambia el identificador de la app o sus claves SecureStore.
 Una app iOS independiente requerirá más adelante una cuenta del Apple Developer
 Program y una compilación EAS/TestFlight.
+
+## Mantenimiento automático en el PC del propietario
+
+Se ha configurado una automatización local de Codex, **Mantener Arfoxia compatible
+con Expo Go**, que revisa cada seis horas las versiones estables y el soporte
+oficial del cliente iPhone. Migra las dependencias, corrige incompatibilidades y
+solo publica tras superar tipos, tests, Expo Doctor y exportación iOS. Reinicia
+únicamente el Metro identificado de este proyecto, sin reiniciar modelos ni
+alterar chats, emparejamiento o Tailscale. Avisa al completar una migración o
+cuando encuentra un problema que necesita atención; no envía avisos sin novedades.
+
+Requiere este PC encendido, acceso a Internet y Codex abierto. No detecta
+instantáneamente la versión instalada en el iPhone ni puede garantizar soporte
+desde el segundo exacto de una actualización de la tienda. La automatización
+pertenece al Codex del propietario y no se instala al clonar este repositorio.
+Puede gestionarse desde las automatizaciones de Codex.
+
+Para una migración manual, sigue la
+[guía oficial de Expo](https://docs.expo.dev/workflow/upgrading-expo-sdk-walkthrough/),
+alinea dependencias con `npx expo install --fix` y ejecuta las comprobaciones
+anteriores antes de reiniciar Metro. No uses `npm audit fix --force`, no copies
+`node_modules`, `.expo`, credenciales ni datos del PC al repositorio público.
 
 Requisito oficial de sesión:
 https://expo.dev/changelog/expo-go-57-login

@@ -85,8 +85,8 @@ nativos; una página puede requerir adaptaciones específicas de WebKit/WebGL.
 - Navegador real por HTTPS privado: escena Three.js del pueblo costero, tamaño
   móvil, pausa y día/noche, importación de módulo/CSS locales y error controlado
   visible. Esto no sustituye una prueba presencial en el iPhone.
-- WebView 13.16.1, compatible con Expo Go SDK 57. Parches recomendados de SDK 57
-  instalados; actualización compatible de `shell-quote` elimina el hallazgo
-  crítico previo. La auditoría npm todavía informa 26 avisos transitivos
-  (9 moderados, 17 altos), ninguno en `react-native-webview`; no se aplicaron
-  migraciones mayores ni `audit fix --force`.
+- WebView 14.0.1, alineado con Expo Go SDK 58 (migración del 2026-10-23).
+  Comprobaciones de tipos, navegación privada, modales/áreas seguras y bundle iOS
+  correctas. La auditoría npm conserva cuatro avisos altos en la cadena de firma
+  de la CLI de Expo, ninguno en `react-native-webview`; no se aplicó
+  `audit fix --force` ni se amplió la navegación permitida del visualizador.

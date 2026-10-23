@@ -1188,7 +1188,7 @@ export function ChatScreen({
                   onPress={() => void loadOlder()}
                 />
               </View>
-            ) : null
+            ) : undefined
           }
           refreshControl={
             <RefreshControl
