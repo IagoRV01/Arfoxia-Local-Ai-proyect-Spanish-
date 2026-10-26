@@ -400,14 +400,15 @@ class ConfigStore:
             self._write_secrets(value)
             return token
 
-    def sunshine_credentials(self) -> tuple[str, str] | None:
+    def sunshine_credentials(self, target: str = "local") -> tuple[str, str] | None:
         """Return locally protected Sunshine credentials, never public config."""
 
         from .auth import harden_authorization_file
 
+        key = self._sunshine_secret_key(target)
         with self._secrets_lock:
             value = self._read_secrets()
-            record = value.get("sunshine")
+            record = value.get(key)
             if not isinstance(record, dict):
                 return None
             username = record.get("username")
@@ -431,9 +432,16 @@ class ConfigStore:
                 )
             return username, password
 
-    def save_sunshine_credentials(self, username: str, password: str) -> None:
+    @staticmethod
+    def _sunshine_secret_key(target: str) -> str:
+        if target not in {"local", "bc250"}:
+            raise ValueError("Destino de Sunshine no válido.")
+        return "sunshine" if target == "local" else "sunshine_bc250"
+
+    def save_sunshine_credentials(self, username: str, password: str, *, target: str = "local") -> None:
         """Persist generated local-only credentials without losing the API token."""
 
+        key = self._sunshine_secret_key(target)
         username_value = str(username).strip()
         password_value = str(password)
         if not username_value or not password_value:
@@ -445,7 +453,7 @@ class ConfigStore:
                 record["password_dpapi"] = _protect_windows_secret(password_value)
             else:
                 record["password"] = password_value
-            value["sunshine"] = record
+            value[key] = record
             self._write_secrets(value)
 
     def _read_secrets(self) -> dict[str, Any]:

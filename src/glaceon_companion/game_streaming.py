@@ -53,13 +53,27 @@ class GameStreamingManager:
     not expose Sunshine's generic administrative API or a command runner.
     """
 
-    def __init__(self, config: CompanionConfig, store: ConfigStore) -> None:
+    def __init__(self, config: CompanionConfig, store: ConfigStore, travel=None) -> None:
         self.config = config
         self.store = store
         self._lock = threading.RLock()
         self._pair_attempts: deque[float] = deque()
+        from .sunshine_ssh import SunshineSSHBridge
+        self.bc250 = SunshineSSHBridge(store, travel)
 
-    def status(self) -> dict[str, Any]:
+    def targets(self) -> list[dict[str, str]]:
+        result = [{"id": "local", "label": "Este PC · Windows"}]
+        if self.bc250.available():
+            result.append({"id": "bc250", "label": "BC-250 · Bazzite"})
+        return result
+
+    def status(self, target: str = "local") -> dict[str, Any]:
+        if target == "bc250":
+            if not self.config.game_streaming_enabled:
+                raise GameStreamingError("El streaming de juegos está desactivado.")
+            return self.bc250.status()
+        if target != "local":
+            raise ValueError("Destino de Sunshine no válido.")
         service_status = self._service_status()
         installed = SUNSHINE_EXECUTABLE.is_file() or service_status is not None
         running = service_status == "running"
@@ -121,7 +135,12 @@ class GameStreamingManager:
             ),
         }
 
-    def prepare(self) -> dict[str, Any]:
+    def prepare(self, target: str = "local") -> dict[str, Any]:
+        if target == "bc250":
+            # Never start/reconfigure a remote streaming service implicitly.
+            return self.status(target)
+        if target != "local":
+            raise ValueError("Destino de Sunshine no válido.")
         if not self.config.game_streaming_enabled:
             raise GameStreamingError("El streaming de juegos está desactivado.")
         status = self.status()
@@ -172,7 +191,11 @@ class GameStreamingManager:
             )
         return status
 
-    def pair(self, pin: str, name: str = "iPhone de Iago") -> dict[str, Any]:
+    def pair(self, pin: str, name: str = "iPhone de Iago", target: str = "local") -> dict[str, Any]:
+        if target not in {"local", "bc250"}:
+            raise ValueError("Destino de Sunshine no válido.")
+        if not self.config.game_streaming_enabled:
+            raise GameStreamingError("El streaming de juegos está desactivado.")
         pin_value = str(pin).strip()
         if len(pin_value) != 4 or any(
             character not in "0123456789" for character in pin_value
@@ -182,6 +205,9 @@ class GameStreamingManager:
         if not name_value:
             name_value = "iPhone de Iago"
         with self._lock:
+            if target == "bc250":
+                self._record_pair_attempt()
+                return self.bc250.pair(pin_value, name_value)
             return self._pair_locked(pin_value, name_value)
 
     def _pair_locked(self, pin_value: str, name_value: str) -> dict[str, Any]:

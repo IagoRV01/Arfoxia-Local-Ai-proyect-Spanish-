@@ -6,6 +6,34 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Añadido — PIN de Moonlight a Sunshine de la BC-250 desde Arfoxia — 2026-10-26
+
+- Selector **Jugar · PC / BC-250** en Expo Go, con estado y PIN ligados al destino
+  explícito. Mantiene el contrato anterior para Windows, borra el PIN al cambiar
+  de equipo, rechaza respuestas de otro destino y evita dobles envíos. El contador
+  de clientes no afirma que el iPhone actual ya esté vinculado.
+- Puente efímero por el alias SSH registrado de la BC-250, con clave de host
+  estricta, sin túneles/listeners ni instalación remota. Solo permite estado y
+  PIN en el Sunshine de loopback; sin proxy/redirect, reinicios de Sunshine,
+  restablecimiento de cuentas ni eliminación de certificados existentes.
+- Cuenta de Sunshine introducida en cuadro nativo privado de Windows y validada
+  antes de guardarse con DPAPI/ACL, separada de la del PC. Credenciales y PIN por
+  stdin dentro de SSH, nunca en argv, móvil, chat o auditoría. Errores distinguen
+  credenciales rechazadas de fallos de conexión/API. Respeta la política local
+  de autorización y el límite de cinco envíos de PIN por minuto.
+- Estado posterior fallido no reenvía un PIN ya aceptado. Indica que la BC-250
+  necesita Tailscale conectado para jugar fuera de casa, aunque el puente de PIN
+  siga funcionando a través del PC. No modifica cuentas de Tailscale ni GPU/IA.
+- Parcheo compatible a Expo 58.0.19, FileSystem 58.0.11 e Image 58.0.17 para
+  superar las recomendaciones actuales del SDK 58, sin migrar de versión mayor.
+  Auditoría: cinco avisos altos transitivos, ninguno crítico; no se fuerza
+  downgrade ni `audit fix --force`.
+- Validación: 1.170 tests Python, 68 tests móviles, tipos TypeScript, 20/20
+  controles Expo Doctor y exportación iOS. API autenticada y bundle probados
+  en el servidor activo; se conservó el modo Normal sin trabajos en curso.
+  Cuenta real de la BC-250 verificada y el propietario confirma que envió el PIN
+  desde Expo Go y Moonlight completó el emparejamiento.
+
 ### Corregido — Compatibilidad con Expo Go SDK 58 — 2026-10-23
 
 - Migración de SDK 57 a Expo 58.0.17, React Native 0.88.0 y React 19.3.0;

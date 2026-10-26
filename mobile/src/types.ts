@@ -382,7 +382,16 @@ export interface PcStatus {
   gpus?: DetailedGpuStatus[];
 }
 
+export type GameStreamingTarget = 'local' | 'bc250';
+
+export interface GameStreamingDestination {
+  id: GameStreamingTarget;
+  label: string;
+}
+
 export interface GameStreamingStatus {
+  target?: GameStreamingTarget;
+  target_label?: string;
   enabled: boolean;
   installed: boolean;
   service_status: string;

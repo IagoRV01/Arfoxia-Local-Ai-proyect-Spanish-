@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   AppState,
@@ -20,8 +20,9 @@ import {
   moonlightShortcutUrl,
   normalizeMoonlightPin,
   usableMoonlightHost,
+  checkedStreamingTarget,
 } from './moonlight';
-import type { GameStreamingStatus } from './types';
+import type { GameStreamingStatus, GameStreamingTarget, GameStreamingDestination } from './types';
 import {
   Button,
   ErrorBanner,
@@ -44,6 +45,10 @@ export function GamingLauncher({ api, onUnauthorized }: Props) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [target, setTarget] = useState<GameStreamingTarget>('local');
+  const targetRef = useRef<GameStreamingTarget>('local');
+  const pairingRef = useRef(false);
+  const [targets, setTargets] = useState<GameStreamingDestination[]>([{ id: 'local', label: 'Este PC · Windows' }]);
 
   const handleError = useCallback(
     (reason: unknown) => {
@@ -74,44 +79,47 @@ export function GamingLauncher({ api, onUnauthorized }: Props) {
   }, []);
 
   const prepare = useCallback(async () => {
+    const requestedTarget = targetRef.current;
     setBusy(true);
     setError('');
     setCopied(false);
     try {
-      const nextStatus = await api.prepareGameStreaming();
-      setStatus(nextStatus);
-      if (nextStatus.paired) {
-        setVisible(false);
-        await openShortcut();
-      } else {
-        setVisible(true);
+      try {
+        const result = await api.gameStreamingTargets();
+        setTargets(result.targets.filter((row) => row.id === 'local' || row.id === 'bc250'));
+      } catch (reason) {
+        if (!(reason instanceof ApiError && reason.status === 404)) throw reason;
+        // An older backend still supports local pairing, never remote fallback.
       }
+      const nextStatus = await api.prepareGameStreaming(requestedTarget);
+      if (targetRef.current !== requestedTarget) return;
+      setStatus(nextStatus);
+      setVisible(true);
     } catch (reason) {
       setVisible(true);
       handleError(reason);
       try {
-        setStatus(await api.gameStreamingStatus());
+        const nextStatus = await api.gameStreamingStatus(requestedTarget);
+        if (targetRef.current === requestedTarget) setStatus(nextStatus);
       } catch {
         // The original actionable error is more useful than a second failure.
       }
     } finally {
       setBusy(false);
     }
-  }, [api, handleError, openShortcut]);
+  }, [api, handleError]);
 
   const launch = useCallback(() => {
-    if (status?.paired) {
-      void openShortcut();
-      return;
-    }
+    setVisible(true);
     void prepare();
-  }, [openShortcut, prepare, status]);
+  }, [prepare]);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (requestedTarget = targetRef.current) => {
     setBusy(true);
     setError('');
     try {
-      setStatus(await api.gameStreamingStatus());
+      const nextStatus = await api.gameStreamingStatus(requestedTarget);
+      if (targetRef.current === requestedTarget) setStatus(nextStatus);
     } catch (reason) {
       handleError(reason);
     } finally {
@@ -119,14 +127,26 @@ export function GamingLauncher({ api, onUnauthorized }: Props) {
     }
   }, [api, handleError]);
 
+  const selectTarget = useCallback((next: GameStreamingTarget) => {
+    if (busy || pairingRef.current || next === targetRef.current) return;
+    targetRef.current = next;
+    setTarget(next);
+    setPin('');
+    setStatus(null);
+    setCopied(false);
+    void refresh(next);
+  }, [busy, refresh]);
+
   const pair = useCallback(async () => {
-    if (pin.length !== 4) {
+    if (pin.length !== 4 || pairingRef.current) {
       return;
     }
     setPairing(true);
+    pairingRef.current = true;
+    const requestedTarget = targetRef.current;
     setError('');
     try {
-      const result = await api.pairGameStreaming(pin);
+      const result = await api.pairGameStreaming(pin, 'iPhone de Iago', requestedTarget);
       setPin('');
       if (result.requires_authorization) {
         Alert.alert(
@@ -140,7 +160,8 @@ export function GamingLauncher({ api, onUnauthorized }: Props) {
       }
       const nextStatus = result.data as unknown as GameStreamingStatus | null;
       if (nextStatus && typeof nextStatus.ready === 'boolean') {
-        setStatus(nextStatus);
+        checkedStreamingTarget(nextStatus, requestedTarget);
+        if (targetRef.current === requestedTarget) setStatus(nextStatus);
       }
       Alert.alert(
         'PIN enviado a Sunshine',
@@ -150,6 +171,7 @@ export function GamingLauncher({ api, onUnauthorized }: Props) {
       handleError(reason);
     } finally {
       setPairing(false);
+      pairingRef.current = false;
     }
   }, [api, handleError, pin]);
 
@@ -188,7 +210,7 @@ export function GamingLauncher({ api, onUnauthorized }: Props) {
     <>
       <View style={styles.launcherBar}>
         <Button
-          label="Jugar en mi PC"
+          label="Jugar · PC / BC-250"
           icon="🎮"
           busy={busy && !visible}
           onPress={launch}
@@ -227,9 +249,17 @@ export function GamingLauncher({ api, onUnauthorized }: Props) {
             >
               {error ? <ErrorBanner message={error} /> : null}
 
+              <View style={styles.actions}>
+                {targets.map((row) => (
+                  <Button key={row.id} label={row.id === 'bc250' ? 'BC-250' : 'Este PC'}
+                    variant={target === row.id ? 'secondary' : 'ghost'}
+                    disabled={busy || pairing} onPress={() => selectTarget(row.id)} />
+                ))}
+              </View>
+
               <View style={styles.statusCard}>
                 <SectionTitle
-                  title="PC de juego"
+                  title={target === 'bc250' ? 'BC-250 · Bazzite' : 'PC de juego · Windows'}
                   subtitle={status?.message || 'Comprobando Sunshine…'}
                   trailing={
                     <StatusPill
@@ -266,11 +296,11 @@ export function GamingLauncher({ api, onUnauthorized }: Props) {
                   />
                   <Fact
                     label="Mando virtual"
-                    value={status?.gamepad_ready ? 'Preparado' : 'Pendiente'}
+                    value={target === 'bc250' ? 'Según configuración de Linux' : status?.gamepad_ready ? 'Preparado' : 'Pendiente'}
                   />
                   <Fact
-                    label="Moonlight"
-                    value={status?.paired ? 'Emparejado' : 'Sin emparejar'}
+                    label="Clientes vinculados"
+                    value={status?.paired_clients ? `${status.paired_clients} guardados en Sunshine` : 'Ninguno confirmado'}
                   />
                 </View>
                 <Button
@@ -287,8 +317,11 @@ export function GamingLauncher({ api, onUnauthorized }: Props) {
                 <Text style={styles.stepNumber}>1</Text>
                 <View style={styles.stepBody}>
                   <Text style={styles.stepTitle}>
-                    Añade este PC en Moonlight
+                    Añade {target === 'bc250' ? 'la BC-250' : 'este PC'} en Moonlight
                   </Text>
+                  {target === 'bc250' && status && !status.tailscale_ready ? (
+                    <Text style={styles.stepText}>La BC-250 no tiene Tailscale conectado: este host sirve en la red de casa. El PIN sí puede enviarse por el PC mediante SSH.</Text>
+                  ) : null}
                   <Text style={styles.stepText}>
                     En Moonlight pulsa «+» y pega este host privado. Para el
                     primer emparejamiento, mantén el iPhone en la Wi‑Fi de casa.
@@ -311,7 +344,7 @@ export function GamingLauncher({ api, onUnauthorized }: Props) {
               <View style={styles.stepCard}>
                 <Text style={styles.stepNumber}>2</Text>
                 <View style={styles.stepBody}>
-                  <Text style={styles.stepTitle}>Confirma el PIN</Text>
+                  <Text style={styles.stepTitle}>Envía el PIN a {target === 'bc250' ? 'BC-250' : 'este PC'}</Text>
                   {status?.pin_submission_available ? (
                     <>
                       <Text style={styles.stepText}>
@@ -343,10 +376,13 @@ export function GamingLauncher({ api, onUnauthorized }: Props) {
                       </View>
                     </>
                   ) : (
-                    <Text style={styles.stepText}>
-                      Si Sunshine ya tenía una cuenta propia, introduce el PIN
-                      una vez desde https://localhost:47990 en el PC.
-                    </Text>
+                    <>
+                      <Text style={styles.stepText}>
+                        {target === 'bc250' ? 'Autoriza su cuenta de Sunshine una sola vez en el cuadro privado de Windows. No escribas la contraseña en el chat.' : 'Si Sunshine ya tenía una cuenta propia, introduce el PIN una vez desde https://localhost:47990 en el PC.'}
+                      </Text>
+                      {target === 'bc250' ? <Button label="Autorizar Sunshine en Windows" variant="ghost" disabled={busy || pairing}
+                        onPress={() => { void api.setupBc250Sunshine().then(() => Alert.alert('Configuración privada', 'Introduce la cuenta de Sunshine de la BC-250 en el cuadro que Arfoxia muestra en Windows. Después pulsa Volver a comprobar.')).catch(handleError); }} /> : null}
+                    </>
                   )}
                 </View>
               </View>

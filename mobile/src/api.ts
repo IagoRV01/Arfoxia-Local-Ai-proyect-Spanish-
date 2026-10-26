@@ -3,6 +3,7 @@ import { File } from 'expo-file-system';
 
 import { conversationAttachmentSource } from './conversations';
 import { MODEL_MODE_ENDPOINT, modelModeRequest } from './modelMode';
+import { checkedStreamingTarget, gameStreamingPath, gameStreamingPairBody } from './moonlight';
 import { waitForWorkTask, type WorkTask } from './workTasks';
 import type {
   ActionResult,
@@ -16,6 +17,8 @@ import type {
   DeleteConversationResponse,
   Health,
   GameStreamingStatus,
+  GameStreamingDestination,
+  GameStreamingTarget,
   InteractionKind,
   ModelStatus,
   RequestedModelMode,
@@ -284,24 +287,34 @@ export class ArfoxiaApi {
     });
   }
 
-  gameStreamingStatus(): Promise<GameStreamingStatus> {
-    return this.request<GameStreamingStatus>('/api/gaming/status');
+  gameStreamingTargets(): Promise<{ targets: GameStreamingDestination[] }> {
+    return this.request('/api/gaming/targets');
   }
 
-  prepareGameStreaming(): Promise<GameStreamingStatus> {
-    return this.request<GameStreamingStatus>('/api/gaming/prepare', {
+  setupBc250Sunshine(): Promise<{ ok: boolean }> {
+    return this.request('/api/gaming/bc250/setup', { method: 'POST' });
+  }
+
+  gameStreamingStatus(target: GameStreamingTarget = 'local'): Promise<GameStreamingStatus> {
+    return this.request<GameStreamingStatus>(gameStreamingPath('status', target), { timeoutMs: 35_000 })
+      .then((value) => checkedStreamingTarget(value, target));
+  }
+
+  prepareGameStreaming(target: GameStreamingTarget = 'local'): Promise<GameStreamingStatus> {
+    return this.request<GameStreamingStatus>(gameStreamingPath('prepare', target), {
       method: 'POST',
       timeoutMs: 60_000,
-    });
+    }).then((value) => checkedStreamingTarget(value, target));
   }
 
   pairGameStreaming(
     pin: string,
     name = 'iPhone de Iago',
+    target: GameStreamingTarget = 'local',
   ): Promise<ActionResult> {
     return this.request<ActionResult>('/api/gaming/pair', {
       method: 'POST',
-      body: { pin, name },
+      body: gameStreamingPairBody(pin, name, target),
       timeoutMs: 60_000,
     });
   }

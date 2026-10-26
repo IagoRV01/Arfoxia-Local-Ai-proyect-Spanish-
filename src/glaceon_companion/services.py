@@ -667,7 +667,7 @@ class CompanionService:
             config, self.database, store.data_dir, self.events
         )
         self.authorization = LocalAuthorizationManager(store.data_dir)
-        self.game_streaming = GameStreamingManager(config, store)
+        self.game_streaming = GameStreamingManager(config, store, self.travel)
         self._remote_authorization_lock = threading.RLock()
         self._remote_authorization_times: deque[float] = deque()
         self.online_search = OnlineSearchClient()
@@ -703,14 +703,14 @@ class CompanionService:
         status["pc_administrator"] = is_administrator()
         return status
 
-    def game_streaming_status(self) -> dict[str, Any]:
-        return self.game_streaming.status()
+    def game_streaming_status(self, target: str = "local") -> dict[str, Any]:
+        return self.game_streaming.status() if target == "local" else self.game_streaming.status(target)
 
-    def prepare_game_streaming(self) -> dict[str, Any]:
-        return self.game_streaming.prepare()
+    def prepare_game_streaming(self, target: str = "local") -> dict[str, Any]:
+        return self.game_streaming.prepare() if target == "local" else self.game_streaming.prepare(target)
 
-    def pair_game_streaming(self, pin: str, name: str) -> dict[str, Any]:
-        return self.game_streaming.pair(pin, name)
+    def pair_game_streaming(self, pin: str, name: str, target: str = "local") -> dict[str, Any]:
+        return self.game_streaming.pair(pin, name) if target == "local" else self.game_streaming.pair(pin, name, target)
 
     async def set_model_mode(self, mode: str) -> dict[str, Any]:
         """Switch the runtime model profile atomically and warm power mode."""
@@ -1247,6 +1247,11 @@ class CompanionService:
             elif action == "game_streaming_pair":
                 pin = args.get("pin")
                 name = args.get("name", "iPhone de Iago")
+                target = args.get("target", "local")
+                if (not isinstance(target, str) or target not in {"local", "bc250"}
+                        or set(args) - {"pin", "name", "target"}):
+                    return self._record_external_action(ActionResult(False, action,
+                        "Destino de Sunshine no válido."), args)
                 if (
                     not isinstance(pin, str)
                     or len(pin) != 4
@@ -1298,10 +1303,11 @@ class CompanionService:
             elif action == "codex_open_task":
                 result = self._open_codex_task(args)
             elif action == "game_streaming_pair":
-                stream_status = self.pair_game_streaming(
-                    str(args.get("pin") or ""),
-                    str(args.get("name") or "iPhone de Iago"),
-                )
+                pin = str(args.get("pin") or "")
+                name = str(args.get("name") or "iPhone de Iago")
+                target = args.get("target", "local")
+                stream_status = (self.pair_game_streaming(pin, name) if target == "local"
+                    else self.pair_game_streaming(pin, name, target))
                 result = ActionResult(
                     True,
                     action,
@@ -1371,7 +1377,8 @@ class CompanionService:
             return (
                 "Permitir que «"
                 f"{self._short_value(args.get('name') or 'iPhone de Iago')}"
-                "» controle el PC mediante Moonlight"
+                + ("» controle la BC-250 mediante Moonlight" if args.get("target") == "bc250"
+                   else "» controle el PC mediante Moonlight")
             )
         if action == "open_target":
             return f"Abrir o ejecutar «{self._short_value(args.get('target'))}»"

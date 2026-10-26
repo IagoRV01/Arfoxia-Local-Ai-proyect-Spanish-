@@ -4,7 +4,7 @@ import asyncio
 import hmac
 import threading
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import uvicorn
 from fastapi import (
@@ -112,6 +112,7 @@ class GameStreamingPairRequest(BaseModel):
 
     pin: str = Field(pattern=r"^[0-9]{4}$")
     name: str = Field(default="iPhone de Iago", min_length=1, max_length=64)
+    target: Literal["local", "bc250"] = "local"
 
 
 def create_api(service: CompanionService, token: str, static_dir: Path) -> FastAPI:
@@ -440,13 +441,27 @@ def create_api(service: CompanionService, token: str, static_dir: Path) -> FastA
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.get("/api/gaming/status", dependencies=[auth])
-    async def gaming_status() -> dict[str, Any]:
-        return await asyncio.to_thread(service.game_streaming_status)
+    async def gaming_status(target: Literal["local", "bc250"] = "local") -> dict[str, Any]:
+        try:
+            return await asyncio.to_thread(service.game_streaming_status, target) if target != "local" else await asyncio.to_thread(service.game_streaming_status)
+        except GameStreamingError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/api/gaming/targets", dependencies=[auth])
+    async def gaming_targets():
+        return {"targets": service.game_streaming.targets()}
+
+    @app.post("/api/gaming/bc250/setup", dependencies=[auth])
+    async def setup_bc250_sunshine():
+        if not service.game_streaming.bc250.available():
+            raise HTTPException(status_code=409, detail="Registra la BC-250 por SSH antes de configurar Sunshine.")
+        service.events.put({"type": "ui", "action": "configure_bc250_sunshine"})
+        return {"ok": True}
 
     @app.post("/api/gaming/prepare", dependencies=[auth])
-    async def prepare_gaming() -> dict[str, Any]:
+    async def prepare_gaming(target: Literal["local", "bc250"] = "local") -> dict[str, Any]:
         try:
-            return await asyncio.to_thread(service.prepare_game_streaming)
+            return await asyncio.to_thread(service.prepare_game_streaming, target) if target != "local" else await asyncio.to_thread(service.prepare_game_streaming)
         except GameStreamingError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -455,7 +470,7 @@ def create_api(service: CompanionService, token: str, static_dir: Path) -> FastA
         result = await asyncio.to_thread(
             service.execute_action,
             "game_streaming_pair",
-            {"pin": request.pin, "name": request.name},
+            {"pin": request.pin, "name": request.name, **({"target": request.target} if request.target != "local" else {})},
             False,
             origin="api",
         )

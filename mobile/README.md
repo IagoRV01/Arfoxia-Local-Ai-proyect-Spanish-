@@ -58,16 +58,46 @@ cifrado de iOS.
   reales de administrador cuando el propietario los habilita localmente.
 - Captura autenticada del monitor, apertura de aplicaciones permitidas y
   liberación manual de VRAM.
-- Botón fijo **🎮 Jugar en mi PC** con estado de Sunshine y Tailscale, copia del
+- Botón fijo **🎮 Jugar · PC / BC-250** con estado de Sunshine y Tailscale, copia del
   host privado, confirmación segura del PIN de Moonlight y acceso a la app.
 - Desemparejamiento que borra la clave del llavero.
+
+### Sunshine de la BC-250
+
+**Jugar · PC / BC-250** permite elegir **Este PC** o **BC-250** antes de consultar
+el estado o enviar el PIN de Moonlight. La BC-250 aparece si está registrada con
+el identificador `bc250` en Paseo entre dispositivos y su alias OpenSSH funciona.
+No se elige un equipo arbitrario por URL ni se cambia de destino automáticamente.
+
+1. En Windows, menú de Arfoxia → **Configurar Sunshine de la BC-250…**, o pulsa
+   **Autorizar Sunshine en Windows** desde la app. Introduce la cuenta del panel
+   de Sunshine, no la de Bazzite. Se valida por SSH antes de guardarla protegida
+   con DPAPI, separada de la cuenta del Sunshine de Windows. No se restablece
+   ninguna contraseña ni se modifican los clientes ya vinculados.
+2. En Moonlight, selecciona la BC-250 e inicia el emparejamiento. Copia las cuatro
+   cifras a Arfoxia → **Jugar · PC / BC-250** → **BC-250** → **Emparejar**.
+   Ya no tienes que introducirlas en el panel web de Sunshine. iOS no permite
+   leer automáticamente el PIN de otra app: escribirlo en Arfoxia sigue siendo
+   necesario. Los clientes ya emparejados no necesitan repetirlo.
+3. Arfoxia envía el PIN por SSH al servicio local de la BC-250; no abre su panel
+   en Internet ni almacena PINs. Si está activada la protección local de acciones,
+   la solicitud se autoriza en Windows con el destino exacto; respeta también la
+   opción local del propietario que desactiva esa confirmación.
+
+El contador de clientes es el total guardado por Sunshine, no una afirmación de
+que el móvil actual esté emparejado. Un PIN aceptado exige comprobar la conexión
+en Moonlight; un error al refrescar el estado no vuelve a enviar el PIN.
+Sunshine debe estar activo en la BC-250: el botón no reinicia ni reconfigura su
+servicio. Para jugar fuera de casa, Tailscale debe estar conectado también allí;
+sin esa conexión se muestra la dirección de la LAN y una advertencia. El PC de
+Arfoxia debe permanecer encendido para actuar como puente de control.
 
 ## Jugar con Sunshine y Moonlight
 
 1. Instala la app oficial
    [Moonlight Game Streaming](https://apps.apple.com/es/app/moonlight-game-streaming/id1000551566).
 2. La primera vez, usa el iPhone en la misma Wi‑Fi que el PC. Pulsa
-   **🎮 Jugar en mi PC**, copia el host que muestra Arfoxia y añádelo con **+**
+   **🎮 Jugar · PC / BC-250**, elige **Este PC**, copia el host que muestra Arfoxia y añádelo con **+**
    dentro de Moonlight.
 3. Escribe en Arfoxia las cuatro cifras que enseña Moonlight. El PIN viaja a la
    API autenticada de Arfoxia; las credenciales administrativas de Sunshine no

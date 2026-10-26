@@ -119,6 +119,27 @@ atender su propia API. Tailscale necesita otro nodo siempre activo en la LAN par
 emitir Wake-on-LAN; hasta que exista, la app muestra esa limitación y no ofrece
 un botón que simule poder despertar el equipo.
 
+### PIN de Sunshine en BC-250 por SSH
+
+- Solo el destino `bc250` registrado localmente; la API no acepta host, puerto,
+  usuario SSH, comandos ni URL de Sunshine suministrados por el cliente. Conserva
+  autenticación de Arfoxia, política de autorización local y cinco PINs/minuto.
+- OpenSSH reutiliza la identidad y el alias del propietario con `BatchMode` y
+  `StrictHostKeyChecking=yes`; no acepta claves nuevas automáticamente. No se
+  crean listeners públicos ni se modifican los puertos o cuentas de la BC-250.
+- Usuario/contraseña Sunshine separados de Windows, validados antes de guardarse
+  bajo DPAPI/ACL del almacén local. El cuadro nativo enmascara y limpia el campo;
+  no hay contraseña en móvil, conversación, argumentos del proceso ni auditoría.
+  La petición efímera viaja por stdin dentro de SSH y solo existe en memoria.
+- El agente solo permite consulta de clientes y envío de PIN al loopback HTTPS
+  literal de la BC-250. No sigue redirecciones ni proxies. Sus errores son
+  acotados y no reenvía texto arbitrario del servidor o stderr a la app.
+- No restablece cuentas ni elimina certificados de clientes; no reintenta un
+  POST cuyo resultado es incierto. La verificación real de cuenta/listado no
+  equivale a haber completado una nueva sesión criptográfica de Moonlight.
+- La conectividad SSH del PC con la BC-250 no garantiza que Moonlight pueda
+  alcanzarla desde Internet: necesita su propio Tailscale u otra ruta privada.
+
 ## Interacciones de escritorio
 
 La vista previa del limón y la colocación de la cama se implementan dentro de Qt, sin inyectar entrada en otras aplicaciones. La capa temporal solo observa movimiento y el clic que completa la acción, se cancela a los 30 segundos y libera cualquier captura de teclado al cerrarse. Los objetos animados siguen siendo transparentes a la entrada; la cama solo recibe el ratón dentro de su máscara visible para poder arrastrarla y nunca toma el foco del teclado.
@@ -179,8 +200,8 @@ Se reducen a un máximo de 1600×1000, se guardan como WebP con un identificador
   credenciales administrativas.
 - Una ruta Tailscale indirecta mediante DERP puede añadir demasiada latencia para
   jugar; conviene verificar que PC e iPhone establecen una conexión directa.
-- Expo SDK 58 conserva cuatro avisos altos de `npm audit` (sin críticos,
-  comprobado el 2026-10-23), correspondientes a `node-forge` y su cadena de
+- Expo SDK 58.0.19 conserva cinco avisos altos de `npm audit` (sin críticos,
+  comprobado el 2026-10-26), correspondientes a `zod`, `node-forge` y su cadena de
   certificados/firma en la CLI de Expo. Los parches compatibles de `markdown-it`
   y `brace-expansion` ya están instalados. No se fuerza la degradación a Expo
   44 que propone npm. Esta actualización no declara el árbol libre de avisos.

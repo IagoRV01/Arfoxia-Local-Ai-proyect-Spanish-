@@ -51,4 +51,22 @@ La app React Native/Expo es el cliente de iPhone viable desde Windows y consume 
 
 El plano de control y el vídeo siguen rutas distintas. Expo usa la API HTTPS de Arfoxia a través de Tailscale Serve; Moonlight se conecta directamente al MagicDNS o IP Tailscale del PC y a los puertos nativos TCP/UDP de Sunshine. Expo no transporta ni representa el streaming. Como Moonlight iOS no registra un enlace profundo público, el lanzador invoca opcionalmente un Atajo de iOS llamado `Abrir Moonlight` y deja la selección del equipo o juego dentro de Moonlight.
 
+El mismo lanzador admite el destino tipado `bc250`. `GET /api/gaming/targets`
+solo lo anuncia cuando está registrado localmente en Paseo entre dispositivos.
+Estado/preparación aceptan `target=bc250`; el POST de PIN lo lleva en el cuerpo
+y lo conserva en el challenge local. Omitirlo mantiene el contrato de Windows.
+`SunshineSSHBridge` usa exclusivamente el alias registrado, OpenSSH en modo no
+interactivo y claves de host estrictas. Envía credenciales y PIN como JSON por
+stdin, no en argumentos. Ejecuta un agente efímero de biblioteca estándar que
+solo consulta clientes o envía un PIN a `https://127.0.0.1:47990` en la BC-250,
+sin instalar archivos/servicios ni crear túneles/listeners. La excepción TLS
+autofirmada se limita a ese loopback; se rechazan redirecciones y proxies.
+
+La cuenta se introduce/valida en `SunshineSetupDialog` nativo, nunca en el chat
+ni en una API de credenciales. Se guarda en un registro DPAPI separado dentro
+del almacén ya protegido, conservando la cuenta Windows y el token de Arfoxia.
+`POST /api/gaming/bc250/setup` únicamente solicita abrir ese cuadro en Windows.
+La UI borra el PIN al cambiar de destino, rechaza respuestas de otro destino y
+no confunde el contador agregado de clientes con el emparejamiento del iPhone.
+
 Una futura compilación independiente o app SwiftUI puede mantener este contrato cuando haya acceso a macOS, Xcode y una identidad de firma.

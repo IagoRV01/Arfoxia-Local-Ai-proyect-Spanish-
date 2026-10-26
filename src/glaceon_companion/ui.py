@@ -3974,6 +3974,20 @@ class PetWindow(QWidget):
                 self.show_speech(str(event.get("message") or ""), source="chat")
             elif event.get("type") == "ui" and event.get("action") == "show_chat":
                 self.show_chat()
+            elif event.get("type") == "ui" and event.get("action") == "configure_bc250_sunshine":
+                self.show_bc250_sunshine_setup()
+
+    def show_bc250_sunshine_setup(self) -> None:
+        from .sunshine_setup import SunshineSetupDialog
+        existing = getattr(self, "bc250_sunshine_dialog", None)
+        if existing is not None and existing.isVisible():
+            existing.raise_()
+            existing.activateWindow()
+            return
+        self.bc250_sunshine_dialog = SunshineSetupDialog(self.service.game_streaming.bc250, self)
+        self.bc250_sunshine_dialog.show()
+        self.bc250_sunshine_dialog.raise_()
+        self.bc250_sunshine_dialog.activateWindow()
 
     def show_travel(self) -> None:
         if self.travel_dialog is None:
@@ -4028,6 +4042,8 @@ class DesktopController(QObject):
         pair_action.triggered.connect(self.pet.show_pairing)
         travel_action = QAction("Paseo entre dispositivos…", tray_menu)
         travel_action.triggered.connect(self.pet.show_travel)
+        sunshine_bc250_action = QAction("Configurar Sunshine de la BC-250…", tray_menu)
+        sunshine_bc250_action.triggered.connect(self.pet.show_bc250_sunshine_setup)
         sit_action.triggered.connect(lambda: service.interact("sit"))
         resume_action.triggered.connect(lambda: service.interact("resume"))
         quit_action.triggered.connect(QApplication.quit)
@@ -4038,6 +4054,7 @@ class DesktopController(QObject):
             gpu_action,
             pair_action,
             travel_action,
+            sunshine_bc250_action,
             sit_action,
             resume_action,
         ):
