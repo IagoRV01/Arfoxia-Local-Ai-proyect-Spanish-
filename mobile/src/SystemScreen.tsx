@@ -142,7 +142,7 @@ export function SystemScreen({ api, onUnauthorized }: Props) {
 
   const switchModelMode = useCallback(
     async (targetMode: RequestedModelMode) => {
-      if (requestedModelMode(model) === targetMode) {
+      if (requestedModelMode(model) === targetMode && !model?.ai_paused) {
         return;
       }
       setBusyAction(modelBusyKey(targetMode));
@@ -214,8 +214,8 @@ export function SystemScreen({ api, onUnauthorized }: Props) {
 
   const unload = useCallback(() => {
     Alert.alert(
-      'Liberar la VRAM',
-      'Arfoxia descargará sus modelos de las gráficas. Se volverán a cargar al hablar con ella.',
+      'Apagar IA y liberar VRAM',
+      'Descarga todos los modelos de memoria sin borrar sus archivos. La mascota sigue visible, pero la IA no volverá a cargarse hasta que actives un perfil. Si hay un turno activo, esperará a que termine.',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -227,7 +227,7 @@ export function SystemScreen({ api, onUnauthorized }: Props) {
               .then(() => {
                 Alert.alert(
                   'VRAM liberada',
-                  'Los modelos locales se han descargado.',
+                  'IA apagada. Pulsa «Activar IA local» o selecciona un perfil para volver a hablar.',
                 );
                 return refresh();
               })
@@ -333,7 +333,7 @@ export function SystemScreen({ api, onUnauthorized }: Props) {
         <View style={styles.currentModel}>
           <Text style={styles.currentModelLabel}>Modelo actual</Text>
           <Text style={styles.modelName}>
-            {model?.model || 'Consultando…'}
+            {model?.ai_paused ? 'IA apagada para jugar' : model?.model || 'Consultando…'}
           </Text>
           {residentModels?.length ? (
             <Text style={styles.currentModelMeta}>
@@ -367,7 +367,7 @@ export function SystemScreen({ api, onUnauthorized }: Props) {
               key={mode}
               mode={mode}
               status={model}
-              active={currentMode === mode}
+              active={currentMode === mode && !model?.ai_paused}
               busy={
                 busyAction === modelBusyKey(mode) ||
                 Boolean(model?.switching && model.switching_to === mode)
@@ -384,11 +384,11 @@ export function SystemScreen({ api, onUnauthorized }: Props) {
         </View>
 
         <Button
-          label="Liberar toda la VRAM de Arfoxia"
+          label={model?.ai_paused ? 'Activar IA local' : 'Apagar IA · liberar todos los modelos'}
           variant="ghost"
           busy={busyAction === 'unload'}
           disabled={Boolean(busyAction) || Boolean(model?.switching)}
-          onPress={unload}
+          onPress={model?.ai_paused ? () => void switchModelMode('normal') : unload}
         />
       </Card>
 

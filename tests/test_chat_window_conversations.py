@@ -118,6 +118,20 @@ def test_gpu_manager_coalesces_periodic_status_requests(app):
         dialog.close()
 
 
+def test_gpu_manager_can_reactivate_normal_when_paused(app):
+    calls = []
+    dialog = GpuManagerDialog(SimpleNamespace(), SimpleNamespace(set_model_mode=calls.append))
+    try:
+        dialog._on_status({"requested_mode": "normal", "ai_paused": True, "gpus": []})
+        assert dialog.normal_button.isEnabled()
+        assert dialog.normal_button.text() == "Activar IA local"
+        assert "apagada" in dialog.state_label.text()
+        dialog.normal_button.click()
+        assert calls == ["normal"]
+    finally:
+        dialog.close()
+
+
 class FakeBridge(QObject):
     chat_ready = Signal(object)
     chat_error = Signal(object)

@@ -797,6 +797,8 @@ class ChatWindow(QDialog):
             "Permanece cargado hasta que cambies de modo o liberes la VRAM manualmente."
         )
         self.gpu_button = QPushButton("GPU")
+        self.ai_toggle_button = QPushButton("Apagar IA · liberar VRAM")
+        self.ai_toggle_button.setToolTip("Descarga todos los modelos de memoria, sin borrar archivos. No se recargarán hasta que actives la IA.")
         self.gpu_button.setToolTip(
             "Abre el gestor de las dos GPU y del servidor Ollama de 8 GB."
         )
@@ -844,6 +846,7 @@ class ChatWindow(QDialog):
         title_row.addWidget(self.power_button)
         title_row.addWidget(self.dual_button)
         layout.addLayout(title_row)
+        layout.addWidget(self.ai_toggle_button)
         layout.addWidget(self.status)
         layout.addWidget(self.load_older_button)
         layout.addWidget(self.transcript, 1)
@@ -882,6 +885,10 @@ class ChatWindow(QDialog):
         self.power_button.clicked.connect(self.toggle_power_mode)
         self.dual_button.clicked.connect(self.activate_dual_mode)
         self.gpu_button.clicked.connect(self.show_gpu_manager)
+        self.ai_toggle_button.clicked.connect(self.toggle_local_ai)
+        if getattr(self.bridge, "model_unload_ready", None) is not None:
+            self.bridge.model_unload_ready.connect(self.on_model_mode_ready)
+            self.bridge.model_unload_error.connect(self.on_model_mode_error)
         self.bridge.chat_ready.connect(self.on_reply)
         self.bridge.chat_error.connect(self.on_error)
         progress_signal = getattr(self.bridge, "work_progress", None)
@@ -916,6 +923,11 @@ class ChatWindow(QDialog):
         runtime = getattr(self.service, "ollama", None)
         mode = getattr(runtime, "requested_mode", "normal")
         pending = self._model_switch_pending or getattr(runtime, "switching_to", None)
+        paused = bool(getattr(self.service.config, "local_ai_paused", False))
+        self.ai_toggle_button.setEnabled(not pending)
+        self.ai_toggle_button.setText("Activar IA local" if paused else "Apagar IA · liberar VRAM")
+        if pending == "unload":
+            self.ai_toggle_button.setText("Esperando turno y liberando modelos…")
         power = mode in {"power", "dual"}
         self.power_button.setEnabled(not pending)
         self.power_button.setText(
@@ -965,7 +977,17 @@ class ChatWindow(QDialog):
         self.refresh_power_button()
         setter(target)
 
-    def on_model_mode_ready(self, status: Any) -> None:
+    def toggle_local_ai(self) -> None:
+        if self._model_switch_pending or getattr(self.service.ollama, "switching_to", None):
+            return
+        if self.service.config.local_ai_paused:
+            self._request_chat_model_mode("normal")
+        else:
+            self._model_switch_pending = "unload"
+            self.refresh_power_button()
+            self.bridge.unload_models()
+
+    def on_model_mode_ready(self, status: Any = None) -> None:
         self._model_switch_pending = None
         self.refresh_power_button()
         self.refresh_state()
@@ -2189,7 +2211,7 @@ class GpuManagerDialog(QDialog):
         second_row = QHBoxLayout()
         self.power_button = QPushButton("⚡ Potencia · GPU 16 GB")
         self.dual_button = QPushButton("✦ Dual · Qwen3.8 Extra High · 16 + 5,5 GB")
-        self.unload_button = QPushButton("Liberar toda la VRAM")
+        self.unload_button = QPushButton("Apagar IA · liberar toda la VRAM")
         self.refresh_button = QPushButton("Actualizar")
         second_row.addWidget(self.power_button, 1)
         second_row.addWidget(self.unload_button)
@@ -2253,6 +2275,8 @@ class GpuManagerDialog(QDialog):
             "gaming_gpu": "Modelo pequeño · GPU de juego",
         }
         model = html.escape(str(status.get("model") or "Sin modelo seleccionado"))
+        if status.get("ai_paused"):
+            mode_labels[mode] = "IA apagada · activación manual"
         loaded = status.get("dual_loaded_models") if mode == "dual" else status.get("loaded_models")
         loaded_count = len(loaded) if isinstance(loaded, list) else 0
         loaded_label = "Modelos activos en modo Dual" if mode == "dual" else "Modelos activos en GPU de IA"
@@ -2404,7 +2428,9 @@ class GpuManagerDialog(QDialog):
         self.last_status = dict(value) if isinstance(value, dict) else {}
         self.telemetry.setHtml(self.status_html(self.last_status))
         mode = str(self.last_status.get("requested_mode") or "normal")
-        if mode == "dual":
+        if self.last_status.get("ai_paused"):
+            self.state_label.setText("IA apagada para jugar. Selecciona un perfil para reactivarla; la mascota sigue funcionando.")
+        elif mode == "dual":
             self.state_label.setText(str(self.last_status.get("dual_warning") or
                 "Dual Extra High activo. Avisos cada 20 s; libera la VRAM manualmente antes de jugar."))
         elif mode == "gaming_gpu":
@@ -2427,7 +2453,7 @@ class GpuManagerDialog(QDialog):
 
     def _on_unloaded(self) -> None:
         self.busy = False
-        self.state_label.setText("VRAM liberada. El perfil se cargará al volver a hablar.")
+        self.state_label.setText("IA apagada y modelos descargados. Activa un perfil para volver a hablar.")
         self._update_controls()
         self.refresh()
 
@@ -2465,7 +2491,8 @@ class GpuManagerDialog(QDialog):
             and gaming_installed is not False
             and mode != "gaming_gpu"
         )
-        self.normal_button.setEnabled(controls_available and mode != "normal")
+        paused = bool(self.last_status.get("ai_paused"))
+        self.normal_button.setEnabled(controls_available and (mode != "normal" or paused))
         self.dual_button.setEnabled(controls_available and not game_active
             and self.last_status.get("dual_model_installed") is True and mode != "dual")
         self.dual_button.setText("✦ Dual activo · ambas GPU" if mode == "dual"
@@ -2483,7 +2510,7 @@ class GpuManagerDialog(QDialog):
             else "🎮 Usar modelo pequeño en GPU 8 GB"
         )
         self.normal_button.setText(
-            "❄ Perfil normal activo"
+            "Activar IA local" if paused else "❄ Perfil normal activo"
             if mode == "normal"
             else "❄ Perfil normal · GPU 16 GB"
         )
@@ -2652,6 +2679,7 @@ class PetWindow(QWidget):
         self.service = service
         self.token = token
         self.travel_away = False
+        self._closing = False
         self.travel_dialog: TravelDialog | None = None
         variant = service.config.sprite_variant
         self.library = SpriteLibrary(PROJECT_ROOT / "assets" / "external" / "pmd" / variant)
@@ -2765,10 +2793,83 @@ class PetWindow(QWidget):
         if service.config.eevee_companion_enabled:
             self.eevee_presence_timer.start()
             QTimer.singleShot(900, self.update_eevee_presence)
+        self.screen_recovery_timer = QTimer(self)
+        self.screen_recovery_timer.setInterval(2000)
+        self.screen_recovery_timer.timeout.connect(self.ensure_on_screen)
+        self.screen_recovery_timer.start()
+        self.screen_layout_timer = QTimer(self)
+        self.screen_layout_timer.setSingleShot(True)
+        self.screen_layout_timer.setInterval(250)
+        self.screen_layout_timer.timeout.connect(self._recover_screen_layout)
+        application = QApplication.instance()
+        application.screenAdded.connect(self._watch_screen)
+        application.screenRemoved.connect(self._queue_screen_layout)
+        application.primaryScreenChanged.connect(self._queue_screen_layout)
+        for screen in QApplication.screens():
+            self._watch_screen(screen)
+        self.ensure_on_screen()
+
+    def _watch_screen(self, screen: Any) -> None:
+        screen.availableGeometryChanged.connect(self._queue_screen_layout)
+        screen.geometryChanged.connect(self._queue_screen_layout)
+        screen.logicalDotsPerInchChanged.connect(self._queue_screen_layout)
+        self._queue_screen_layout()
+
+    def _queue_screen_layout(self, *_: Any) -> None:
+        if not self._closing:
+            self.screen_layout_timer.start()
+
+    def _recover_screen_layout(self) -> None:
+        if self._closing or self.travel_away:
+            return
+        self.wander_target = self.wander_target_y = None
+        self.movement_timer.stop()
+        self.movement_purpose = "idle"
+        if self.interaction_mode in {"aiming_lemon", "lemon_flying", "fetching", "returning"}:
+            self.cancel_fetch_game()
+        self.restore_bed()
+        self.ensure_on_screen()
+        self.render_frame()
+
+    def ensure_on_screen(self) -> None:
+        """Recover the painted sprite (not its transparent host) after hotplug/DPI changes."""
+        if self._closing or self.travel_away or self.drag_origin is not None:
+            return
+        screens = QApplication.screens()
+        if not screens:
+            return
+        center = self._arfoxia_center()
+        screen = QApplication.screenAt(center) or min(screens, key=lambda item:
+            (item.availableGeometry().center() - center).manhattanLength())
+        area = screen.availableGeometry().adjusted(8, 8, -8, -8)
+        if area.width() <= 0 or area.height() <= 0:
+            return
+        specs = list(self.library.specs.values())
+        desired_scale = max(1, min(int(self.service.config.sprite_scale),
+            min(area.width(), self.width()) // max(spec.width for spec in specs),
+            min(area.height(), self.height() - 12) // max(spec.height for spec in specs)))
+        if self.scale != desired_scale:
+            self.scale = desired_scale
+            images, _ = self.library.frames(self.current_animation, self.direction)
+            self.frames = [image_to_pixmap(frame, self.scale) for frame in images]
+            self.frame_index = min(self.frame_index, len(self.frames) - 1)
+            self.render_frame()
+        sprite = self._arfoxia_rect()
+        safe_x = max(area.left(), min(sprite.x, area.right() + 1 - sprite.width))
+        safe_y = max(area.top(), min(sprite.y, area.bottom() + 1 - sprite.height))
+        if safe_x != sprite.x or safe_y != sprite.y:
+            self.move(self.x() + safe_x - sprite.x, self.y() + safe_y - sprite.y)
+            self.wander_target = self.wander_target_y = None
+            self.movement_timer.stop()
+        if not self.isVisible() or self.isMinimized():
+            self.showNormal()
+            self.raise_()
 
     def _place_initially(self) -> None:
-        screen = QApplication.primaryScreen().availableGeometry()
-        self.move(screen.right() - self.width() - 40, screen.bottom() - self.height() - 18)
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            area = screen.availableGeometry()
+            self.move(area.right() - self.width() - 40, area.bottom() - self.height() - 18)
 
     @staticmethod
     def _reserved_geometry(rect: QRect) -> ReservedRect:
@@ -3303,6 +3404,8 @@ class PetWindow(QWidget):
         }:
             self.cancel_fetch_game("Gla… Eevee se acercó; jugamos luego.")
         self.ensure_eevee_separation()
+
+        self.ensure_on_screen()
         if not was_visible:
             if self.interaction_mode != "idle" or self.service.state_dict()["asleep"]:
                 self._schedule_eevee_interaction(retry=True)
@@ -3369,6 +3472,8 @@ class PetWindow(QWidget):
         self.loop_animation = loop
         self.current_animation = name
         self.render_frame()
+        if hasattr(self, "screen_recovery_timer"):
+            self.ensure_on_screen()
 
     def render_frame(self) -> None:
         if not self.frames:
@@ -3451,6 +3556,7 @@ class PetWindow(QWidget):
             if self.service.state_dict()["asleep"]:
                 self.service.interact("wake")
         self.ensure_eevee_separation()
+        self.ensure_on_screen()
 
     def mouseDoubleClickEvent(self, event: Any) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -3997,9 +4103,14 @@ class PetWindow(QWidget):
 
     def return_home(self) -> None:
         self.service.travel.home()
+        self.travel_away = False
         self.show()
+        self.ensure_on_screen()
 
     def closeEvent(self, event: Any) -> None:
+        self._closing = True
+        self.screen_recovery_timer.stop()
+        self.screen_layout_timer.stop()
         self.animation_timer.stop()
         self.movement_timer.stop()
         self.behavior_timer.stop()

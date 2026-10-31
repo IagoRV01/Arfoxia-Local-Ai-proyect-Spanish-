@@ -277,7 +277,7 @@ export class ArfoxiaApi {
   unloadModel(): Promise<{ ok: boolean }> {
     return this.request<{ ok: boolean }>('/api/model/unload', {
       method: 'POST',
-      timeoutMs: 60_000,
+      timeoutMs: 1_800_000,
     });
   }
 

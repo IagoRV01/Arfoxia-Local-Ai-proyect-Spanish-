@@ -30,10 +30,12 @@ export function requestedModelMode(
 export function nextRequestedModelMode(
   status: ModelStatus | null,
 ): RequestedModelMode {
+  if (status?.ai_paused) return 'normal';
   return requestedModelMode(status) === 'normal' ? 'power' : 'normal';
 }
 
 export function modelTierLabel(status: ModelStatus | null): string {
+  if (status?.ai_paused) return 'APAGADA';
   if (status?.model_mode === 'dual') return 'DUAL';
   if (
     requestedModelMode(status) === 'gaming_gpu' ||
@@ -122,7 +124,8 @@ export function modelModeActionLabel(
   if (!status) {
     return 'Consultando…';
   }
-  if (requestedModelMode(status) === mode) {
+  if (status.ai_paused && mode === 'normal') return 'Activar IA local';
+  if (requestedModelMode(status) === mode && !status.ai_paused) {
     return 'Activo';
   }
   if ((mode === 'gaming_gpu' && status.gaming_gpu_blocked_by_game) ||
@@ -152,6 +155,7 @@ export function modelModeActionLabel(
 }
 
 export function modelModeButtonLabel(status: ModelStatus | null): string {
+  if (status?.ai_paused && !status.switching) return 'Activar IA local';
   if (!status) {
     return 'Consultando modelos…';
   }
@@ -177,6 +181,7 @@ export function modelModeButtonLabel(status: ModelStatus | null): string {
 }
 
 export function modelModeReason(status: ModelStatus | null): string {
+  if (status?.ai_paused) return 'IA apagada para jugar. Los modelos no se recargan hasta que actives un perfil.';
   if (status?.switching_to === 'dual') return 'Cargando el modo Dual sin offload a RAM';
   if (status?.requested_mode === 'dual') return status.dual_warning ||
     'Extra High en ambas GPU · vigilancia cada 20 s · libera la VRAM manualmente antes de jugar';

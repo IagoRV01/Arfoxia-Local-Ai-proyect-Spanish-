@@ -14,6 +14,15 @@ import {
 } from '../src/modelMode';
 import type { ModelStatus } from '../src/types';
 
+test('manual shutdown shows paused and can reactivate the same normal profile', () => {
+  const paused = status({ ai_paused: true, requested_mode: 'normal', model_mode: 'paused' });
+  assert.equal(modelTierLabel(paused), 'APAGADA');
+  assert.equal(modelModeButtonLabel(paused), 'Activar IA local');
+  assert.equal(modelModeActionLabel(paused, 'normal'), 'Activar IA local');
+  assert.equal(nextRequestedModelMode(paused), 'normal');
+  assert.match(modelModeReason(paused), /hasta que actives/);
+});
+
 test('dual is manual, game-gated, and never offered by an older backend', () => {
   assert.deepEqual(modelModeRequest('dual'), { mode: 'dual' });
   assert.equal(modelModeAvailable(status(), 'dual'), false);

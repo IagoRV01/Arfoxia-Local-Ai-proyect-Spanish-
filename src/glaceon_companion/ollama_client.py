@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import unicodedata
 from dataclasses import asdict
@@ -781,6 +782,65 @@ class OllamaClient:
                 output.append(RuntimeModel(name, max(0, size_vram), max(0, size)))
         return tuple(output)
 
+    def _primary_server_stopped(self) -> bool:
+        # Never mistake an unreachable remote/custom server for an empty one.
+        if self.config.ollama_url.rstrip('/') != 'http://127.0.0.1:11434':
+            return False
+        try:
+            # Windows reports WSAECONNREFUSED after roughly two seconds; a
+            # shorter deadline incorrectly classifies a closed port as unknown.
+            with socket.create_connection(('127.0.0.1', 11434), timeout=4):
+                return False
+        except ConnectionRefusedError:
+            return True
+        except OSError:
+            return False
+
+    async def models_for_shutdown(self) -> tuple[RuntimeModel, ...]:
+        try:
+            return await self.running_models()
+        except httpx.ConnectError:
+            if await asyncio.to_thread(self._primary_server_stopped):
+                return ()
+            raise RuntimeError('La IA queda pausada, pero no puedo comprobar si Ollama ha liberado los modelos.')
+
+    async def ensure_primary_server(self) -> None:
+        """Explicit activation only: start the installed loopback server, not a model."""
+        self._check_ai_enabled()
+        try:
+            await self.installed_models()
+            return
+        except httpx.ConnectError:
+            if not await asyncio.to_thread(self._primary_server_stopped):
+                raise RuntimeError('No puedo iniciar automáticamente ese servidor Ollama; comprueba su dirección.')
+        snapshot = await asyncio.to_thread(probe_nvidia_gpus, gpu_uuid=self.config.ai_gpu_uuid)
+        if not snapshot.available or not str(self.config.ai_gpu_uuid).strip():
+            raise RuntimeError('No puedo verificar la GPU de IA; no iniciaré Ollama en otra gráfica.')
+        environment = self._gaming_server_environment()
+        environment.update(CUDA_VISIBLE_DEVICES=self.config.ai_gpu_uuid,
+                           OLLAMA_HOST='http://127.0.0.1:11434')
+        process = subprocess.Popen([self._gaming_ollama_executable(), 'serve'],
+            env=environment, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, shell=False, close_fds=True,
+            creationflags=int(getattr(subprocess, 'CREATE_NO_WINDOW', 0)))
+        try:
+            for _ in range(60):
+                if process.poll() is not None:
+                    raise RuntimeError('El servidor Ollama terminó antes de estar disponible.')
+                try:
+                    await self.installed_models()
+                    return
+                except httpx.HTTPError:
+                    # The listener may accept TCP before its HTTP router is
+                    # ready; resets/503 during startup are not final failures.
+                    await asyncio.sleep(0.25)
+            raise RuntimeError('Ollama no respondió a tiempo al activar la IA.')
+        except BaseException:
+            if process.poll() is None:
+                process.terminate()
+                await asyncio.to_thread(process.wait, 5)
+            raise
+
     def running_models_sync(self, url: str | None = None) -> tuple[RuntimeModel, ...]:
         with httpx.Client(timeout=5.0) as client:
             response = client.get(f"{url or self.config.ollama_url}/api/ps")
@@ -1213,6 +1273,7 @@ class OllamaClient:
         return game
 
     async def select_for_turn(self) -> ModelSelection:
+        self._check_ai_enabled()
         if self.requested_mode == "dual":
             await asyncio.to_thread(self.dual.guard)
             selection = self._dual_selection(await asyncio.to_thread(probe_nvidia_gpus))
@@ -1503,6 +1564,7 @@ class OllamaClient:
 
     async def preload_power(self) -> None:
         """Load the configured power model without generating a visible reply."""
+        self._check_ai_enabled()
 
         payload = {
             "model": self.config.power_model,
@@ -1550,6 +1612,7 @@ class OllamaClient:
 
     async def preload_gaming_gpu(self) -> None:
         """Load the small model fully on the isolated 8 GB GPU server."""
+        self._check_ai_enabled()
 
         payload = {
             "model": self.config.gaming_gpu_model,
@@ -1616,6 +1679,10 @@ class OllamaClient:
             if str((tool.get("function") or {}).get("name")) in allowed
         ]
 
+    def _check_ai_enabled(self) -> None:
+        if self.config.local_ai_paused:
+            raise RuntimeError("La IA local está apagada. Pulsa «Activar IA local» para reactivarla.")
+
     async def chat(
         self,
         messages: list[dict[str, Any]],
@@ -1628,6 +1695,7 @@ class OllamaClient:
         execution_recovery: bool = False,
         coding_agent: bool = False,
     ) -> dict[str, Any]:
+        self._check_ai_enabled()
         selected = selection or self._fixed_small_selection()
         is_large = selected.tier in {"large", "power", "dual"}
         is_dual = selected.tier == "dual"

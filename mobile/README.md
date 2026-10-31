@@ -58,6 +58,11 @@ cifrado de iOS.
   reales de administrador cuando el propietario los habilita localmente.
 - Captura autenticada del monitor, apertura de aplicaciones permitidas y
   liberación manual de VRAM.
+- En **PC**, **Apagar IA · liberar todos los modelos** descarga de memoria los
+  modelos sin borrar sus archivos. Mantiene la IA pausada incluso al reiniciar
+  Arfoxia; la mascota y sus cuidados siguen funcionando. **Activar IA local**
+  permite volver a hablar en Normal (carga bajo demanda); también puedes elegir
+  otro perfil manualmente. Espera al turno en curso antes de liberar memoria.
 - Botón fijo **🎮 Jugar · PC / BC-250** con estado de Sunshine y Tailscale, copia del
   host privado, confirmación segura del PIN de Moonlight y acceso a la app.
 - Desemparejamiento que borra la clave del llavero.

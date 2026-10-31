@@ -196,6 +196,9 @@ def test_negative_monitor_bounds_keep_gestures_visible(physical_pet, monkeypatch
     pet, _ = physical_pet
     screen = QRect(-1920, -1080, 1920, 1040)
     monkeypatch.setattr(pet, "_screen_for_pet", lambda: SimpleNamespace(availableGeometry=lambda: screen))
+    fake_screen = SimpleNamespace(availableGeometry=lambda: screen)
+    monkeypatch.setattr(QApplication, "screens", lambda: [fake_screen])
+    monkeypatch.setattr(QApplication, "screenAt", lambda _: fake_screen)
     left, right, top, bottom = pet._wander_bounds()
     assert left < right and top < bottom
     for x, y in ((left, top), (right, bottom)):
@@ -689,3 +692,50 @@ def test_received_chat_does_not_interrupt_lemon_fetch(physical_pet):
     assert pet.wander_target == target
     assert pet.current_animation == "Walk"
     assert pet.movement_timer.isActive()
+
+
+@pytest.mark.parametrize("geometry", [(0, 0, 1280, 720), (-1280, -720, 1280, 680), (0, 0, 320, 240)])
+def test_screen_recovery_clamps_visible_sprite_after_resolution_change(physical_pet, monkeypatch, geometry):
+    from PySide6.QtCore import QRect
+    from types import SimpleNamespace
+    pet, _ = physical_pet
+    area = QRect(*geometry)
+    screen = SimpleNamespace(availableGeometry=lambda: area)
+    monkeypatch.setattr(QApplication, "screens", lambda: [screen])
+    monkeypatch.setattr(QApplication, "screenAt", lambda _: None)
+    pet.move(6000, 4000)
+    pet.wander_target, pet.wander_target_y = 6500, 4500
+    pet.ensure_on_screen()
+    sprite = pet._arfoxia_rect()
+    assert area.left() <= sprite.x < sprite.right <= area.right() + 1
+    assert area.top() <= sprite.y < sprite.bottom <= area.bottom() + 1
+    assert pet.wander_target is None and pet.wander_target_y is None
+
+
+def test_visibility_watchdog_respects_travel_drag_and_close(physical_pet):
+    pet, _ = physical_pet
+    pet.hide()
+    pet.travel_away = True
+    pet.ensure_on_screen()
+    assert not pet.isVisible()
+    pet.travel_away = False
+    pet.ensure_on_screen()
+    assert pet.isVisible()
+    pet.drag_origin = QPoint(5, 5)
+    pet.move(9000, 9000)
+    pet.ensure_on_screen()
+    assert pet.pos() == QPoint(9000, 9000)
+    pet.drag_origin = None
+    pet.close()
+    pet.ensure_on_screen()
+    assert not pet.isVisible()
+    assert not pet.screen_recovery_timer.isActive()
+    assert not pet.screen_layout_timer.isActive()
+
+
+def test_screen_layout_signals_are_debounced(physical_pet):
+    pet, _ = physical_pet
+    pet._queue_screen_layout()
+    pet._queue_screen_layout()
+    assert pet.screen_layout_timer.isActive()
+    assert pet.screen_layout_timer.isSingleShot()

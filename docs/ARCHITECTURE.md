@@ -1,5 +1,27 @@
 # Arquitectura
 
+## Visibilidad y apagado manual de IA
+
+`PetWindow` escucha altas/bajas, geometría útil y DPI de las pantallas, agrupa
+los eventos y mantiene un control de recuperación de dos segundos. Limita el
+rectángulo del sprite real, no la ventana transparente de 420 px; adapta la
+escala sin modificar el tamaño preferido guardado. No roba el foco ni recupera
+una ventana cerrada, arrastrada o una mascota ausente por viaje. La recuperación
+del escritorio no equivale a un overlay dentro de pantalla completa exclusiva.
+
+`local_ai_paused` persiste en la configuración local. `unload_model` marca la
+pausa antes de esperar el bloqueo de turno, bloquea cambios simultáneos, detiene
+los dos servidores privados propios y descarga todos los modelos del servidor
+principal (sin borrar archivos). Comprueba `/api/ps` antes de confirmar éxito.
+El chat y los puntos de selección/precarga/generación rechazan uso mientras esté
+pausada. Solo elegir explícitamente un perfil permite reactivación. Un fallo de
+activación conserva una pausa previa. No detiene procesos de otras aplicaciones.
+Si el servidor principal está cerrado, solo se considera vacío cuando el puerto
+loopback habitual rechaza la conexión (se tolera la demora de Windows). Una
+activación manual puede iniciar `ollama serve` oculto, fijado por UUID a la GPU
+de IA, sin descargar archivos ni precargar un modelo. No inicia destinos remotos
+ni personalizados, y reutiliza un servidor que ya responde.
+
 ```text
 PySide6 (mascota transparente) ─┐
                                ├─ CompanionService ─ SQLite (chats + FTS)

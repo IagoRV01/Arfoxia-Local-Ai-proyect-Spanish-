@@ -698,6 +698,9 @@ class CompanionService:
 
     async def model_status(self) -> dict[str, Any]:
         status = await self.ollama.model_status()
+        status["ai_paused"] = self.config.local_ai_paused
+        if self.config.local_ai_paused:
+            status.update(model=None, model_mode="paused", reason="manual_pause")
         status["action_password_required"] = self.config.require_action_password
         status["pc_command_enabled"] = self.config.pc_command_enabled
         status["pc_administrator"] = is_administrator()
@@ -735,7 +738,12 @@ class CompanionService:
             with self._model_switch_lock:
                 self.ollama.switching_to = None
             raise
+        activation_completed = False
+        was_paused = self.config.local_ai_paused
         try:
+            self.config.local_ai_paused = False
+            if requested in {"normal", "power", "dual"} and hasattr(self.ollama, "ensure_primary_server"):
+                await self.ollama.ensure_primary_server()
             if hasattr(self.ollama, "dual"):
                 await self.ollama.dual.stop()
                 self.ollama.dual.last_error = ""
@@ -869,6 +877,7 @@ class CompanionService:
                     self.ollama.use_normal_mode()
                     self.ollama.stop_gaming_server_sync()
                     raise
+            activation_completed = True
         except asyncio.CancelledError:
             if hasattr(self.ollama, "dual"):
                 self.ollama.dual.stop_sync()
@@ -892,9 +901,15 @@ class CompanionService:
                 "No pude completar el cambio de GPU porque Ollama no respondió."
             ) from exc
         finally:
-            self._turn_lock.release()
-            with self._model_switch_lock:
-                self.ollama.switching_to = None
+            # A failed activation must not silently enable generation again.
+            if was_paused and not activation_completed:
+                self.config.local_ai_paused = True
+            try:
+                self.store.save(self.config)
+            finally:
+                self._turn_lock.release()
+                with self._model_switch_lock:
+                    self.ollama.switching_to = None
         return await self.model_status()
 
     async def _acquire_turn_lock(self) -> None:
@@ -905,6 +920,8 @@ class CompanionService:
         """Sample every 20s. Dual warnings never evict its resident model."""
 
         while not self._guard_stop.wait(20.0):
+            if self.config.local_ai_paused:
+                continue
             dual = getattr(self.ollama, "dual", None)
             if dual is not None and dual.owned:
                 dual.guard()
@@ -2112,6 +2129,8 @@ class CompanionService:
     ) -> dict[str, Any]:
         await self._acquire_turn_lock()
         try:
+            if self.config.local_ai_paused:
+                raise RuntimeError("La IA local está apagada para jugar. Pulsa «Activar IA local» para volver a hablar.")
             if work_session:
                 work_session.check()
                 work_session.progress()
@@ -3104,26 +3123,40 @@ class CompanionService:
         return response, clean_model_text((response.get("message") or {}).get("content") or " ".join(r.message for _, r in completed))
 
     async def unload_model(self) -> None:
-        await self._acquire_turn_lock()
+        with self._model_switch_lock:
+            if getattr(self.ollama, "switching_to", None) is not None:
+                raise RuntimeError("Ya hay un cambio de GPU o modelo en curso.")
+            self.config.local_ai_paused = True
+            self.store.save(self.config)
+            self.ollama.switching_to = "unload"
+        acquired = False
         try:
+            await self._acquire_turn_lock()
+            acquired = True
             if hasattr(self.ollama, "dual"):
                 await self.ollama.dual.stop()
             if hasattr(self.ollama, "stop_gaming_server"):
                 await self.ollama.stop_gaming_server()
-            if getattr(self.ollama, "requested_mode", "normal") in {"gaming_gpu", "dual"}:
+            if hasattr(self.ollama, "use_normal_mode"):
                 self.ollama.use_normal_mode()
-            running = await self.ollama.running_models()
-            configured = {
-                self.config.model.casefold(),
-                self.config.large_model.casefold(),
-                self.config.power_model.casefold(),
-            }
+            models_for_shutdown = getattr(self.ollama, "models_for_shutdown", self.ollama.running_models)
+            running = await models_for_shutdown()
             for model in running:
-                if model.name.casefold() not in configured:
-                    continue
                 await self.ollama.unload(model.name)
+            # Ollama can acknowledge release before its runner has exited.
+            for _ in range(20):
+                if not await models_for_shutdown():
+                    break
+                await asyncio.sleep(0.25)
+            else:
+                raise RuntimeError("La IA está pausada, pero Ollama aún mantiene modelos cargados. Vuelve a liberar la VRAM.")
+        except (httpx.HTTPError, OSError) as exc:
+            raise RuntimeError("La IA queda apagada, pero no he podido verificar la liberación de todos los modelos. Reintenta desde el gestor de GPU.") from exc
         finally:
-            self._turn_lock.release()
+            if acquired:
+                self._turn_lock.release()
+            with self._model_switch_lock:
+                self.ollama.switching_to = None
 
     def close(self) -> None:
         self.travel.close()

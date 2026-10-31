@@ -277,9 +277,10 @@ export interface DetailedGpuStatus {
 }
 
 export interface ModelStatus {
+  ai_paused?: boolean;
   adaptive_enabled?: boolean;
   model?: string;
-  model_mode?: 'small' | 'large' | 'power' | 'gaming_gpu' | 'dual';
+  model_mode?: 'small' | 'large' | 'power' | 'gaming_gpu' | 'dual' | 'paused';
   dual_model?: string;
   dual_model_installed?: boolean;
   dual_context_tokens?: number;

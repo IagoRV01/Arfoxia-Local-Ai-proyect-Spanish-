@@ -10,6 +10,36 @@ from glaceon_companion.config import PROJECT_ROOT, ConfigStore
 from glaceon_companion.services import CompanionService
 
 
+def test_chat_while_manually_paused_returns_conflict_without_loading(tmp_path):
+    store = ConfigStore(tmp_path)
+    config = store.load()
+    config.local_ai_paused = True
+    service = CompanionService(store, config)
+    try:
+        app = create_api(service, "test-token", PROJECT_ROOT / "src/glaceon_companion/static")
+        with TestClient(app) as client:
+            reply = client.post("/api/chat", json={"message": "Hola", "conversation_id": "test-existing"},
+                headers={"Authorization": "Bearer test-token"})
+            assert reply.status_code == 409
+            assert "apagada" in reply.json()["detail"]
+    finally:
+        service.close()
+
+
+def test_unload_conflict_returns_clear_error(tmp_path):
+    store = ConfigStore(tmp_path)
+    service = CompanionService(store, store.load())
+    service.ollama.switching_to = "power"
+    try:
+        app = create_api(service, "test-token", PROJECT_ROOT / "src/glaceon_companion/static")
+        with TestClient(app) as client:
+            reply = client.post("/api/model/unload", headers={"Authorization": "Bearer test-token"})
+            assert reply.status_code == 409
+            assert not service.config.local_ai_paused
+    finally:
+        service.close()
+
+
 def test_api_requires_token_and_serves_mobile_ui(tmp_path):
     store = ConfigStore(tmp_path)
     service = CompanionService(store, store.load())

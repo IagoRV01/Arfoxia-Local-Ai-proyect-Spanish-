@@ -138,6 +138,7 @@ class CompanionConfig:
     language: str = "auto"
     supported_languages: list[str] = field(default_factory=lambda: ["es", "en", "gl"])
     model: str = "qwen3.5:4b"
+    local_ai_paused: bool = False
     adaptive_model_enabled: bool = True
     large_model: str = "qwen3.5:9b-q4_K_M"
     large_model_vram_threshold_gb: float = 12.0

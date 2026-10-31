@@ -571,7 +571,7 @@ def test_intensive_search_sources_are_returned_and_queries_are_redacted(tmp_path
         service.close()
 
 
-def test_unload_releases_only_configured_models_that_are_actually_loaded(tmp_path):
+def test_manual_shutdown_releases_all_loaded_models_and_persists_pause(tmp_path):
     service = make_service(tmp_path)
 
     class RuntimeOllama:
@@ -579,10 +579,10 @@ def test_unload_releases_only_configured_models_that_are_actually_loaded(tmp_pat
             self.unloaded = []
 
         async def running_models(self):
-            return (
+            return tuple(model for model in (
                 RuntimeModel("qwen3.5:4b", 3_200_000_000),
                 RuntimeModel("unrelated:latest", 1_000_000_000),
-            )
+            ) if model.name not in self.unloaded)
 
         async def unload(self, model):
             self.unloaded.append(model)
@@ -591,7 +591,12 @@ def test_unload_releases_only_configured_models_that_are_actually_loaded(tmp_pat
     service.ollama = runtime
     try:
         asyncio.run(service.unload_model())
-        assert runtime.unloaded == ["qwen3.5:4b"]
+        assert runtime.unloaded == ["qwen3.5:4b", "unrelated:latest"]
+        assert service.config.local_ai_paused
+        assert service.store.load().local_ai_paused
+        assert runtime.switching_to is None
+        with pytest.raises(RuntimeError, match="apagada"):
+            asyncio.run(service.chat("Hola", origin="desktop"))
     finally:
         service.close()
 

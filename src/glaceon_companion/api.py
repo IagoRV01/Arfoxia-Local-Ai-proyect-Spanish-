@@ -262,6 +262,8 @@ def create_api(service: CompanionService, token: str, static_dir: Path) -> FastA
             return await service.chat(request.message, **options)
         except (ValueError, AttachmentError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.get("/api/conversations", dependencies=[auth])
     async def conversations(
@@ -426,7 +428,10 @@ def create_api(service: CompanionService, token: str, static_dir: Path) -> FastA
 
     @app.post("/api/model/unload", dependencies=[auth])
     async def unload() -> dict[str, bool]:
-        await service.unload_model()
+        try:
+            await service.unload_model()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"ok": True}
 
     @app.get("/api/model/status", dependencies=[auth])

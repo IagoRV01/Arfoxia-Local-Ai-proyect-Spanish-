@@ -6,6 +6,50 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Corregido y añadido — Mascota visible e IA apagable para jugar — 2026-10-31
+
+- Recuperación de la mascota al cambiar resolución, DPI, zona útil o monitores:
+  escucha eventos de pantalla y comprueba cada dos segundos que el sprite siga
+  visible. Reubica el dibujo real, adapta la escala al espacio disponible y
+  conserva coordenadas negativas de monitores secundarios. Cancela rutas
+  obsoletas, restaura la cama y reconstruye la máscara gráfica tras el cambio.
+  No interrumpe el arrastre ni hace reaparecer una mascota enviada a otro equipo
+  o una ventana cerrada al salir. La opción Mostrar también recupera su posición.
+- Botón **Apagar IA · liberar VRAM** en el chat de Windows y la pestaña PC de
+  Expo Go. Para los servidores privados de Dual y GPU de juego, descarga todos
+  los modelos residentes del Ollama principal y verifica que no quede ninguno.
+  No elimina modelos del disco, chats ni adjuntos; la mascota sigue funcionando.
+- Pausa persistente en configuración: ni enviar mensajes, ni los precargadores,
+  ni el selector adaptativo reactivan la IA. **Activar IA local** vuelve al perfil
+  Normal (carga bajo demanda); elegir Potencia/Dual/Ligero también es activación
+  manual. El gestor permite reactivar Normal aunque fuese el último perfil.
+- Operación serializada con los turnos/cambios de GPU, sin interrumpir acciones
+  del PC en curso. Errores de descarga no afirman haber liberado la memoria y
+  mantienen la pausa; cancelaciones liberan el indicador de cambio sin soltar
+  el bloqueo de otro turno. La API devuelve un conflicto claro al hablar apagada.
+- Ollama cerrado no provoca un falso error de descarga si se verifica que el
+  puerto loopback habitual no escucha. La activación manual arranca, si hace
+  falta, el ejecutable instalado en segundo plano y fijado a la GPU de IA;
+  reutiliza un servidor disponible y nunca descarga modelos de Internet.
+- Validación automatizada de resolución reducida/negativa, visibilidad,
+  arrastre, viaje, pausa persistente, descarga total, errores y reactivación.
+  No puede garantizar superposición sobre juegos en pantalla completa exclusiva
+  ni sustituye una comprobación visual en el iPhone.
+- Validación final: 1.193 pruebas Python pasan. Durante una ejecución anterior,
+  tres pruebas de adjuntos se bloquearon al caer el espacio libre de C: por
+  debajo de 20 GiB. Pasaron en diagnóstico temporal aislado y la suite completa
+  pasó sin simulación cuando el espacio libre volvió a superar esa reserva;
+  no se redujo la protección de producción ni se borraron datos del propietario.
+  69 pruebas móviles, tipos TypeScript, 20/20 controles de Expo Doctor y export
+  iOS correctos. Parches compatibles alineados por CLI a Expo 58.0.22, React
+  Native 0.88.1 y módulos recomendados; no hay migración de SDK. Auditoría npm:
+  12 avisos moderados transitivos, ninguno alto/crítico; sin `audit fix --force`.
+- Aplicado al proceso de escritorio tras verificar ausencia de trabajos activos.
+  Prueba real de apagado/reactivación y rechazo HTTP 409 del chat apagado, sin
+  generar contenido, crear conversaciones ni cargar/descargar archivos de modelos.
+  Metro reiniciado solo tras verificar su identidad y raíz; manifiesto SDK 58 y
+  bundle iOS responden tanto en loopback como por la ruta privada de Tailscale.
+
 ### Añadido — PIN de Moonlight a Sunshine de la BC-250 desde Arfoxia — 2026-10-26
 
 - Selector **Jugar · PC / BC-250** en Expo Go, con estado y PIN ligados al destino
