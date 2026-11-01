@@ -2,22 +2,27 @@
 
 ## Visibilidad y apagado manual de IA
 
-`desktop_scale` calcula una escala de legibilidad adicional a partir de la
-geometría lógica de cada QScreen, nunca de la resolución física multiplicada
-por el DPR. Por ejemplo, 4K al 150 % se presenta como 2560×1440 lógicos y recibe
-un factor 1,333; 4K al 200 % ya es 1920×1080 y recibe 1. Los controles guardan
-sus estilos y márgenes originales para evitar acumulación al cambiar de
-monitor. Los diálogos hijos se escalan de forma independiente. El overlay de
-colocación representa el cursor con DPR explícito, ajusta su texto al monitor
-del puntero y no modifica las coordenadas globales emitidas al pulsar.
+`desktop_scale` usa una referencia común 1920×1080. El factor físico es el
+menor de ancho/1920 y alto/1080, limitado entre 1 y 4; el factor lógico divide
+ese resultado por el DPR nativo. Por ejemplo, 4K al 150 % (2560×1440 lógicos)
+recibe exactamente 4/3, al 200 % recibe 1 y al 250 % recibe 0,8. Así la mascota
+y la UI duplican sus medidas físicas entre Full HD y 4K, sin duplicar el DPI
+de Windows ni agrandar ultrapanorámicos de 1080 de alto por su anchura.
+Controles, estilos, documentos Markdown, límites mínimos/máximos y márgenes
+conservan su referencia para evitar acumulación. Los diálogos hijos se escalan
+independientemente. El overlay usa DPR explícito, ajusta su texto al monitor
+del puntero y conserva las coordenadas globales del clic. La equivalencia es
+de proporción de resolución; no conoce las pulgadas físicas de cada monitor.
 
 `PetWindow` escucha altas/bajas, geometría útil y DPI de las pantallas, agrupa
 los eventos y mantiene un control de recuperación de dos segundos. Limita el
 rectángulo del sprite real, no el contenedor transparente; adapta la
 escala sin modificar el tamaño preferido guardado. El contenedor transparente
 es ahora adaptable: crece para alojar los fotogramas mayores y la escala del
-sprite incluye el factor de legibilidad del monitor, en pasos enteros. Mantiene
-el ancla inferior central y regenera su máscara al redimensionarse. No roba el
+sprite incluye el factor común sin redondearlo al siguiente entero. Los
+buffers de fotogramas y objetos se generan en píxeles físicos con DPR explícito
+y vecino más próximo; rectángulos y máscaras se convierten a unidades lógicas.
+Mantiene el ancla inferior central y regenera su máscara al redimensionarse. No roba el
 foco ni recupera una ventana cerrada, arrastrada o una mascota ausente por viaje.
 La recuperación del escritorio no equivale a un overlay dentro de pantalla completa exclusiva.
 

@@ -5,11 +5,12 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtCore import QPoint, QRect
 from PySide6.QtGui import QColor, QPixmap
-from PySide6.QtWidgets import QApplication, QDialog, QLabel, QVBoxLayout
+from PySide6.QtWidgets import QApplication, QDialog, QLabel, QVBoxLayout, QTextBrowser
+from PIL import Image
 
-from glaceon_companion.desktop_scale import apply_window_scale, readability_scale, unscaled_stylesheet
-from glaceon_companion.desktop_interactions import PlacementOverlay
-from glaceon_companion.ui import QuickChatPopup, SpeechBubble
+from glaceon_companion.desktop_scale import apply_window_scale, readability_scale, unscaled_stylesheet, logical_pixmap_mask
+from glaceon_companion.desktop_interactions import DesktopPropWindow, PlacementOverlay
+from glaceon_companion.ui import QuickChatPopup, SpeechBubble, image_to_pixmap
 
 
 @pytest.fixture(scope='module')
@@ -24,8 +25,9 @@ def monitor(width, height, dpr=1.0, x=0, y=0):
 
 
 @pytest.mark.parametrize('logical,dpr,expected', [((1920,1080),1,1), ((3840,2160),1,2),
-    ((2560,1440),1.5,1.333), ((1920,1080),2,1), ((3840,1080),1,1), ((7680,4320),1,2.5)])
-def test_scale_uses_logical_resolution_without_double_dpi(logical, dpr, expected):
+    ((2560,1440),1.5,4/3), ((1920,1080),2,1), ((3840,1080),1,1), ((7680,4320),1,4),
+    ((1536,864),2.5,.8), ((1280,720),1.5,2/3)])
+def test_scale_normalizes_physical_resolution_without_double_dpi(logical, dpr, expected):
     assert readability_scale(monitor(*logical, dpr)) == expected
 
 
@@ -96,6 +98,66 @@ def test_overlay_scales_cursor_and_hint_on_active_monitor_without_coordinate_dri
         overlay.close()
 
 
+@pytest.mark.parametrize('dpr', [1, 1.25, 1.5, 2, 2.5])
+def test_all_elements_share_exact_1080p_to_4k_ratio(app, monkeypatch, tmp_path, dpr):
+    screen = monitor(round(3840 / dpr), round(2160 / dpr), dpr)
+    factor = readability_scale(screen)
+    monkeypatch.setattr(QApplication, 'screenAt', lambda _: screen)
+    image = Image.new('RGBA', (32, 40), 'cyan')
+    image.putpixel((0, 0), (0, 0, 0, 0))
+    source = image_to_pixmap(image)
+    asset = tmp_path / 'prop.png'
+    assert source.save(str(asset))
+    prop = DesktopPropWindow(asset, (32, 40))
+    overlay = PlacementOverlay()
+    overlay.preview_source = source
+    window = QDialog()
+    window.resize(600, 400)
+    window.setMinimumWidth(430)
+    window.setStyleSheet('QLabel{font-size:14px;}')
+    layout = QVBoxLayout(window)
+    sidebar = QLabel('Conversaciones')
+    sidebar.setMinimumWidth(205)
+    sidebar.setMaximumWidth(280)
+    browser = QTextBrowser()
+    browser.document().setDefaultStyleSheet('td{padding:4px 7px;}')
+    layout.addWidget(sidebar)
+    layout.addWidget(browser)
+    try:
+        pet_frame = image_to_pixmap(image, 4 * factor, dpr)
+        assert pet_frame.width() == 256  # twice the 128px Full HD reference
+        assert pet_frame.height() == 320
+        prop.refresh_scale(screen)
+        assert prop.display_pixmap.width() == 64  # twice the 32px reference
+        assert prop.display_pixmap.height() == 80
+        assert prop.mask().boundingRect().width() == pytest.approx(64 / dpr, abs=1)
+        anchor = prop.geometry().center()
+        for _ in range(3):
+            prop.refresh_scale(monitor(1920, 1080))
+            assert prop.geometry().center() == anchor
+            prop.refresh_scale(screen)
+            assert prop.geometry().center() == anchor
+        assert logical_pixmap_mask(pet_frame).boundingRect().width() == pytest.approx(256 / dpr, abs=1)
+        overlay._move_preview(QPoint(100, 100))
+        assert overlay.preview_pixmap.height() == 96  # twice the 48px cursor
+        apply_window_scale(window, screen)
+        assert window.width() * dpr == pytest.approx(1200, abs=dpr)
+        assert window.minimumWidth() * dpr == pytest.approx(860, abs=dpr)
+        assert sidebar.maximumWidth() * dpr == pytest.approx(560, abs=dpr)
+        assert window.font().pointSizeF() * dpr == pytest.approx(20, abs=.02)
+        assert f'{14 * factor:g}px' in window.styleSheet()
+        assert f'{7 * factor:g}px' in browser.document().defaultStyleSheet()
+        apply_window_scale(window, monitor(1920, 1080))
+        assert window.width() == 600
+        assert window.minimumWidth() == 430
+        assert sidebar.maximumWidth() == 280
+        assert browser.document().defaultStyleSheet() == 'td{padding:4px 7px;}'
+    finally:
+        window.close()
+        prop.close()
+        overlay.close()
+
+
 def test_floating_text_and_quick_chat_are_readable_on_4k(app):
     bubble = SpeechBubble()
     popup = QuickChatPopup('Arfoxia')
@@ -118,7 +180,7 @@ def test_4k_at_150_percent_uses_crisp_96_physical_pixel_pointer(app, monkeypatch
     overlay.preview_source.fill(QColor('yellow'))
     try:
         overlay._move_preview(QPoint(1000,500))
-        assert overlay.ui_scale == 1.333
+        assert overlay.ui_scale == 4/3
         assert overlay.preview_pixmap.width() == 96
         assert overlay.preview_pixmap.deviceIndependentSize().width() == 64
     finally:

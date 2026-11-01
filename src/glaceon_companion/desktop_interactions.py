@@ -5,11 +5,11 @@ from pathlib import Path
 from typing import Iterable
 
 from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPixmap, QRegion
+from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QWidget
 
 from .codex_presence import ReservedRect
-from .desktop_scale import readability_scale
+from .desktop_scale import readability_scale, logical_pixmap_size, logical_pixmap_mask
 
 
 def choose_reachable_x(
@@ -161,28 +161,45 @@ class DesktopPropWindow(QWidget):
         self.set_display_size(*display_size)
 
     def set_display_size(self, width: int, height: int) -> None:
+        self.base_display_size = (width, height)
+        self.refresh_scale(force=True)
+
+    def refresh_scale(self, screen=None, *, force: bool = False) -> None:
+        screen = screen or QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
+        scale = readability_scale(screen)
+        dpr = screen.devicePixelRatio() if screen is not None and hasattr(screen, 'devicePixelRatio') else 1.0
+        if not force and getattr(self, '_scale_key', None) == (scale, dpr):
+            return
+        self._scale_key = (scale, dpr)
+        center = self.geometry().center() if not self.display_pixmap.isNull() else None
+        width, height = self.base_display_size
         transform = (
             Qt.TransformationMode.FastTransformation
             if self.pixelated
             else Qt.TransformationMode.SmoothTransformation
         )
         self.display_pixmap = self.source.scaled(
-            max(1, int(width)),
-            max(1, int(height)),
+            max(1, round(width * scale * dpr)),
+            max(1, round(height * scale * dpr)),
             Qt.AspectRatioMode.KeepAspectRatio,
             transform,
         )
-        self.setFixedSize(self.display_pixmap.size())
+        self.display_pixmap.setDevicePixelRatio(dpr)
+        self.setFixedSize(logical_pixmap_size(self.display_pixmap))
         try:
-            self.setMask(QRegion(self.display_pixmap.mask()))
+            self.setMask(logical_pixmap_mask(self.display_pixmap))
         except TypeError:
             self.clearMask()
+        if center is not None:
+            self.move(center.x() - (self.width() - 1) // 2,
+                      center.y() - (self.height() - 1) // 2)
         self.update()
 
     def screen_rect(self) -> ReservedRect:
         return ReservedRect(self.x(), self.y(), self.width(), self.height())
 
     def move_center_to(self, point: QPoint) -> None:
+        self.refresh_scale(QApplication.screenAt(point) or QApplication.primaryScreen())
         self.move(point.x() - self.width() // 2, point.y() - self.height() // 2)
 
     def paintEvent(self, event: object) -> None:

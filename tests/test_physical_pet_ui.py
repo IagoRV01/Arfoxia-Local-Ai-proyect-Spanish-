@@ -741,21 +741,22 @@ def test_screen_layout_signals_are_debounced(physical_pet):
     assert pet.screen_layout_timer.isSingleShot()
 
 
-@pytest.mark.parametrize("logical,expected", [((3840,2160),8), ((2560,1440),6), ((1920,1080),4)])
-def test_pet_grows_with_4k_and_host_does_not_shrink_configured_scale(physical_pet, monkeypatch, logical, expected):
+@pytest.mark.parametrize("logical,dpr,expected", [((3840,2160),1,8), ((2560,1440),1.5,16/3),
+    ((1920,1080),2,4), ((1920,1080),1,4), ((1536,864),2.5,3.2)])
+def test_pet_grows_with_4k_and_host_does_not_shrink_configured_scale(physical_pet, monkeypatch, logical, dpr, expected):
     from PySide6.QtCore import QRect
     from types import SimpleNamespace
     pet, service = physical_pet
     service.config.sprite_scale = 4
     screen = SimpleNamespace(geometry=lambda: QRect(0,0,*logical),
-        availableGeometry=lambda: QRect(0,0,logical[0],logical[1]-40))
+        availableGeometry=lambda: QRect(0,0,logical[0],logical[1]-40), devicePixelRatio=lambda: dpr)
     monkeypatch.setattr(QApplication, "screens", lambda: [screen])
     monkeypatch.setattr(QApplication, "screenAt", lambda _: screen)
     pet.ensure_on_screen()
-    assert pet.scale == expected
+    assert pet.scale == pytest.approx(expected)
     assert pet.width() >= max(s.width for s in pet.library.specs.values()) * expected
     assert pet.height() >= max(s.height for s in pet.library.specs.values()) * expected + 12
-    assert pet.frames[0].width() == pet.library.specs[pet.current_animation].width * expected
+    assert pet.frames[0].width() == round(pet.library.specs[pet.current_animation].width * expected * dpr)
     assert service.config.sprite_scale == 4  # only the displayed size changes
 
 
@@ -770,7 +771,7 @@ def test_monitor_round_trip_preserves_pet_foot_anchor_and_never_accumulates_scal
     pet.play('Idle', loop=True)
     pet.move(1000 - pet.width() // 2, 900 - pet.height() + 12)
     for _ in range(3):
-        for geometry, expected in [(QRect(0,0,2560,1440),6), (QRect(0,0,1920,1080),4)]:
+        for geometry, expected in [(QRect(0,0,2560,1440),16/3), (QRect(0,0,1920,1080),4)]:
             area[0] = geometry
             pet.ensure_on_screen()
             assert pet.scale == expected

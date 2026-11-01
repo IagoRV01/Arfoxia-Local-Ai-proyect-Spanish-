@@ -6,6 +6,28 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Corregido — Proporción común de mascota e interfaz entre 1080p y 4K — 2026-11-01
+
+- Una única referencia 1920×1080 para mascota, objetos, cursor de colocación,
+  texto, controles y ventanas. En 4K cada medida física duplica su referencia
+  Full HD para ocupar la misma proporción de pantalla; se divide por el DPR
+  nativo de Qt para no sumar dos veces el escalado de Windows.
+- Se elimina el redondeo del sprite al siguiente múltiplo entero que lo hacía
+  demasiado grande. En 4K/150 %, la preferencia 4× usa exactamente 16/3 lógicos
+  y 8× físicos, en vez de 6× lógicos/9× físicos. Los buffers se dibujan con DPR
+  explícito y vecino más próximo; tamaños, máscaras y colisiones usan unidades
+  lógicas. No cambia la preferencia de tamaño guardada.
+- Cama, limón y baya comparten el factor y se readaptan al monitor de destino.
+  Los límites mínimos/máximos de paneles, márgenes de documentos Markdown,
+  esquinas y colas de bocadillos escalan con la misma referencia, sin acumular
+  cambios al volver a Full HD. No modifica ajustes globales de Windows ni IA.
+- Pruebas cruzadas de mascota, objetos, máscara, cursor, fuentes y ventanas
+  para 4K al 100/125/150/200/250 %, reversibilidad y límites del escritorio.
+- Validación: 1.218 pruebas Python superadas. Escritorio recargado con identidad
+  de proceso verificada y sin trabajos activos; IA pausada y cero modelos
+  residentes antes y después. La percepción final en el monitor queda pendiente
+  de confirmación del usuario; no se afirma una validación visual presencial.
+
 ### Corregido — Tamaño de la mascota en 4K — 2026-11-01
 
 - La escala por monitor se aplica también al sprite, no solo a textos y cursor:

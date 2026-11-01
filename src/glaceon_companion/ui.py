@@ -24,6 +24,7 @@ from PySide6.QtCore import (
     QMimeData,
     QObject,
     QPoint,
+    QPointF,
     QRect,
     QRectF,
     QSignalBlocker,
@@ -43,7 +44,6 @@ from PySide6.QtGui import (
     QPainter,
     QPainterPath,
     QPixmap,
-    QRegion,
     QTextCharFormat,
     QTextBlockFormat,
     QTextCursor,
@@ -73,7 +73,7 @@ from PySide6.QtWidgets import (
 )
 
 from .config import PROJECT_ROOT
-from .desktop_scale import apply_window_scale, install_window_scaling, readability_scale, screen_for_widget, unscaled_stylesheet
+from .desktop_scale import apply_window_scale, install_window_scaling, readability_scale, screen_for_widget, unscaled_stylesheet, logical_pixmap_size, logical_pixmap_mask
 from .attachments import MAX_IMAGE_EDGE, MAX_IMAGE_PIXELS, MAX_TOTAL_UPLOAD_BYTES
 from .chat_math import prepare_math_markdown
 from .codex_presence import (
@@ -209,18 +209,19 @@ class SafeMarkdownBrowser(QTextBrowser):
         return mime
 
 
-def image_to_pixmap(image: Image.Image, scale: int = 1) -> QPixmap:
+def image_to_pixmap(image: Image.Image, scale: float = 1, dpr: float = 1) -> QPixmap:
     rgba = image.convert("RGBA")
     data = rgba.tobytes("raw", "RGBA")
     qimage = QImage(data, rgba.width, rgba.height, rgba.width * 4, QImage.Format.Format_RGBA8888).copy()
     pixmap = QPixmap.fromImage(qimage)
-    if scale != 1:
+    if scale != 1 or dpr != 1:
         pixmap = pixmap.scaled(
-            rgba.width * scale,
-            rgba.height * scale,
+            max(1, round(rgba.width * scale * dpr)),
+            max(1, round(rgba.height * scale * dpr)),
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.FastTransformation,
         )
+    pixmap.setDevicePixelRatio(dpr)
     return pixmap
 
 
@@ -288,7 +289,7 @@ class SpeechBubble(QWidget):
             int(Qt.TextFlag.TextWordWrap | Qt.TextFlag.TextExpandTabs),
             value,
         )
-        content_height = max(metrics.height() + 4, bounds.height() + 4)
+        content_height = max(metrics.height(), bounds.height()) + round(4 * scale)
         self.label.setText(value)
         self.label.setGeometry(round(16 * scale), round(10 * scale), content_width, content_height)
         self.setFixedSize(content_width + round(32 * scale), content_height + round(32 * scale))
@@ -300,16 +301,20 @@ class SpeechBubble(QWidget):
         del event
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        body = QRectF(1, 1, self.width() - 2, self.height() - 12)
+        scale = getattr(self, '_readability_scale', 1.0)
+        body = QRectF(scale, scale, self.width() - 2 * scale, self.height() - 12 * scale)
         path = QPainterPath()
-        path.addRoundedRect(body, 15, 15)
+        path.addRoundedRect(body, 15 * scale, 15 * scale)
         tail_x = self.width() * 0.68
-        path.moveTo(tail_x - 10, body.bottom() - 1)
-        path.lineTo(tail_x, self.height() - 1)
-        path.lineTo(tail_x + 13, body.bottom() - 1)
+        path.moveTo(tail_x - 10 * scale, body.bottom() - scale)
+        path.lineTo(tail_x, self.height() - scale)
+        path.lineTo(tail_x + 13 * scale, body.bottom() - scale)
         path.closeSubpath()
         painter.fillPath(path, QColor(7, 24, 41, 242))
         painter.setPen(QColor(145, 232, 255, 210))
+        pen = painter.pen()
+        pen.setWidthF(scale)
+        painter.setPen(pen)
         painter.drawPath(path)
 
 
@@ -391,16 +396,20 @@ class QuickChatPopup(QWidget):
         del event
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        body = QRectF(1, 1, self.width() - 2, self.height() - 12)
+        scale = getattr(self, '_readability_scale', 1.0)
+        body = QRectF(scale, scale, self.width() - 2 * scale, self.height() - 12 * scale)
         path = QPainterPath()
-        path.addRoundedRect(body, 14, 14)
+        path.addRoundedRect(body, 14 * scale, 14 * scale)
         tail_x = self.width() * 0.68
-        path.moveTo(tail_x - 10, body.bottom() - 1)
-        path.lineTo(tail_x, self.height() - 1)
-        path.lineTo(tail_x + 13, body.bottom() - 1)
+        path.moveTo(tail_x - 10 * scale, body.bottom() - scale)
+        path.lineTo(tail_x, self.height() - scale)
+        path.lineTo(tail_x + 13 * scale, body.bottom() - scale)
         path.closeSubpath()
         painter.fillPath(path, QColor(7, 24, 41, 248))
         painter.setPen(QColor(145, 232, 255, 225))
+        pen = painter.pen()
+        pen.setWidthF(scale)
+        painter.setPen(pen)
         painter.drawPath(path)
 
 
@@ -2697,6 +2706,7 @@ class PetWindow(QWidget):
         variant = service.config.sprite_variant
         self.library = SpriteLibrary(PROJECT_ROOT / "assets" / "external" / "pmd" / variant)
         self.scale = service.config.sprite_scale
+        self.sprite_dpr = 1.0
         self.frames: list[QPixmap] = []
         self.durations: tuple[int, ...] = ()
         self.frame_index = 0
@@ -2860,25 +2870,24 @@ class PetWindow(QWidget):
         specs = list(self.library.specs.values())
         max_width = max(spec.width for spec in specs)
         max_height = max(spec.height for spec in specs)
-        # The old fixed 420px host capped even the normal 4x preference to 3x
-        # because a rare animation is 128px tall. Grow the transparent host,
-        # not just the UI text, and preserve whole pixel-art scale steps.
-        requested_scale = math.ceil(max(1, int(self.service.config.sprite_scale)) * readability_scale(screen))
-        desired_scale = max(1, min(requested_scale,
-            max(1, (area.width() - 16) // max_width),
-            max(1, (area.height() - 24) // max_height)))
-        host_width = min(area.width(), max(420, max_width * desired_scale + 16))
-        host_height = min(area.height(), max(420, max_height * desired_scale + 24))
+        requested_scale = max(1, int(self.service.config.sprite_scale)) * readability_scale(screen)
+        desired_scale = max(0.25, min(requested_scale,
+            max(0.25, (area.width() - 16) / max_width),
+            max(0.25, (area.height() - 24) / max_height)))
+        dpr = screen.devicePixelRatio() if hasattr(screen, 'devicePixelRatio') else 1.0
+        host_width = min(area.width(), max(420, math.ceil(max_width * desired_scale + 16)))
+        host_height = min(area.height(), max(420, math.ceil(max_height * desired_scale + 24)))
         host_changed = self.width() != host_width or self.height() != host_height
         if host_changed:
             foot_x = self.x() + self.width() // 2
             foot_y = self.y() + self.height() - 12
             self.setFixedSize(host_width, host_height)
             self.move(foot_x - host_width // 2, foot_y - host_height + 12)
-        if self.scale != desired_scale:
+        if self.scale != desired_scale or self.sprite_dpr != dpr:
             self.scale = desired_scale
+            self.sprite_dpr = dpr
             images, _ = self.library.frames(self.current_animation, self.direction)
-            self.frames = [image_to_pixmap(frame, self.scale) for frame in images]
+            self.frames = [image_to_pixmap(frame, self.scale, dpr) for frame in images]
             self.frame_index = min(self.frame_index, len(self.frames) - 1)
             self.render_frame()
         elif host_changed:
@@ -2893,6 +2902,9 @@ class PetWindow(QWidget):
         if not self.isVisible() or self.isMinimized():
             self.showNormal()
             self.raise_()
+        for prop in (self.bed_prop, self.lemon_prop, self.berry_prop):
+            if prop.isVisible() and prop.drag_pointer_origin is None:
+                prop.refresh_scale()
 
     def _place_initially(self) -> None:
         screen = QApplication.primaryScreen()
@@ -2943,6 +2955,7 @@ class PetWindow(QWidget):
             (candidate for candidate in screens if candidate.name() == config.bed_screen_name),
             QApplication.primaryScreen(),
         )
+        self.bed_prop.refresh_scale(screen)
         geometry = self._reserved_geometry(screen.availableGeometry())
         x, y = item_position_from_ratios(
             geometry,
@@ -2987,6 +3000,7 @@ class PetWindow(QWidget):
 
     def place_bed(self, point: QPoint) -> None:
         screen = QApplication.screenAt(point) or QApplication.primaryScreen()
+        self.bed_prop.refresh_scale(screen)
         available = screen.availableGeometry()
         minimum_x = available.left()
         maximum_x = max(minimum_x, available.left() + available.width() - self.bed_prop.width())
@@ -3316,8 +3330,8 @@ class PetWindow(QWidget):
         """Return the sprite box rather than its adaptive transparent host."""
 
         if self.frames:
-            sprite_width = max(frame.width() for frame in self.frames)
-            sprite_height = max(frame.height() for frame in self.frames)
+            sprite_width = max(logical_pixmap_size(frame).width() for frame in self.frames)
+            sprite_height = max(logical_pixmap_size(frame).height() for frame in self.frames)
         else:
             sprite_width, sprite_height = 128, 160
         window_x = self.x() if x is None else int(x)
@@ -3495,7 +3509,7 @@ class PetWindow(QWidget):
         if direction is not None:
             self.direction = direction
         images, durations = self.library.frames(name, self.direction)
-        self.frames = [image_to_pixmap(image, self.scale) for image in images]
+        self.frames = [image_to_pixmap(image, self.scale, self.sprite_dpr) for image in images]
         self.durations = durations
         self.frame_index = 0
         self.loop_animation = loop
@@ -3510,10 +3524,11 @@ class PetWindow(QWidget):
         self.update()
         self.animation_timer.start(self.durations[self.frame_index])
         pixmap = self.frames[self.frame_index]
-        x = (self.width() - pixmap.width()) // 2
-        y = self.height() - pixmap.height() - 12
+        size = logical_pixmap_size(pixmap)
+        x = (self.width() - size.width()) // 2
+        y = self.height() - size.height() - 12
         try:
-            region = QRegion(pixmap.mask()).translated(x, y)
+            region = logical_pixmap_mask(pixmap).translated(x, y)
             self.setMask(region)
         except TypeError:
             self.clearMask()
@@ -3536,7 +3551,9 @@ class PetWindow(QWidget):
         pixmap = self.frames[self.frame_index]
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
-        painter.drawPixmap((self.width() - pixmap.width()) // 2, self.height() - pixmap.height() - 12, pixmap)
+        size = logical_pixmap_size(pixmap)
+        painter.drawPixmap(QPointF((self.width() - size.width()) // 2,
+                                  self.height() - size.height() - 12), pixmap)
 
     def mousePressEvent(self, event: Any) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -3867,8 +3884,8 @@ class PetWindow(QWidget):
         # stretch at the end of a path does not disappear beyond the screen.
         specs = [self.library.specs[name] for name in ("Walk", *EXPRESSION_LABELS)
                  if name in self.library.specs]
-        width = min(self.width(), max(spec.width for spec in specs) * self.scale)
-        height = min(self.height() - 12, max(spec.height for spec in specs) * self.scale)
+        width = min(self.width(), math.ceil(max(spec.width for spec in specs) * self.scale))
+        height = min(self.height() - 12, math.ceil(max(spec.height for spec in specs) * self.scale))
         left = screen.left() + 8 - (self.width() - width) // 2
         right = screen.right() - 7 - (self.width() + width) // 2
         top = screen.top() + 8 - self.height() + height + 12

@@ -3,17 +3,29 @@ from __future__ import annotations
 
 import re
 from PySide6.QtCore import QEvent, QObject, QTimer
-from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QApplication, QWidget, QLayout
+from PySide6.QtGui import QFont, QRegion, QTransform
+from PySide6.QtWidgets import QApplication, QWidget, QLayout, QTextEdit
 
 
 def readability_scale(screen) -> float:
     if screen is None:
         return 1.0
-    # Qt has already divided geometry by Windows' display scaling. Using
-    # logical dimensions avoids multiplying a 4K/200% desktop a second time.
     geometry = screen.geometry()
-    return round(max(1.0, min(2.5, geometry.width() / 1920, geometry.height() / 1080)), 3)
+    dpr = screen.devicePixelRatio() if hasattr(screen, 'devicePixelRatio') else 1.0
+    # One 1080p reference for every element. Undo Qt's native DPR exactly;
+    # never round the scale factor (4K/150% is 4/3, not 1.333 or 6/4).
+    physical_ratio = max(1.0, min(4.0, geometry.width() * dpr / 1920,
+                                  geometry.height() * dpr / 1080))
+    return physical_ratio / dpr
+
+
+def logical_pixmap_size(pixmap):
+    return pixmap.deviceIndependentSize().toSize()
+
+
+def logical_pixmap_mask(pixmap):
+    dpr = pixmap.devicePixelRatio()
+    return QTransform().scale(1 / dpr, 1 / dpr).map(QRegion(pixmap.mask()))
 
 
 def screen_for_widget(widget: QWidget):
@@ -37,10 +49,13 @@ def apply_window_scale(window: QWidget, screen=None) -> float:
         return scale
     window._scale_initialized = True
     window._readability_scale = scale
+    size_before = window.size()
     font = QFont(QApplication.font())
     font.setPointSizeF(max(10.0, font.pointSizeF()) * scale)
     window.setFont(font)
     styles = getattr(window, '_readability_styles', {})
+    constraints = getattr(window, '_readability_constraints', {})
+    document_styles = getattr(window, '_readability_document_styles', {})
     for widget in [window, *window.findChildren(QWidget)]:
         if widget.window() is not window:
             continue
@@ -52,7 +67,30 @@ def apply_window_scale(window: QWidget, screen=None) -> float:
         if updated != current:
             widget.setStyleSheet(updated)
         styles[widget] = (base, updated)
+        current_limits = (widget.minimumSize(), widget.maximumSize())
+        original_limits, last_limits = constraints.get(widget, (current_limits, current_limits))
+        if current_limits != last_limits:
+            original_limits = current_limits
+        minimum, maximum = original_limits
+        # Qt's unlimited sentinel must remain unlimited, not become a 4K limit.
+        def dimension(value):
+            return value if value == 16777215 else min(16777215, round(value * scale))
+        widget.setMinimumSize(dimension(minimum.width()), dimension(minimum.height()))
+        widget.setMaximumSize(dimension(maximum.width()), dimension(maximum.height()))
+        constraints[widget] = (original_limits, (widget.minimumSize(), widget.maximumSize()))
+        if isinstance(widget, QTextEdit):
+            document = widget.document()
+            current_style = document.defaultStyleSheet()
+            base_style, last_style = document_styles.get(widget, (current_style, current_style))
+            if current_style != last_style:
+                base_style = current_style
+            updated_style = scaled_stylesheet(base_style, scale)
+            if updated_style != current_style:
+                document.setDefaultStyleSheet(updated_style)
+            document_styles[widget] = (base_style, updated_style)
     window._readability_styles = styles
+    window._readability_constraints = constraints
+    window._readability_document_styles = document_styles
     margins = getattr(window, '_readability_layouts', {})
     for layout in window.findChildren(QLayout):
         if layout.parentWidget() is not None and layout.parentWidget().window() is not window:
@@ -67,8 +105,8 @@ def apply_window_scale(window: QWidget, screen=None) -> float:
     window._readability_layouts = margins
     if screen is not None and not window.isMaximized() and not window.isFullScreen():
         area = screen.availableGeometry().adjusted(12, 12, -12, -12)
-        window.resize(min(round(window.width() * scale / previous), area.width()),
-                      min(round(window.height() * scale / previous), area.height()))
+        window.resize(min(round(size_before.width() * scale / previous), area.width()),
+                      min(round(size_before.height() * scale / previous), area.height()))
         window.move(max(area.left(), min(window.x(), area.right() + 1 - window.width())),
                     max(area.top(), min(window.y(), area.bottom() + 1 - window.height())))
     return scale
