@@ -5,10 +5,11 @@ from pathlib import Path
 from typing import Iterable
 
 from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QCursor, QPainter, QPixmap, QRegion
+from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPixmap, QRegion
 from PySide6.QtWidgets import QApplication, QWidget
 
 from .codex_presence import ReservedRect
+from .desktop_scale import readability_scale
 
 
 def choose_reachable_x(
@@ -246,6 +247,9 @@ class PlacementOverlay(QWidget):
         self.mode = ""
         self.instruction = ""
         self.preview_pixmap = QPixmap()
+        self.preview_source = QPixmap()
+        self.ui_scale = 1.0
+        self.active_screen = None
         self.preview_center = QPoint()
         self.preview_timer = QTimer(self)
         self.preview_timer.setInterval(16)
@@ -275,12 +279,8 @@ class PlacementOverlay(QWidget):
         self.mode = str(mode)
         self.instruction = str(instruction)
         self.setGeometry(self.virtual_available_geometry())
-        self.preview_pixmap = cursor_pixmap.scaled(
-            48,
-            48,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.FastTransformation,
-        )
+        self.preview_source = QPixmap(cursor_pixmap)
+        self._update_monitor_scale(QCursor.pos())
         self.preview_center = QCursor.pos() - self.geometry().topLeft()
         self.setCursor(Qt.CursorShape.BlankCursor)
         self.show()
@@ -315,6 +315,7 @@ class PlacementOverlay(QWidget):
         self.mode = ""
         self.instruction = ""
         self.preview_pixmap = QPixmap()
+        self.preview_source = QPixmap()
         self.preview_center = QPoint()
 
     def shutdown(self) -> None:
@@ -350,11 +351,45 @@ class PlacementOverlay(QWidget):
         super().mouseMoveEvent(event)
 
     def _move_preview(self, global_point: QPoint) -> None:
+        self._update_monitor_scale(global_point)
         self.preview_center = global_point - self.geometry().topLeft()
         self.update()
 
+    def _update_monitor_scale(self, point: QPoint) -> None:
+        screen = QApplication.screenAt(point) or QApplication.primaryScreen()
+        scale = readability_scale(screen)
+        dpr = screen.devicePixelRatio() if screen is not None else 1.0
+        key = (screen, scale, dpr)
+        if getattr(self, '_monitor_scale_key', None) == key and not self.preview_pixmap.isNull():
+            return
+        self._monitor_scale_key = key
+        self.active_screen, self.ui_scale = screen, scale
+        font = QFont(QApplication.font())
+        font.setPointSizeF(11 * scale)
+        self.setFont(font)
+        edge = max(1, round(48 * scale * dpr))
+        self.preview_pixmap = self.preview_source.scaled(edge, edge,
+            Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.FastTransformation)
+        self.preview_pixmap.setDevicePixelRatio(dpr)
+
+    def instruction_panel(self) -> QRect:
+        scale = self.ui_scale
+        screen = self.active_screen if self.active_screen in QApplication.screens() else QApplication.primaryScreen()
+        area = screen.availableGeometry() if screen else self.geometry()
+        area = area.translated(-self.geometry().topLeft())
+        padding = round(24 * scale)
+        width = min(max(1, area.width() - 2 * padding), round(720 * scale),
+                    max(round(360 * scale), self.fontMetrics().horizontalAdvance(self.instruction) + 2 * padding))
+        bounds = self.fontMetrics().boundingRect(QRect(0, 0, max(1, width - 2 * padding), 10000),
+            int(Qt.TextFlag.TextWordWrap | Qt.AlignmentFlag.AlignCenter), self.instruction)
+        height = max(round(54 * scale), bounds.height() + padding)
+        return QRect(area.left() + (area.width() - width) // 2, area.top() + padding, width, height)
+
     def _sync_preview_to_cursor(self) -> None:
         if self.mode:
+            geometry = self.virtual_available_geometry()
+            if self.geometry() != geometry:
+                self.setGeometry(geometry)
             self._move_preview(QCursor.pos())
 
     def paintEvent(self, event: object) -> None:
@@ -367,15 +402,17 @@ class PlacementOverlay(QWidget):
         # mouse-active over its complete geometry on Windows.
         painter.fillRect(self.rect(), QColor(0, 0, 0, 1))
         if not self.preview_pixmap.isNull():
+            logical_size = self.preview_pixmap.deviceIndependentSize()
             painter.drawPixmap(
-                self.preview_center.x() - self.preview_pixmap.width() // 2,
-                self.preview_center.y() - self.preview_pixmap.height() // 2,
+                self.preview_center.x() - round(logical_size.width() / 2),
+                self.preview_center.y() - round(logical_size.height() / 2),
                 self.preview_pixmap,
             )
-        panel_width = min(520, max(300, self.fontMetrics().horizontalAdvance(self.instruction) + 48))
-        panel = QRect((self.width() - panel_width) // 2, 24, panel_width, 54)
+        panel = self.instruction_panel()
         painter.setPen(QColor(145, 232, 255, 230))
         painter.setBrush(QColor(7, 24, 41, 235))
-        painter.drawRoundedRect(panel, 15, 15)
+        painter.drawRoundedRect(panel, 15 * self.ui_scale, 15 * self.ui_scale)
         painter.setPen(QColor(237, 250, 255))
-        painter.drawText(panel, Qt.AlignmentFlag.AlignCenter, self.instruction)
+        padding = round(12 * self.ui_scale)
+        painter.drawText(panel.adjusted(padding, padding, -padding, -padding),
+                         int(Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap), self.instruction)

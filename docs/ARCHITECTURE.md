@@ -2,6 +2,15 @@
 
 ## Visibilidad y apagado manual de IA
 
+`desktop_scale` calcula una escala de legibilidad adicional a partir de la
+geometría lógica de cada QScreen, nunca de la resolución física multiplicada
+por el DPR. Por ejemplo, 4K al 150 % se presenta como 2560×1440 lógicos y recibe
+un factor 1,333; 4K al 200 % ya es 1920×1080 y recibe 1. Los controles guardan
+sus estilos y márgenes originales para evitar acumulación al cambiar de
+monitor. Los diálogos hijos se escalan de forma independiente. El overlay de
+colocación representa el cursor con DPR explícito, ajusta su texto al monitor
+del puntero y no modifica las coordenadas globales emitidas al pulsar.
+
 `PetWindow` escucha altas/bajas, geometría útil y DPI de las pantallas, agrupa
 los eventos y mantiene un control de recuperación de dos segundos. Limita el
 rectángulo del sprite real, no la ventana transparente de 420 px; adapta la

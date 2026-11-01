@@ -73,6 +73,7 @@ from PySide6.QtWidgets import (
 )
 
 from .config import PROJECT_ROOT
+from .desktop_scale import apply_window_scale, install_window_scaling, readability_scale, screen_for_widget, unscaled_stylesheet
 from .attachments import MAX_IMAGE_EDGE, MAX_IMAGE_PIXELS, MAX_TOTAL_UPLOAD_BYTES
 from .chat_math import prepare_math_markdown
 from .codex_presence import (
@@ -274,10 +275,14 @@ class SpeechBubble(QWidget):
         self.hide_timer.setSingleShot(True)
         self.hide_timer.timeout.connect(self.hide)
 
-    def show_message(self, text: str, duration_ms: int) -> None:
+    def show_message(self, text: str, duration_ms: int, screen: Any = None) -> None:
+        screen = screen or screen_for_widget(self.parentWidget() or self)
+        scale = readability_scale(screen)
+        self._readability_scale = scale
+        self.label.setStyleSheet(f"color:#edfaff;background:transparent;font-size:{14 * scale:g}px;")
         value = " ".join(text.strip().split())
         metrics = self.label.fontMetrics()
-        content_width = max(120, min(300, metrics.horizontalAdvance(value) + 8))
+        content_width = max(round(120 * scale), min(round(300 * scale), metrics.horizontalAdvance(value) + round(8 * scale)))
         bounds = metrics.boundingRect(
             QRect(0, 0, content_width, 1000),
             int(Qt.TextFlag.TextWordWrap | Qt.TextFlag.TextExpandTabs),
@@ -285,8 +290,8 @@ class SpeechBubble(QWidget):
         )
         content_height = max(metrics.height() + 4, bounds.height() + 4)
         self.label.setText(value)
-        self.label.setGeometry(16, 10, content_width, content_height)
-        self.setFixedSize(content_width + 32, content_height + 32)
+        self.label.setGeometry(round(16 * scale), round(10 * scale), content_width, content_height)
+        self.setFixedSize(content_width + round(32 * scale), content_height + round(32 * scale))
         self.show()
         self.raise_()
         self.hide_timer.start(max(2200, duration_ms))
@@ -344,6 +349,7 @@ class QuickChatPopup(QWidget):
             widget.setMouseTracking(True)
             widget.installEventFilter(self)
         self.resize(390, 62)
+        install_window_scaling(self)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         if event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
@@ -535,6 +541,7 @@ class AuthorizationDialog(QDialog):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+        install_window_scaling(self)
         self.setup = setup
         self.setWindowTitle("Seguridad de Arfoxia")
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
@@ -641,6 +648,7 @@ class AuthorizationDialog(QDialog):
 class PasswordSettingsDialog(QDialog):
     def __init__(self, service: CompanionService, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        install_window_scaling(self)
         self.service = service
         configured = service.authorization.is_configured
         self.setWindowTitle("Contraseña de seguridad")
@@ -716,6 +724,7 @@ class ChatWindow(QDialog):
 
     def __init__(self, service: CompanionService, bridge: Bridge) -> None:
         super().__init__()
+        install_window_scaling(self)
         self.service = service
         self.bridge = bridge
         self.current_conversation_id: str | None = None
@@ -2138,6 +2147,7 @@ class ChatWindow(QDialog):
 class PairingDialog(QDialog):
     def __init__(self, url: str) -> None:
         super().__init__()
+        install_window_scaling(self)
         self.url = url
         self.setWindowTitle("Emparejar iPhone")
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
@@ -2174,6 +2184,7 @@ class GpuManagerDialog(QDialog):
         self.service = service
         self.bridge = bridge
         self.last_status: dict[str, Any] = {}
+        install_window_scaling(self)
         self.busy = False
         self.refresh_pending = False
         self.setWindowTitle("Gestor de GPU de Arfoxia")
@@ -2538,7 +2549,8 @@ class PS4MenuDialog(QDialog):
         self.process = None
         self.setWindowTitle("PS4 · Control experimental del menú")
         self.setWindowIcon(snowflake_icon())
-        self.setStyleSheet(parent.styleSheet())
+        install_window_scaling(self)
+        self.setStyleSheet(unscaled_stylesheet(parent))
         self.resize(500, 330)
         layout = QVBoxLayout(self)
         info = QLabel("Las pruebas de aparición, movimiento y sesiones repetidas ya se han validado.\n\n"
@@ -2591,9 +2603,10 @@ class TravelDialog(QDialog):
         super().__init__(parent)
         self.service = service
         self.ps4_dialog: PS4MenuDialog | None = None
+        install_window_scaling(self)
         self.setWindowTitle("Paseo entre dispositivos")
         self.setWindowIcon(snowflake_icon())
-        self.setStyleSheet(parent.chat_window.styleSheet())
+        self.setStyleSheet(unscaled_stylesheet(parent.chat_window))
         self.resize(470, 320)
         layout = QVBoxLayout(self)
         description = QLabel("La IA y los chats permanecen en este PC.\n"
@@ -3564,6 +3577,9 @@ class PetWindow(QWidget):
 
     def open_menu(self, position: QPoint) -> None:
         menu = QMenu(self)
+        font = QFont(QApplication.font())
+        font.setPointSizeF(10 * readability_scale(QApplication.screenAt(position)))
+        menu.setFont(font)
         gpu_manager_action = menu.addAction("Gestor de GPU…")
         gpu_manager_action.triggered.connect(self.chat_window.show_gpu_manager)
         mode_label = (
@@ -3698,14 +3714,15 @@ class PetWindow(QWidget):
         if source == "chat":
             self.quick_chat.hide()
         duration = self.service.config.bubble_duration_ms + min(2800, len(message) * 22)
-        self.speech_bubble.show_message(message, duration)
+        self.speech_bubble.show_message(message, duration, self._screen_for_pet())
         self._position_companion_window(self.speech_bubble, gap=12)
         if source == "chat":
             self.cry_player.play("chat")
 
     def show_quick_chat(self) -> None:
-        self.quick_chat.show_and_focus()
+        apply_window_scale(self.quick_chat, self._screen_for_pet())
         self._position_companion_window(self.quick_chat, gap=12)
+        self.quick_chat.show_and_focus()
 
     def prepare_for_authorization(self) -> None:
         """Release desktop input grabs before showing a sensitive dialog."""
@@ -4173,6 +4190,11 @@ class DesktopController(QObject):
         tray_menu.addSeparator()
         tray_menu.addAction(quit_action)
         self.tray.setContextMenu(tray_menu)
+        def scale_tray_menu() -> None:
+            font = QFont(QApplication.font())
+            font.setPointSizeF(10 * readability_scale(QApplication.screenAt(QCursor.pos())))
+            tray_menu.setFont(font)
+        tray_menu.aboutToShow.connect(scale_tray_menu)
         self.tray.setToolTip(f"{service.config.name} · {service.config.species} ♂")
         self.tray.activated.connect(
             lambda reason: self.pet.show_quick_chat()

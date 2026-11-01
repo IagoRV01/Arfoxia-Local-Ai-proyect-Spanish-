@@ -6,6 +6,28 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Corregido — Legibilidad de la interfaz y cursor en 4K — 2026-11-01
+
+- Escalado de legibilidad por monitor en coordenadas lógicas Qt: compensa 4K
+  al 100/150 %, sin duplicar el escalado nativo cuando Windows ya está al 200 %.
+  Conserva la escala habitual de Full HD y evita agrandar un ultrapanorámico
+  de 1080 píxeles de altura solo por su anchura. No cambia ajustes de Windows.
+- El cursor de limón/cama, el aviso de colocación y su tipografía se adaptan
+  al monitor bajo el puntero. El aviso se centra en ese monitor, admite ajuste
+  de líneas y conserva el punto real del clic. Pixmaps con DPR explícito para
+  mantener nitidez y alineación en monitores de distinta densidad.
+- Chat completo y rápido, gestor GPU, emparejamiento, seguridad, viaje, panel
+  PS4, bocadillos y menús reciben texto/controles más legibles. El escalado de
+  ventanas y estilos es reversible, no se acumula entre aperturas y excluye
+  diálogos hijos independientes. No altera modelos, GPU, memoria ni chats.
+- Pruebas de Full HD, 4K al 100/150/200 %, ultrapanorámicos, ida/vuelta entre
+  pantallas, panel en monitor activo y coincidencia entre cursor y clic.
+- Validación: 1.204 pruebas Python superadas y render aislado del aviso/cursor.
+  Monitor real detectado como 2560×1440 lógicos a DPR 1,5 (4K/150 %) y secundario
+  Full HD a DPR 1. Proceso de escritorio recargado sin trabajos activos,
+  manteniendo la pausa de IA y cero modelos residentes. No se modifica Expo Go
+  ni el tamaño del puntero global de Windows.
+
 ### Corregido y añadido — Mascota visible e IA apagable para jugar — 2026-10-31
 
 - Recuperación de la mascota al cambiar resolución, DPI, zona útil o monitores:
