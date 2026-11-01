@@ -2858,15 +2858,31 @@ class PetWindow(QWidget):
         if area.width() <= 0 or area.height() <= 0:
             return
         specs = list(self.library.specs.values())
-        desired_scale = max(1, min(int(self.service.config.sprite_scale),
-            min(area.width(), self.width()) // max(spec.width for spec in specs),
-            min(area.height(), self.height() - 12) // max(spec.height for spec in specs)))
+        max_width = max(spec.width for spec in specs)
+        max_height = max(spec.height for spec in specs)
+        # The old fixed 420px host capped even the normal 4x preference to 3x
+        # because a rare animation is 128px tall. Grow the transparent host,
+        # not just the UI text, and preserve whole pixel-art scale steps.
+        requested_scale = math.ceil(max(1, int(self.service.config.sprite_scale)) * readability_scale(screen))
+        desired_scale = max(1, min(requested_scale,
+            max(1, (area.width() - 16) // max_width),
+            max(1, (area.height() - 24) // max_height)))
+        host_width = min(area.width(), max(420, max_width * desired_scale + 16))
+        host_height = min(area.height(), max(420, max_height * desired_scale + 24))
+        host_changed = self.width() != host_width or self.height() != host_height
+        if host_changed:
+            foot_x = self.x() + self.width() // 2
+            foot_y = self.y() + self.height() - 12
+            self.setFixedSize(host_width, host_height)
+            self.move(foot_x - host_width // 2, foot_y - host_height + 12)
         if self.scale != desired_scale:
             self.scale = desired_scale
             images, _ = self.library.frames(self.current_animation, self.direction)
             self.frames = [image_to_pixmap(frame, self.scale) for frame in images]
             self.frame_index = min(self.frame_index, len(self.frames) - 1)
             self.render_frame()
+        elif host_changed:
+            self.render_frame()  # the alpha mask must follow the new anchor
         sprite = self._arfoxia_rect()
         safe_x = max(area.left(), min(sprite.x, area.right() + 1 - sprite.width))
         safe_y = max(area.top(), min(sprite.y, area.bottom() + 1 - sprite.height))
@@ -3297,7 +3313,7 @@ class PetWindow(QWidget):
         return self.eevee_presence.reserved_rect if self.eevee_presence.visible else None
 
     def _arfoxia_rect(self, x: int | None = None, y: int | None = None) -> ReservedRect:
-        """Return the visible sprite box rather than the transparent 420px host."""
+        """Return the sprite box rather than its adaptive transparent host."""
 
         if self.frames:
             sprite_width = max(frame.width() for frame in self.frames)

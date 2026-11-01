@@ -13,10 +13,13 @@ del puntero y no modifica las coordenadas globales emitidas al pulsar.
 
 `PetWindow` escucha altas/bajas, geometría útil y DPI de las pantallas, agrupa
 los eventos y mantiene un control de recuperación de dos segundos. Limita el
-rectángulo del sprite real, no la ventana transparente de 420 px; adapta la
-escala sin modificar el tamaño preferido guardado. No roba el foco ni recupera
-una ventana cerrada, arrastrada o una mascota ausente por viaje. La recuperación
-del escritorio no equivale a un overlay dentro de pantalla completa exclusiva.
+rectángulo del sprite real, no el contenedor transparente; adapta la
+escala sin modificar el tamaño preferido guardado. El contenedor transparente
+es ahora adaptable: crece para alojar los fotogramas mayores y la escala del
+sprite incluye el factor de legibilidad del monitor, en pasos enteros. Mantiene
+el ancla inferior central y regenera su máscara al redimensionarse. No roba el
+foco ni recupera una ventana cerrada, arrastrada o una mascota ausente por viaje.
+La recuperación del escritorio no equivale a un overlay dentro de pantalla completa exclusiva.
 
 `local_ai_paused` persiste en la configuración local. `unload_model` marca la
 pausa antes de esperar el bloqueo de turno, bloquea cambios simultáneos, detiene

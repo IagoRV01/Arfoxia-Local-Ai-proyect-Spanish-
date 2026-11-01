@@ -196,7 +196,7 @@ def test_negative_monitor_bounds_keep_gestures_visible(physical_pet, monkeypatch
     pet, _ = physical_pet
     screen = QRect(-1920, -1080, 1920, 1040)
     monkeypatch.setattr(pet, "_screen_for_pet", lambda: SimpleNamespace(availableGeometry=lambda: screen))
-    fake_screen = SimpleNamespace(availableGeometry=lambda: screen)
+    fake_screen = SimpleNamespace(availableGeometry=lambda: screen, geometry=lambda: screen)
     monkeypatch.setattr(QApplication, "screens", lambda: [fake_screen])
     monkeypatch.setattr(QApplication, "screenAt", lambda _: fake_screen)
     left, right, top, bottom = pet._wander_bounds()
@@ -700,7 +700,7 @@ def test_screen_recovery_clamps_visible_sprite_after_resolution_change(physical_
     from types import SimpleNamespace
     pet, _ = physical_pet
     area = QRect(*geometry)
-    screen = SimpleNamespace(availableGeometry=lambda: area)
+    screen = SimpleNamespace(availableGeometry=lambda: area, geometry=lambda: area)
     monkeypatch.setattr(QApplication, "screens", lambda: [screen])
     monkeypatch.setattr(QApplication, "screenAt", lambda _: None)
     pet.move(6000, 4000)
@@ -739,3 +739,56 @@ def test_screen_layout_signals_are_debounced(physical_pet):
     pet._queue_screen_layout()
     assert pet.screen_layout_timer.isActive()
     assert pet.screen_layout_timer.isSingleShot()
+
+
+@pytest.mark.parametrize("logical,expected", [((3840,2160),8), ((2560,1440),6), ((1920,1080),4)])
+def test_pet_grows_with_4k_and_host_does_not_shrink_configured_scale(physical_pet, monkeypatch, logical, expected):
+    from PySide6.QtCore import QRect
+    from types import SimpleNamespace
+    pet, service = physical_pet
+    service.config.sprite_scale = 4
+    screen = SimpleNamespace(geometry=lambda: QRect(0,0,*logical),
+        availableGeometry=lambda: QRect(0,0,logical[0],logical[1]-40))
+    monkeypatch.setattr(QApplication, "screens", lambda: [screen])
+    monkeypatch.setattr(QApplication, "screenAt", lambda _: screen)
+    pet.ensure_on_screen()
+    assert pet.scale == expected
+    assert pet.width() >= max(s.width for s in pet.library.specs.values()) * expected
+    assert pet.height() >= max(s.height for s in pet.library.specs.values()) * expected + 12
+    assert pet.frames[0].width() == pet.library.specs[pet.current_animation].width * expected
+    assert service.config.sprite_scale == 4  # only the displayed size changes
+
+
+def test_monitor_round_trip_preserves_pet_foot_anchor_and_never_accumulates_scale(physical_pet, monkeypatch):
+    from PySide6.QtCore import QRect
+    from types import SimpleNamespace
+    pet, _ = physical_pet
+    area = [QRect(0,0,2560,1400)]
+    screen = SimpleNamespace(geometry=lambda: area[0], availableGeometry=lambda: area[0])
+    monkeypatch.setattr(QApplication, "screens", lambda: [screen])
+    monkeypatch.setattr(QApplication, "screenAt", lambda _: screen)
+    pet.play('Idle', loop=True)
+    pet.move(1000 - pet.width() // 2, 900 - pet.height() + 12)
+    for _ in range(3):
+        for geometry, expected in [(QRect(0,0,2560,1440),6), (QRect(0,0,1920,1080),4)]:
+            area[0] = geometry
+            pet.ensure_on_screen()
+            assert pet.scale == expected
+            assert (pet.x() + pet.width() // 2, pet.y() + pet.height() - 12) == (1000,900)
+            assert pet.mask().boundingRect().bottom() < pet.height()
+
+
+def test_host_resize_refreshes_mask_even_when_pixel_scale_stays_the_same(physical_pet, monkeypatch):
+    from PySide6.QtCore import QRect
+    from types import SimpleNamespace
+    pet, _ = physical_pet
+    area = [QRect(0,0,400,300)]
+    screen = SimpleNamespace(geometry=lambda: area[0], availableGeometry=lambda: area[0])
+    monkeypatch.setattr(QApplication, "screens", lambda: [screen])
+    monkeypatch.setattr(QApplication, "screenAt", lambda _: screen)
+    pet.ensure_on_screen()
+    scale, old_width, old_mask = pet.scale, pet.width(), pet.mask().boundingRect()
+    area[0] = QRect(0,0,500,300)
+    pet.ensure_on_screen()
+    assert pet.scale == scale
+    assert pet.mask().boundingRect().x() - old_mask.x() == (pet.width() - old_width) // 2

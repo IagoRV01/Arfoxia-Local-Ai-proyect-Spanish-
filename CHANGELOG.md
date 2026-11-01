@@ -6,6 +6,22 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Corregido — Tamaño de la mascota en 4K — 2026-11-01
+
+- La escala por monitor se aplica también al sprite, no solo a textos y cursor:
+  con la preferencia habitual 4×, se muestra a 6× lógicos en 4K al 150 %, a 8×
+  en 4K al 100 % y a 4× en Full HD o 4K al 200 %. Escalado entero con vecino más
+  próximo, sin suavizar el pixel art ni modificar la preferencia guardada.
+- El contenedor transparente deja de estar limitado a 420 píxeles. Crece para
+  alojar las animaciones y evita que sus fotogramas grandes reduzcan toda la
+  mascota a 3×. Se limita al espacio disponible en pantallas pequeñas.
+- Conserva el ancla de los pies al cambiar de monitor/tamaño y recalcula la
+  máscara de transparencia incluso cuando solo cambia el contenedor. Mantiene
+  los límites de pantalla, los viajes y el arrastre sin alterar IA, GPU o chats.
+- Validación: 1.209 pruebas Python superadas, incluidas escalas 4K, ancla de
+  posición, ausencia de acumulación y máscara tras redimensionar. Aplicado al
+  escritorio sin trabajos activos, conservando IA pausada y cero modelos.
+
 ### Corregido — Legibilidad de la interfaz y cursor en 4K — 2026-11-01
 
 - Escalado de legibilidad por monitor en coordenadas lógicas Qt: compensa 4K
