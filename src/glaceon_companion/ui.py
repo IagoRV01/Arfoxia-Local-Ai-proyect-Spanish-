@@ -3639,6 +3639,16 @@ class PetWindow(QWidget):
         for label, callback in actions:
             action = menu.addAction(label)
             action.triggered.connect(callback)
+        size_menu = QMenu("Tamaño de Arfoxia", menu)
+        menu.addMenu(size_menu)
+        for value, label in ((2, "Muy pequeño (50 %)"), (3, "Pequeño (75 %)"),
+                             (4, "Normal (100 %)"), (5, "Grande (125 %)")):
+            size_action = size_menu.addAction(label)
+            size_action.setCheckable(True)
+            size_action.setChecked(self.service.config.sprite_scale == value)
+            size_action.triggered.connect(
+                lambda checked=False, scale=value: self.set_sprite_scale(scale)
+            )
         expressions_menu = QMenu("Expresiones", menu)
         menu.addMenu(expressions_menu)
         state = self.service.state_dict()
@@ -3663,6 +3673,17 @@ class PetWindow(QWidget):
         quit_action = menu.addAction("Salir")
         quit_action.triggered.connect(QApplication.quit)
         menu.exec(position)
+
+    def set_sprite_scale(self, scale: int) -> None:
+        if scale not in (2, 3, 4, 5):
+            raise ValueError("Tamaño de Arfoxia no admitido")
+        self.service.config.sprite_scale = scale
+        self.service.store.save(self.service.config)
+        self.ensure_on_screen()
+        if self.speech_bubble.isVisible():
+            self._position_companion_window(self.speech_bubble)
+        if self.quick_chat.isVisible():
+            self._position_companion_window(self.quick_chat)
 
     def set_sound_enabled(self, enabled: bool) -> None:
         self.service.config.sound_enabled = enabled

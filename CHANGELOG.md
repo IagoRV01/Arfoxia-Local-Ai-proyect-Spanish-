@@ -6,6 +6,19 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Ajustado — Mascota más pequeña y tamaño seleccionable — 2026-11-01
+
+- El menú de clic derecho incorpora «Tamaño de Arfoxia»: 50 %, 75 %, 100 % y
+  125 % respecto a la referencia original. Se aplica al instante y se guarda
+  para siguientes inicios, manteniendo la proporción entre Full HD y 4K.
+- Se selecciona 75 % en la instalación local a petición del usuario: mascota
+  un 25 % más pequeña. Los textos, controles, objetos e IA no cambian de tamaño
+  ni de configuración. La preferencia local no se publica con el código.
+- Pruebas de selección del menú, persistencia, rechazo de tamaños inválidos,
+  ausencia de cambios en otras preferencias y escala sin acumulación.
+- Validación: 1.220 pruebas Python superadas; tamaño local guardado en 3×,
+  equivalente al 75 % de la referencia anterior 4×.
+
 ### Corregido — Proporción común de mascota e interfaz entre 1080p y 4K — 2026-11-01
 
 - Una única referencia 1920×1080 para mascota, objetos, cursor de colocación,

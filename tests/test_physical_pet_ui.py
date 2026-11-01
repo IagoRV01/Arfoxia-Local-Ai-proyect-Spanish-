@@ -230,6 +230,41 @@ def test_expression_menu_has_all_gestures_and_runs_selected_one(physical_pet, mo
     assert pet.current_animation == "Wake"
 
 
+def test_size_menu_reduces_pet_by_25_percent_and_persists_only_its_size(physical_pet, monkeypatch):
+    from dataclasses import asdict
+    from PySide6.QtWidgets import QMenu
+
+    pet, service = physical_pet
+    before = asdict(service.config)
+    width_before = pet.frames[0].width()
+    ui_font_before = pet.chat_window.font()
+    class TestMenu(QMenu):
+        def exec(self, position):
+            submenu = next(action.menu() for action in self.actions()
+                           if action.text() == "Tamaño de Arfoxia")
+            assert len(submenu.actions()) == 4
+            assert next(action for action in submenu.actions() if action.isChecked()).text() == "Normal (100 %)"
+            next(action for action in submenu.actions() if action.text() == "Pequeño (75 %)").trigger()
+    monkeypatch.setattr("glaceon_companion.ui.QMenu", TestMenu)
+    pet.open_menu(QPoint(20, 20))
+    assert pet.frames[0].width() == round(width_before * .75)
+    assert service.store.load().sprite_scale == 3
+    before['sprite_scale'] = 3
+    assert asdict(service.config) == before
+    assert pet.chat_window.font() == ui_font_before
+    pet.ensure_on_screen()
+    assert pet.frames[0].width() == round(width_before * .75)
+
+
+def test_size_setting_rejects_invalid_values_without_saving(physical_pet):
+    pet, service = physical_pet
+    for size in (0, 1, 6, 999):
+        with pytest.raises(ValueError):
+            pet.set_sprite_scale(size)
+        assert service.config.sprite_scale == 4
+        assert service.store.load().sprite_scale == 4
+
+
 def test_lemon_route_ignores_old_vertical_wander_target(physical_pet, monkeypatch):
     pet, service = physical_pet
     service.state.asleep = False

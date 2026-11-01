@@ -13,6 +13,10 @@ conservan su referencia para evitar acumulación. Los diálogos hijos se escalan
 independientemente. El overlay usa DPR explícito, ajusta su texto al monitor
 del puntero y conserva las coordenadas globales del clic. La equivalencia es
 de proporción de resolución; no conoce las pulgadas físicas de cada monitor.
+El menú «Tamaño de Arfoxia» ajusta solo `sprite_scale` entre 2/3/4/5 (50/75/100/
+125 % respecto a la referencia 4×), persiste la preferencia y vuelve a calcular
+el sprite al instante. No reduce las fuentes ni los botones para reducir la
+mascota; la compensación por resolución/DPR sigue siendo la misma.
 
 `PetWindow` escucha altas/bajas, geometría útil y DPI de las pantallas, agrupa
 los eventos y mantiene un control de recuperación de dos segundos. Limita el
