@@ -6,6 +6,26 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Corregido — Limón y cama separados del puntero con DPI mixto — 2026-11-01
+
+- La capa temporal de colocación deja de abarcar la unión de todos los
+  monitores: se vincula al monitor bajo el puntero y a su DPI nativo antes de
+  fijar su geometría. Al cruzar a otra pantalla se recoloca y readapta; no
+  interpreta los huecos lógicos de Windows como parte de otro monitor.
+- La vista previa usa `mapFromGlobal` y el clic convierte su posición local
+  mediante `mapToGlobal`, evitando un desplazamiento entre el objeto visible
+  y el destino cuando cambia el escalado. Conserva Esc, clic derecho, tiempo
+  máximo y liberación de teclado/cursor. No cambia el tamaño de la mascota.
+- Regresión de limón y cama con 4K/150 %, Full HD, monitores desplazados,
+  huecos, desconexión y cambio de geometría; clic con coordenadas globales
+  desactualizadas. Prueba nativa aislada en el monitor real: ventana y pantalla
+  a DPR 1,5, vista previa y puntero coincidentes para ambos objetos; Esc libera
+  la interacción. La captura del controlador no permite certificar el aspecto
+  visual completo: se verifica la geometría y queda pendiente confirmación del usuario.
+- Validación completa: 1.224 pruebas Python superadas. Sin cambios en modelos,
+  chats ni credenciales; la herramienta de control de Windows se usó solo en
+  una ventana de prueba aislada que se cerró al terminar.
+
 ### Ajustado — Mascota más pequeña y tamaño seleccionable — 2026-11-01
 
 - El menú de clic derecho incorpora «Tamaño de Arfoxia»: 50 %, 75 %, 100 % y

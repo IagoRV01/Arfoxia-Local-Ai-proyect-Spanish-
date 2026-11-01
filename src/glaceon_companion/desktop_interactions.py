@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Iterable
 
 from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPixmap
+from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPixmap, QScreen
 from PySide6.QtWidgets import QApplication, QWidget
 
 from .codex_presence import ReservedRect
@@ -246,7 +246,7 @@ class DesktopPropWindow(QWidget):
 
 
 class PlacementOverlay(QWidget):
-    """Temporary desktop layer for a lemon throw or bed placement."""
+    """Temporary placement layer bound to one screen's native DPI at a time."""
 
     selected = Signal(str, QPoint)
     cancelled = Signal(str)
@@ -275,16 +275,6 @@ class PlacementOverlay(QWidget):
         self.timeout.setSingleShot(True)
         self.timeout.timeout.connect(self.cancel)
 
-    @staticmethod
-    def virtual_available_geometry() -> QRect:
-        screens = QApplication.screens()
-        if not screens:
-            return QRect(0, 0, 1, 1)
-        geometry = QRect(screens[0].availableGeometry())
-        for screen in screens[1:]:
-            geometry = geometry.united(screen.availableGeometry())
-        return geometry
-
     def begin(
         self,
         mode: str,
@@ -295,10 +285,9 @@ class PlacementOverlay(QWidget):
     ) -> None:
         self.mode = str(mode)
         self.instruction = str(instruction)
-        self.setGeometry(self.virtual_available_geometry())
+        self.setWindowTitle("Colocar cama · Arfoxia" if mode == "bed" else "Lanzar limón · Arfoxia")
         self.preview_source = QPixmap(cursor_pixmap)
-        self._update_monitor_scale(QCursor.pos())
-        self.preview_center = QCursor.pos() - self.geometry().topLeft()
+        self._move_preview(QCursor.pos())
         self.setCursor(Qt.CursorShape.BlankCursor)
         self.show()
         self.raise_()
@@ -350,8 +339,9 @@ class PlacementOverlay(QWidget):
 
     def mousePressEvent(self, event: object) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
-            self._move_preview(event.globalPosition().toPoint())
-            self.finish(event.globalPosition().toPoint())
+            point = self.mapToGlobal(event.position().toPoint())
+            self._move_preview(point)
+            self.finish(point)
             event.accept()
             return
         if event.button() == Qt.MouseButton.RightButton:
@@ -369,11 +359,25 @@ class PlacementOverlay(QWidget):
 
     def _move_preview(self, global_point: QPoint) -> None:
         self._update_monitor_scale(global_point)
-        self.preview_center = global_point - self.geometry().topLeft()
+        self.preview_center = self.mapFromGlobal(global_point)
         self.update()
 
     def _update_monitor_scale(self, point: QPoint) -> None:
-        screen = QApplication.screenAt(point) or QApplication.primaryScreen()
+        screen = QApplication.screenAt(point)
+        if screen is None:
+            screen = self.active_screen if self.active_screen in QApplication.screens() else QApplication.primaryScreen()
+        if screen is not None:
+            # A spanning HWND has only one DPR. On mixed-DPI Windows desktops
+            # it can paint the preview far from the pointer on another screen.
+            # Bind the native window first, then use that screen's logical area.
+            if isinstance(screen, QScreen):
+                self.winId()
+                handle = self.windowHandle()
+                if handle is not None and handle.screen() is not screen:
+                    handle.setScreen(screen)
+            area = screen.availableGeometry()
+            if self.geometry() != area:
+                self.setGeometry(area)
         scale = readability_scale(screen)
         dpr = screen.devicePixelRatio() if screen is not None else 1.0
         key = (screen, scale, dpr)
@@ -404,9 +408,6 @@ class PlacementOverlay(QWidget):
 
     def _sync_preview_to_cursor(self) -> None:
         if self.mode:
-            geometry = self.virtual_available_geometry()
-            if self.geometry() != geometry:
-                self.setGeometry(geometry)
             self._move_preview(QCursor.pos())
 
     def paintEvent(self, event: object) -> None:

@@ -3,8 +3,8 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtCore import QPoint, QRect
-from PySide6.QtGui import QColor, QPixmap
+from PySide6.QtCore import QPoint, QPointF, QRect, Qt, QEvent
+from PySide6.QtGui import QColor, QPixmap, QCursor, QMouseEvent
 from PySide6.QtWidgets import QApplication, QDialog, QLabel, QVBoxLayout, QTextBrowser
 from PIL import Image
 
@@ -184,4 +184,72 @@ def test_4k_at_150_percent_uses_crisp_96_physical_pixel_pointer(app, monkeypatch
         assert overlay.preview_pixmap.width() == 96
         assert overlay.preview_pixmap.deviceIndependentSize().width() == 64
     finally:
+        overlay.close()
+
+
+@pytest.mark.parametrize('mode', ['lemon', 'bed'])
+def test_placement_tracks_each_screen_not_a_mixed_dpi_virtual_window(app, monkeypatch, mode):
+    left = monitor(1920, 1080, 1, x=-1920, y=200)
+    main = monitor(2560, 1440, 1.5)
+    upper = monitor(1280, 720, 1.5, x=3840, y=-800)
+    screens = [left, main, upper]
+    monkeypatch.setattr(QApplication, 'screens', lambda: screens)
+    monkeypatch.setattr(QApplication, 'primaryScreen', lambda: main)
+    monkeypatch.setattr(QApplication, 'screenAt', lambda p: next(
+        (screen for screen in screens if screen.geometry().contains(p)), None))
+    overlay = PlacementOverlay()
+    overlay.mode = mode
+    overlay.preview_source = QPixmap(48, 48)
+    overlay.preview_source.fill(QColor('yellow'))
+    try:
+        for screen in [main, left, upper, main]:
+            point = screen.availableGeometry().center()
+            monkeypatch.setattr(QCursor, 'pos', lambda value=point: value)
+            overlay._sync_preview_to_cursor()
+            assert overlay.geometry() == screen.availableGeometry()
+            assert overlay.active_screen is screen
+            assert overlay.mapToGlobal(overlay.preview_center) == point
+            assert overlay.rect().contains(overlay.preview_center)
+        # Qt Windows desktops can have logical gaps: don't jump to primary.
+        overlay._move_preview(upper.availableGeometry().center())
+        overlay._move_preview(QPoint(3200, -300))
+        assert overlay.active_screen is upper
+        assert overlay.geometry() == upper.availableGeometry()
+        # Resolution/taskbar changes update the area even without a DPR change.
+        upper.availableGeometry = lambda: QRect(3840, -800, 1200, 640)
+        overlay._move_preview(upper.availableGeometry().center())
+        assert overlay.geometry() == upper.availableGeometry()
+        # Removal of the previous screen recovers to a remaining screen.
+        screens.remove(upper)
+        overlay._move_preview(main.availableGeometry().center())
+        assert overlay.active_screen is main
+    finally:
+        overlay.shutdown()
+        overlay.close()
+
+
+@pytest.mark.parametrize('mode', ['lemon', 'bed'])
+def test_placement_click_uses_the_local_preview_even_with_stale_global_event(app, mode):
+    overlay = PlacementOverlay()
+    overlay.setGeometry(QApplication.primaryScreen().availableGeometry())
+    overlay.mode = mode
+    selected = []
+    overlay.selected.connect(lambda kind, point: selected.append((kind, point)))
+    local = QPoint(220, 240)
+    expected = overlay.mapToGlobal(local)
+    # An event generated around a screen/DPI transition may carry stale global
+    # coordinates. Its local position and native map are authoritative.
+    event = QMouseEvent(QEvent.Type.MouseButtonPress, QPointF(local), QPointF(-9999, -9999),
+                        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+                        Qt.KeyboardModifier.NoModifier)
+    try:
+        QApplication.sendEvent(overlay, event)
+        assert selected == [(mode, expected)]
+        assert not overlay.isVisible()
+        assert not overlay.preview_timer.isActive()
+        assert not overlay.timeout.isActive()
+        assert overlay.mode == ''
+        assert not overlay.testAttribute(Qt.WidgetAttribute.WA_SetCursor)
+    finally:
+        overlay.shutdown()
         overlay.close()
