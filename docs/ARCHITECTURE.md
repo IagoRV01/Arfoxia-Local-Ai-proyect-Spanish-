@@ -2,6 +2,14 @@
 
 ## Visibilidad y apagado manual de IA
 
+La auditoría de modelos y GPU y su método reproducible están en
+[`MODEL_PERFORMANCE.md`](MODEL_PERFORMANCE.md). Dual fija reparto por UUID
+`75,25`, batch 128 y `draft_num_predict=1`, manteniendo contexto 32K y High.
+Los buffers de especulación de cuatro borradores agotaban el margen del
+escritorio en la GPU principal. El preload y los turnos usan las mismas opciones
+para no provocar recargas por diferencias entre peticiones. La residencia
+manual y el muestreo de 20 segundos permanecen sin cambios.
+
 `desktop_scale` usa una referencia común 1920×1080. El factor físico es el
 menor de ancho/1920 y alto/1080, limitado entre 1 y 4; el factor lógico divide
 ese resultado por el DPR nativo. Por ejemplo, 4K al 150 % (2560×1440 lógicos)

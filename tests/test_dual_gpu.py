@@ -27,7 +27,7 @@ def test_dual_environment_pins_uuid_order_and_preserves_main_ollama(monkeypatch)
     assert env["CUDA_VISIBLE_DEVICES"] == f"{config.ai_gpu_uuid},{config.gaming_gpu_uuid}"
     assert env["OLLAMA_HOST"] == "http://127.0.0.1:11436"
     assert env["LLAMA_ARG_SPLIT_MODE"] == "layer"
-    assert env["LLAMA_ARG_TENSOR_SPLIT"] == "86,14"
+    assert env["LLAMA_ARG_TENSOR_SPLIT"] == "75,25"
     assert env["LLAMA_ARG_FIT"] == "off"
     assert env["LLAMA_ARG_CACHE_RAM"] == "0"
     assert env["LLAMA_ARG_CTX_CHECKPOINTS"] == "0"
@@ -60,6 +60,8 @@ def test_dual_options_cannot_force_single_gpu_or_unbounded_context():
     runtime = DualGpuRuntime(replace(CompanionConfig(), dual_context_tokens=999999), None)
     assert runtime.options()["num_gpu"] == 999
     assert runtime.options()["num_ctx"] == 32768
+    assert runtime.options()["num_batch"] == 128
+    assert runtime.options()["draft_num_predict"] == 1
     assert "main_gpu" not in runtime.options()
 
 
@@ -140,6 +142,8 @@ def test_dual_chat_uses_official_extra_high_and_never_evicts_on_warning(monkeypa
     assert requests[0]["keep_alive"] == -1
     assert requests[0]["options"]["num_predict"] == 16384
     assert requests[0]["options"]["temperature"] == 1.0
+    assert requests[0]["options"]["draft_num_predict"] == 1
+    assert requests[0]["options"]["num_batch"] == 128
 
 
 def test_recovery_adopts_only_verified_server_without_terminating(tmp_path, monkeypatch):

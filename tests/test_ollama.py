@@ -270,6 +270,7 @@ def test_large_turn_uses_pinned_model_context_keepalive_and_tool_allowlist(
     payload = captured["payload"]
     assert payload["model"] == "qwen3.5:9b-q4_K_M"
     assert payload["options"]["num_ctx"] == 32768
+    assert payload["options"]["num_gpu"] == 999
     assert payload["keep_alive"] == -1
     assert {
         tool["function"]["name"] for tool in payload["tools"]
@@ -392,6 +393,10 @@ def test_gaming_server_environment_isolated_by_uuid_and_shared_model_store(
     model_store = tmp_path / "ollama-models"
     monkeypatch.setenv("OLLAMA_MODELS", str(model_store))
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "wrong-gpu")
+    monkeypatch.setenv("LLAMA_ARG_TENSOR_SPLIT", "20,80")
+    monkeypatch.setenv("LLAMA_ARG_N_GPU_LAYERS", "0")
+    monkeypatch.setenv("GGML_CUDA_ENABLE_UNIFIED_MEMORY", "1")
+    monkeypatch.setenv("OLLAMA_NUM_PARALLEL", "8")
 
     environment = client._gaming_server_environment()
 
@@ -401,6 +406,25 @@ def test_gaming_server_environment_isolated_by_uuid_and_shared_model_store(
     assert environment["OLLAMA_MAX_LOADED_MODELS"] == "1"
     assert environment["OLLAMA_SCHED_SPREAD"] == "false"
     assert environment["OLLAMA_NOPRUNE"] == "true"
+    assert environment["OLLAMA_NO_CLOUD"] == "true"
+    assert environment["LLAMA_ARG_CACHE_RAM"] == "0"
+    assert environment["LLAMA_ARG_CTX_CHECKPOINTS"] == "0"
+    assert "LLAMA_ARG_TENSOR_SPLIT" not in environment
+    assert "LLAMA_ARG_N_GPU_LAYERS" not in environment
+    assert "GGML_CUDA_ENABLE_UNIFIED_MEMORY" not in environment
+
+
+def test_power_preload_explains_memory_failure_without_a_silent_fallback(monkeypatch):
+    import httpx
+    def respond(request):
+        return httpx.Response(500, json={"error": "CUDA out of memory"})
+    original = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: original(
+        transport=httpx.MockTransport(respond), **kw))
+    client = OllamaClient(CompanionConfig.defaults())
+    with pytest.raises(RuntimeError, match="utiliza Dual"):
+        asyncio.run(client.preload_power())
+    assert client.requested_mode == 'normal'
 
 
 def test_model_status_lists_both_gpus_with_stable_roles(monkeypatch):

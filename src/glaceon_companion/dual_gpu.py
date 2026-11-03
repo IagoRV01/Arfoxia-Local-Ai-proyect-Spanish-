@@ -30,6 +30,13 @@ class _AdoptedProcess:
 
 class DualGpuRuntime:
     GUARD_INTERVAL_SECONDS = 20.0
+    # Measured on the configured 16 GB + 8 GB cards. The old 86/14 split
+    # crowded out Windows/compute buffers on the primary card at 32K context.
+    TENSOR_SPLIT = "75,25"
+    BATCH_TOKENS = 128
+    # One MTP token keeps the draft context within the 5.5 GiB secondary cap.
+    # Do not inherit Ollama's changing default (currently four draft tokens).
+    DRAFT_TOKENS = 1
 
     def __init__(self, config: CompanionConfig, runtime_dir: Path | None) -> None:
         self.config = config
@@ -102,11 +109,11 @@ class DualGpuRuntime:
             "OLLAMA_NOPRUNE": "true",
             "OLLAMA_VULKAN": "false",
             "OLLAMA_LOAD_TIMEOUT": "10m",
-            # Ollama 0.34's fit exits early when all layers are explicitly on
-            # GPU. Pin the split as well; never let it silently choose 2:1.
+            # All transformer layers stay on GPU. Leave room for KV, compute,
+            # the visual projector and the desktop, not just the weight files.
             "LLAMA_ARG_FIT": "off",
             "LLAMA_ARG_SPLIT_MODE": "layer",
-            "LLAMA_ARG_TENSOR_SPLIT": "86,14",
+            "LLAMA_ARG_TENSOR_SPLIT": self.TENSOR_SPLIT,
             "LLAMA_ARG_CACHE_RAM": "0",
             "LLAMA_ARG_CTX_CHECKPOINTS": "0",
         })
@@ -114,7 +121,8 @@ class DualGpuRuntime:
 
     def options(self) -> dict:
         return {"num_ctx": self.context_tokens, "num_gpu": 999,
-                "num_batch": 256, "temperature": 1.0, "top_p": 0.95,
+                "num_batch": self.BATCH_TOKENS, "draft_num_predict": self.DRAFT_TOKENS,
+                "temperature": 1.0, "top_p": 0.95,
                 "top_k": 20, "min_p": 0.0, "presence_penalty": 0.0,
                 "repeat_penalty": 1.0, "num_predict": 16384}
 

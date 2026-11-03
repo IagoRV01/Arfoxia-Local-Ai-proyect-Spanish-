@@ -890,10 +890,13 @@ class OllamaClient:
             raise RuntimeError("No hay una GPU de juego configurada.")
         if gaming_uuid.casefold() == ai_uuid.casefold():
             raise RuntimeError("Las GPU de juego e IA deben tener UUID diferentes.")
-        environment = os.environ.copy()
+        # Inherited llama.cpp knobs (split, CPU offload, speculative buffers)
+        # must not leak from another profile into this single-GPU server.
+        environment = {key: value for key, value in os.environ.items()
+                       if not key.upper().startswith(("LLAMA_ARG_", "OLLAMA_", "GGML_"))}
         shared_models = str(
             Path(
-                environment.get(
+                os.environ.get(
                     "OLLAMA_MODELS",
                     str(Path.home() / ".ollama" / "models"),
                 )
@@ -912,6 +915,9 @@ class OllamaClient:
                 "OLLAMA_SCHED_SPREAD": "false",
                 "OLLAMA_VULKAN": "false",
                 "OLLAMA_NOPRUNE": "true",
+                "OLLAMA_NO_CLOUD": "true",
+                "LLAMA_ARG_CACHE_RAM": "0",
+                "LLAMA_ARG_CTX_CHECKPOINTS": "0",
             }
         )
         return environment
@@ -1446,6 +1452,9 @@ class OllamaClient:
             "dual_model": self.config.dual_model,
             "dual_model_installed": dual_installed,
             "dual_context_tokens": self.dual.context_tokens,
+            "dual_tensor_split": self.dual.TENSOR_SPLIT,
+            "dual_batch_tokens": self.dual.BATCH_TOKENS,
+            "dual_draft_tokens": self.dual.DRAFT_TOKENS,
             "dual_server_running": self.dual.owned,
             "dual_blocked_by_game": game.active or bool(game.error),
             "dual_ai_limit_gb": 16,
@@ -1590,7 +1599,17 @@ class OllamaClient:
                 f"{self.config.ollama_url}/api/generate",
                 json=payload,
             )
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                if any(marker in response.text.casefold() for marker in
+                       ("out of memory", "not enough memory", "failed to allocate", "insufficient memory")):
+                    raise RuntimeError(
+                        "El modelo Potencia no cabe con el contexto actual en la GPU de IA. "
+                        "Libera VRAM de esa gráfica o utiliza Dual; no cambiaré de modelo "
+                        "ni pasaré sus capas a RAM automáticamente."
+                    ) from exc
+                raise
         runtime = next(
             (
                 item
@@ -1745,6 +1764,9 @@ class OllamaClient:
                     large=is_large,
                 ),
                 "temperature": 0.55,
+                # The configured profiles are GPU-only; never let automatic
+                # placement silently trade speed for system-RAM transformer layers.
+                "num_gpu": 999,
             },
         }
         if is_power or is_gaming_gpu:

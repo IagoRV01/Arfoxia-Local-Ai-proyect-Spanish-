@@ -6,6 +6,28 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Optimizado — Modelos y GPU medidos en el equipo real — 2026-11-03
+
+- Dual pasa de reparto 86/14 a 75/25 y batch 128 para dejar margen al escritorio,
+  caché y cálculo en la tarjeta de 16 GB. Fija MTP de un token en la API oficial
+  en lugar de heredar los cuatro borradores predeterminados de Ollama 0.40.14.
+  Conserva Qwen 3.8 27B Q4, contexto 32K, High/extra high, herramientas, visión,
+  caché Q8, Flash Attention, residencia manual y vigilancia cada 20 segundos.
+- Servidores propios de una GPU aíslan también variables heredadas de otros
+  perfiles y conservan la ruta compartida de modelos. Los turnos solicitan
+  todas las capas en GPU. Falta de memoria en Potencia se explica sin cambiar
+  silenciosamente de modelo ni recurrir a capas en CPU.
+- Añade benchmark optativo aislado, de modelos ya instalados, y un informe con
+  resultados y límites. Dual elegido: 30–33 tok/s en caliente en pruebas cortas;
+  4B: 58–59; 9B: 44. Los 43 tok/s de MTP 4 no se adoptan por falta de margen en
+  una de sus pasadas. Potencia en una sola GPU no cumple el margen actual.
+- Ninguna descarga de modelos, escritura de chats ni cambio de contexto,
+  credenciales, conexiones de pantalla, controladores o ajustes de Windows.
+- Validación: 1.225 pruebas Python superadas y benchmark reproducible ejecutado.
+  Dual High con 18.758 tokens de entrada: 28,7 tok/s en caliente, 25,7 segundos
+  de procesamiento de entrada. IA pausada y ningún modelo residente al terminar
+  las pruebas; la carga/descarga del servidor temporal no altera esa preferencia.
+
 ### Corregido — Limón y cama separados del puntero con DPI mixto — 2026-11-01
 
 - La capa temporal de colocación deja de abarcar la unión de todos los
