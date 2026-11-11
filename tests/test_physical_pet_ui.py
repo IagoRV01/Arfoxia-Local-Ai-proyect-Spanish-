@@ -747,7 +747,7 @@ def test_screen_recovery_clamps_visible_sprite_after_resolution_change(physical_
     assert pet.wander_target is None and pet.wander_target_y is None
 
 
-def test_visibility_watchdog_respects_travel_drag_and_close(physical_pet):
+def test_visibility_watchdog_respects_travel_drag_and_close(physical_pet, monkeypatch):
     pet, _ = physical_pet
     pet.hide()
     pet.travel_away = True
@@ -757,6 +757,7 @@ def test_visibility_watchdog_respects_travel_drag_and_close(physical_pet):
     pet.ensure_on_screen()
     assert pet.isVisible()
     pet.drag_origin = QPoint(5, 5)
+    monkeypatch.setattr(pet, "_left_button_is_down", lambda: True)
     pet.move(9000, 9000)
     pet.ensure_on_screen()
     assert pet.pos() == QPoint(9000, 9000)
@@ -766,6 +767,83 @@ def test_visibility_watchdog_respects_travel_drag_and_close(physical_pet):
     assert not pet.isVisible()
     assert not pet.screen_recovery_timer.isActive()
     assert not pet.screen_layout_timer.isActive()
+
+
+def test_visibility_watchdog_recovers_after_lost_mouse_release(physical_pet, monkeypatch):
+    pet, service = physical_pet
+    service.state.asleep = False
+    pet.drag_origin = QPoint(0, 0)
+    pet.window_origin = QPoint(9000, 9000)
+    pet.move(pet.window_origin)
+    pet.hide()
+    pet.animation_timer.stop()
+    monkeypatch.setattr(pet, "_left_button_is_down", lambda: False)
+
+    pet.ensure_on_screen()
+
+    assert pet.drag_origin is pet.window_origin is None
+    assert pet.isVisible()
+    assert pet.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+    assert pet.animation_timer.isActive()
+    assert QApplication.screenAt(pet._arfoxia_center()) is not None
+    assert not service.state.asleep
+
+
+@pytest.mark.parametrize("hidden,iconic,topmost,style", [
+    (False, False, True, 0x8),
+    (True, False, True, 0),
+    (False, True, True, 0x8),
+    (True, False, False, 0),
+    (False, False, False, 0),
+])
+def test_visibility_watchdog_repairs_native_window_only_when_needed(
+    physical_pet, monkeypatch, hidden, iconic, topmost, style,
+):
+    import ctypes
+    from types import SimpleNamespace
+
+    pet, _ = physical_pet
+    pet.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, topmost)
+    pet.show()
+    calls = []
+    user32 = SimpleNamespace(
+        IsWindowVisible=lambda _: not hidden,
+        IsIconic=lambda _: iconic,
+        GetWindowLongW=lambda *_: style,
+        ShowWindow=lambda _, mode: calls.append(("show", mode)),
+        SetWindowPos=lambda _, order, *args: calls.append(("position", order.value, args[-1])) or True,
+    )
+    monkeypatch.setattr(QApplication, "platformName", lambda: "windows")
+    monkeypatch.setattr(ctypes, "windll", SimpleNamespace(user32=user32), raising=False)
+    render = []
+    monkeypatch.setattr(pet, "render_frame", lambda: render.append(True))
+
+    assert pet.isVisible() and not pet.isMinimized()
+    pet.ensure_on_screen()
+
+    lost_topmost = topmost and not (style & 0x8)
+    expected = [("show", 4)] if iconic else []
+    if hidden or iconic or lost_topmost:
+        flags = 0x0213 | (0x0040 if hidden else 0) | (0 if lost_topmost else 0x0004)
+        expected.append(("position", ctypes.c_void_p(-1).value if lost_topmost else None, flags))
+    assert calls == expected
+    assert render == ([True] if expected else [])
+
+
+def test_manual_return_restores_animation_and_clears_previous_drag(physical_pet):
+    pet, service = physical_pet
+    service.travel.register("linux", "Linux", "pc2")
+    service.travel.select("linux", connect=False)
+    pet.drag_origin = pet.window_origin = QPoint(10, 10)
+    service.travel.heartbeat("linux", True)
+    pet.poll_events()
+    assert pet.travel_away and not pet.isVisible()
+    assert pet.drag_origin is pet.window_origin is None
+
+    pet.return_home()
+
+    assert not pet.travel_away and pet.isVisible()
+    assert pet.animation_timer.isActive()
 
 
 def test_screen_layout_signals_are_debounced(physical_pet):

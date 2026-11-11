@@ -6,6 +6,15 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Corregido — Arfoxia vuelve a aparecer sin abrir el chat — 2026-11-11
+
+- El vigilante recupera la mascota cuando Windows oculta, minimiza o retira
+  su ventana de la capa superior, incluso si Qt aún la considera visible.
+  No roba el foco y respeta el ajuste «Siempre visible».
+- Si un arrastre pierde el evento de soltar, recupera la posición sin simular
+  que se ha soltado sobre la cama. Respeta los viajes activos y reinicia la
+  animación al volver manualmente a este PC.
+
 ### Optimizado — Modelos y GPU medidos en el equipo real — 2026-11-03
 
 - Dual pasa de reparto 86/14 a 75/25 y batch 128 para dejar margen al escritorio,

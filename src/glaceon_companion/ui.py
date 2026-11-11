@@ -2738,6 +2738,7 @@ class PetWindow(QWidget):
             flags |= Qt.WindowType.WindowStaysOnTopHint
         self.setWindowFlags(flags)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setFixedSize(420, 420)
 
         self.animation_timer = QTimer(self)
@@ -2855,9 +2856,15 @@ class PetWindow(QWidget):
         self.render_frame()
 
     def ensure_on_screen(self) -> None:
-        """Recover the painted sprite (not its transparent host) after hotplug/DPI changes."""
-        if self._closing or self.travel_away or self.drag_origin is not None:
+        """Keep the local sprite visible without interfering with an active drag."""
+        if self._closing or self.travel_away:
             return
+        if self.drag_origin is not None:
+            if self._left_button_is_down():
+                return
+            # Capture can be lost during a desktop/display transition, so Qt
+            # may never deliver the release. Do not interpret that as a drop.
+            self.drag_origin = self.window_origin = None
         screens = QApplication.screens()
         if not screens:
             return
@@ -2899,12 +2906,46 @@ class PetWindow(QWidget):
             self.move(self.x() + safe_x - sprite.x, self.y() + safe_y - sprite.y)
             self.wander_target = self.wander_target_y = None
             self.movement_timer.stop()
-        if not self.isVisible() or self.isMinimized():
+        restored = not self.isVisible() or self.isMinimized()
+        if restored:
             self.showNormal()
-            self.raise_()
+        if self._restore_native_visibility() or restored or not self.animation_timer.isActive():
+            self.render_frame()
         for prop in (self.bed_prop, self.lemon_prop, self.berry_prop):
             if prop.isVisible() and prop.drag_pointer_origin is None:
                 prop.refresh_scale()
+
+    @staticmethod
+    def _left_button_is_down() -> bool:
+        if QApplication.platformName() == "windows":
+            user32 = ctypes.windll.user32
+            # Win32 reports physical buttons; account for left-handed setup.
+            button = 0x02 if user32.GetSystemMetrics(23) else 0x01  # SM_SWAPBUTTON
+            return bool(user32.GetAsyncKeyState(button) & 0x8000)
+        return bool(QApplication.mouseButtons() & Qt.MouseButton.LeftButton)
+
+    def _restore_native_visibility(self) -> bool:
+        if QApplication.platformName() != "windows":
+            return False
+        # The HWND may be hidden/minimized or lose topmost independently of Qt.
+        user32 = ctypes.windll.user32
+        hwnd = ctypes.c_void_p(int(self.winId()))
+        iconic = bool(user32.IsIconic(hwnd))
+        hidden = not user32.IsWindowVisible(hwnd)
+        topmost = bool(self.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+        lost_topmost = topmost and not (user32.GetWindowLongW(hwnd, -20) & 0x8)  # GWL_EXSTYLE, WS_EX_TOPMOST
+        if not (iconic or hidden or lost_topmost):
+            return False
+        if iconic:
+            user32.ShowWindow(hwnd, 4)  # SW_SHOWNOACTIVATE
+        # SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOOWNERZORDER.
+        flags = 0x0001 | 0x0002 | 0x0010 | 0x0200
+        if hidden:
+            flags |= 0x0040  # SWP_SHOWWINDOW
+        if not lost_topmost:
+            flags |= 0x0004  # SWP_NOZORDER
+        return bool(user32.SetWindowPos(hwnd, ctypes.c_void_p(-1 if lost_topmost else 0),
+                                       0, 0, 0, 0, flags))
 
     def _place_initially(self) -> None:
         screen = QApplication.primaryScreen()
@@ -3573,7 +3614,7 @@ class PetWindow(QWidget):
             self.open_menu(event.globalPosition().toPoint())
 
     def mouseMoveEvent(self, event: Any) -> None:
-        if not self.drag_origin or not self.window_origin:
+        if self.drag_origin is None or self.window_origin is None:
             return
         current = event.globalPosition().toPoint()
         delta = current - self.drag_origin
@@ -4024,11 +4065,12 @@ class PetWindow(QWidget):
             self.movement_timer.stop()
             self.play("Idle", direction=0, loop=True)
 
-    def poll_events(self) -> None:
+    def _sync_travel_visibility(self) -> bool:
         away = self.service.travel.snapshot()["active"] != "home"
         if away != self.travel_away:
             self.travel_away = away
             if away:
+                self.drag_origin = self.window_origin = None
                 self.cancel_fetch_game()
                 self.placement_overlay.cancel()
                 self.feed_timer.stop()
@@ -4043,6 +4085,10 @@ class PetWindow(QWidget):
                 state = self.service.state_dict()
                 self.play("Sleep" if state["asleep"] else "Sit" if state.get("seated") else "Idle", loop=True)
                 self.show()
+        return away
+
+    def poll_events(self) -> None:
+        away = self._sync_travel_visibility()
         while not self.service.events.empty():
             event = self.service.events.get_nowait()
             self.chat_window.handle_service_event(event)
@@ -4174,8 +4220,8 @@ class PetWindow(QWidget):
 
     def return_home(self) -> None:
         self.service.travel.home()
-        self.travel_away = False
-        self.show()
+        # Use the same transition as an automatic return, including animation.
+        self._sync_travel_visibility()
         self.ensure_on_screen()
 
     def closeEvent(self, event: Any) -> None:
