@@ -789,15 +789,16 @@ def test_visibility_watchdog_recovers_after_lost_mouse_release(physical_pet, mon
     assert not service.state.asleep
 
 
-@pytest.mark.parametrize("hidden,iconic,topmost,style", [
-    (False, False, True, 0x8),
-    (True, False, True, 0),
-    (False, True, True, 0x8),
-    (True, False, False, 0),
-    (False, False, False, 0),
+@pytest.mark.parametrize("hidden,iconic,topmost,style,overlay", [
+    (False, False, True, 0x8, False),
+    (True, False, True, 0, False),
+    (False, True, True, 0x8, False),
+    (True, False, False, 0, False),
+    (False, False, False, 0, True),
+    (False, False, True, 0x8, True),
 ])
 def test_visibility_watchdog_repairs_native_window_only_when_needed(
-    physical_pet, monkeypatch, hidden, iconic, topmost, style,
+    physical_pet, monkeypatch, hidden, iconic, topmost, style, overlay,
 ):
     import ctypes
     from types import SimpleNamespace
@@ -815,19 +816,35 @@ def test_visibility_watchdog_repairs_native_window_only_when_needed(
     )
     monkeypatch.setattr(QApplication, "platformName", lambda: "windows")
     monkeypatch.setattr(ctypes, "windll", SimpleNamespace(user32=user32), raising=False)
+    monkeypatch.setattr(pet, "_blocked_by_overlay", lambda: overlay)
     render = []
     monkeypatch.setattr(pet, "render_frame", lambda: render.append(True))
 
     assert pet.isVisible() and not pet.isMinimized()
     pet.ensure_on_screen()
 
-    lost_topmost = topmost and not (style & 0x8)
+    raise_topmost = topmost and (not (style & 0x8) or overlay)
     expected = [("show", 4)] if iconic else []
-    if hidden or iconic or lost_topmost:
-        flags = 0x0213 | (0x0040 if hidden else 0) | (0 if lost_topmost else 0x0004)
-        expected.append(("position", ctypes.c_void_p(-1).value if lost_topmost else None, flags))
+    if hidden or iconic or raise_topmost:
+        flags = 0x0213 | (0x0040 if hidden else 0) | (0 if raise_topmost else 0x0004)
+        expected.append(("position", ctypes.c_void_p(-1).value if raise_topmost else None, flags))
     assert calls == expected
     assert render == ([True] if expected else [])
+
+
+def test_overlay_probe_uses_a_painted_point_and_has_a_cooldown(physical_pet, monkeypatch):
+    from glaceon_companion import ui
+
+    pet, _ = physical_pet
+    probes = []
+    monkeypatch.setattr(ui, "blocked_by_desktop_overlay", lambda *args: probes.append(args) or True)
+    assert pet._blocked_by_overlay()
+    handle, x, y = probes.pop()
+    assert handle == int(pet.winId())
+    assert pet.mask().contains(QPoint(round(x / pet.devicePixelRatioF()), round(y / pet.devicePixelRatioF())))
+    pet._last_overlay_raise = ui.time.monotonic()
+    assert not pet._blocked_by_overlay()
+    assert not probes
 
 
 def test_manual_return_restores_animation_and_clears_previous_drag(physical_pet):

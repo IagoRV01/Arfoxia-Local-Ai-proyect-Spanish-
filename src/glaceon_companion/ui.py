@@ -96,6 +96,7 @@ from .desktop_interactions import (
     sleeping_window_position,
 )
 from .icons import snowflake_icon
+from .desktop_visibility import blocked_by_desktop_overlay
 from .services import CompanionService
 from .sprites import SpriteLibrary
 from .pet_motion import EXPRESSION_LABELS, direction_for_delta, expression_choices, step_towards
@@ -2702,6 +2703,7 @@ class PetWindow(QWidget):
         self.token = token
         self.travel_away = False
         self._closing = False
+        self._last_overlay_raise = -math.inf
         self.travel_dialog: TravelDialog | None = None
         variant = service.config.sprite_variant
         self.library = SpriteLibrary(PROJECT_ROOT / "assets" / "external" / "pmd" / variant)
@@ -2934,7 +2936,9 @@ class PetWindow(QWidget):
         hidden = not user32.IsWindowVisible(hwnd)
         topmost = bool(self.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
         lost_topmost = topmost and not (user32.GetWindowLongW(hwnd, -20) & 0x8)  # GWL_EXSTYLE, WS_EX_TOPMOST
-        if not (iconic or hidden or lost_topmost):
+        overlay = (topmost and not (iconic or hidden or lost_topmost)
+                   and self._blocked_by_overlay())
+        if not (iconic or hidden or lost_topmost or overlay):
             return False
         if iconic:
             user32.ShowWindow(hwnd, 4)  # SW_SHOWNOACTIVATE
@@ -2942,10 +2946,28 @@ class PetWindow(QWidget):
         flags = 0x0001 | 0x0002 | 0x0010 | 0x0200
         if hidden:
             flags |= 0x0040  # SWP_SHOWWINDOW
-        if not lost_topmost:
+        raise_topmost = lost_topmost or overlay
+        if not raise_topmost:
             flags |= 0x0004  # SWP_NOZORDER
-        return bool(user32.SetWindowPos(hwnd, ctypes.c_void_p(-1 if lost_topmost else 0),
-                                       0, 0, 0, 0, flags))
+        repaired = bool(user32.SetWindowPos(hwnd, ctypes.c_void_p(-1 if raise_topmost else 0),
+                                            0, 0, 0, 0, flags))
+        if overlay:
+            self._last_overlay_raise = time.monotonic()
+        return repaired
+
+    def _blocked_by_overlay(self) -> bool:
+        # No focus changes or repeated z-order fighting with other applications.
+        if time.monotonic() - self._last_overlay_raise < 4 or QApplication.activePopupWidget():
+            return False
+        # Pick a point inside the painted region, not the transparent host's
+        # centre, which need not hit Arfoxia even when she is fully visible.
+        stripe = max(self.mask(), key=lambda rect: rect.width() * rect.height(), default=None)
+        if stripe is None:
+            return False
+        center = stripe.center()
+        dpr = self.devicePixelRatioF()
+        return blocked_by_desktop_overlay(int(self.winId()), round(center.x() * dpr),
+                                          round(center.y() * dpr))
 
     def _place_initially(self) -> None:
         screen = QApplication.primaryScreen()

@@ -6,6 +6,14 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Corregido — Superposiciones que tapan a Arfoxia en el escritorio — 2026-11-11
+
+- En Windows, Arfoxia recupera su capa cuando una superposición transparente
+  a los clics queda por delante, incluso si la mascota sigue marcada como
+  visible y «siempre encima». Solo interviene si falla la comprobación sobre
+  un píxel del sprite, sin quitar el foco ni pasar por encima de ventanas
+  interactivas, y respeta el ajuste «Siempre visible».
+
 ### Corregido — Arfoxia vuelve a aparecer sin abrir el chat — 2026-11-11
 
 - El vigilante recupera la mascota cuando Windows oculta, minimiza o retira
