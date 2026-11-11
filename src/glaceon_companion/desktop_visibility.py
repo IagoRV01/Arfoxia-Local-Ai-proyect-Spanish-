@@ -15,13 +15,13 @@ def _window_apis():
     return user32, ctypes.WinDLL("dwmapi")
 
 
-def blocked_by_desktop_overlay(hwnd: int, x: int, y: int) -> bool:
+def blocked_by_desktop_overlay(hwnd: int, x: int, y: int, bed_hwnd: int | None = None) -> bool:
     """Check a known painted pixel, supplied in native client coordinates."""
     user32, dwmapi = _window_apis()
-    return _blocked(user32, dwmapi, hwnd, wintypes.POINT(x, y))
+    return _blocked(user32, dwmapi, hwnd, wintypes.POINT(x, y), bed_hwnd)
 
 
-def _blocked(user32, dwmapi, hwnd: int, point: wintypes.POINT) -> bool:
+def _blocked(user32, dwmapi, hwnd: int, point: wintypes.POINT, bed_hwnd: int | None = None) -> bool:
     handle = wintypes.HWND(hwnd)
     if not user32.ClientToScreen(handle, ctypes.byref(point)):
         return False
@@ -42,9 +42,12 @@ def _blocked(user32, dwmapi, hwnd: int, point: wintypes.POINT) -> bool:
         higher = user32.GetWindow(handle, 3)  # GW_HWNDPREV
         if not higher:
             return covering_overlay
-        if higher in visited or higher == hit:
-            # A real hit above us (dialog, menu, game, etc.) is intentional.
+        if higher in visited:
             return False
+        if higher == hit:
+            # Interactive windows are intentional, except our own mattress
+            # when the pet is meant to be drawn on top of it.
+            return higher == bed_hwnd
         visited.add(higher)
         handle = wintypes.HWND(higher)
         style = user32.GetWindowLongW(handle, -20)  # GWL_EXSTYLE

@@ -839,12 +839,31 @@ def test_overlay_probe_uses_a_painted_point_and_has_a_cooldown(physical_pet, mon
     probes = []
     monkeypatch.setattr(ui, "blocked_by_desktop_overlay", lambda *args: probes.append(args) or True)
     assert pet._blocked_by_overlay()
-    handle, x, y = probes.pop()
+    handle, x, y, bed = probes.pop()
     assert handle == int(pet.winId())
+    assert bed is None
     assert pet.mask().contains(QPoint(round(x / pet.devicePixelRatioF()), round(y / pet.devicePixelRatioF())))
+    pet.bed_prop.show()
+    pet.sleeping_on_bed = True
+    assert pet._blocked_by_overlay()
+    assert probes.pop()[-1] == int(pet.bed_prop.winId())
     pet._last_overlay_raise = ui.time.monotonic()
     assert not pet._blocked_by_overlay()
     assert not probes
+
+
+def test_restoring_bed_does_not_leave_it_above_the_sleeping_pet(physical_pet, monkeypatch):
+    pet, service = physical_pet
+    service.config.bed_enabled = True
+    pet.sleeping_on_bed = True
+    raised = []
+    monkeypatch.setattr(pet.bed_prop, "raise_", lambda: raised.append("bed"))
+    monkeypatch.setattr(pet, "raise_", lambda: raised.append("pet"))
+
+    pet.restore_bed()
+
+    assert pet.bed_prop.isVisible()
+    assert raised == ["bed", "pet"]
 
 
 def test_manual_return_restores_animation_and_clears_previous_drag(physical_pet):

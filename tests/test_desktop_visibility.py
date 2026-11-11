@@ -8,19 +8,21 @@ import pytest
 from glaceon_companion.desktop_visibility import _blocked
 
 
-@pytest.mark.parametrize("hit,style,visible,cloaked,contains,expected", [
-    (10, 0x80028, True, False, True, False),  # pet is already hittable
-    (30, 0x80028, True, False, True, True),   # hit falls through to a window below
-    (20, 0x80028, True, False, True, False),  # foreground window actually takes the hit
-    (30, 0x80008, True, False, True, False),  # not click-through
-    (30, 0x8080028, True, False, True, False),  # passive system surface
-    (30, 0x80028, False, False, True, False),
-    (30, 0x80028, True, True, True, False),
-    (30, 0x80028, True, False, False, False),
-    (0, 0x80028, True, False, True, False),
+@pytest.mark.parametrize("hit,style,visible,cloaked,contains,bed,expected", [
+    (10, 0x80028, True, False, True, None, False),  # pet is already hittable
+    (30, 0x80028, True, False, True, None, True),   # hit falls through to a window below
+    (20, 0x80028, True, False, True, None, False),  # foreground window actually takes the hit
+    (20, 0x8080088, True, False, True, 20, True),  # own mattress covers a sleeping pet
+    (20, 0x8080088, True, False, True, 30, False),  # unrelated prop
+    (30, 0x80008, True, False, True, None, False),  # not click-through
+    (30, 0x8080028, True, False, True, None, False),  # passive system surface
+    (30, 0x80028, False, False, True, None, False),
+    (30, 0x80028, True, True, True, None, False),
+    (30, 0x80028, True, False, False, None, False),
+    (0, 0x80028, True, False, True, None, False),
 ])
 def test_overlay_recovery_distinguishes_visual_layers_from_foreground_windows(
-    hit, style, visible, cloaked, contains, expected,
+    hit, style, visible, cloaked, contains, bed, expected,
 ):
     def client_to_screen(_handle, point):
         point._obj.x -= 200  # negative physical desktop coordinates are valid
@@ -52,4 +54,4 @@ def test_overlay_recovery_distinguishes_visual_layers_from_foreground_windows(
         GetWindowRect=window_rect,
     )
     dwmapi = SimpleNamespace(DwmGetWindowAttribute=cloak_attribute)
-    assert _blocked(user32, dwmapi, 10, wintypes.POINT(50, 50)) is expected
+    assert _blocked(user32, dwmapi, 10, wintypes.POINT(50, 50), bed) is expected

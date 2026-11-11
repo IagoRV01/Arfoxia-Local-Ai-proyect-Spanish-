@@ -2966,8 +2966,10 @@ class PetWindow(QWidget):
             return False
         center = stripe.center()
         dpr = self.devicePixelRatioF()
+        bed_hwnd = (int(self.bed_prop.winId())
+                    if self.sleeping_on_bed and self.bed_prop.isVisible() else None)
         return blocked_by_desktop_overlay(int(self.winId()), round(center.x() * dpr),
-                                          round(center.y() * dpr))
+                                          round(center.y() * dpr), bed_hwnd)
 
     def _place_initially(self) -> None:
         screen = QApplication.primaryScreen()
@@ -3029,8 +3031,9 @@ class PetWindow(QWidget):
         )
         self.bed_prop.move(x, y)
         self.bed_prop.show()
-        self.bed_prop.raise_()
         self.ensure_bed_separation(save=False)
+        if self.sleeping_on_bed:
+            self.snap_to_bed()
         self.save_bed_position()
 
     def save_bed_position(self) -> None:

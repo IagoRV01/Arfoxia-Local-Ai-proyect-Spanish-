@@ -13,6 +13,8 @@ y las versiones del proyecto siguen versionado semántico.
   visible y «siempre encima». Solo interviene si falla la comprobación sobre
   un píxel del sprite, sin quitar el foco ni pasar por encima de ventanas
   interactivas, y respeta el ajuste «Siempre visible».
+- Si la cama queda delante al restaurar el escritorio, vuelve a colocar el
+  sprite dormido por encima del colchón, sin despertarlo.
 
 ### Corregido — Arfoxia vuelve a aparecer sin abrir el chat — 2026-11-11
 
