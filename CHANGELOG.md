@@ -6,6 +6,17 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Añadido — Estadísticas de la BC-250 en la app — 2026-11-20
+
+- La sección PC permite alternar entre «Este PC» y «BC-250», sin mezclar los
+  modelos ni las GPU de Windows con el equipo Bazzite.
+- Consulta CPU, RAM, disco de datos, tiempo encendida y sensores AMD de
+  temperatura, memoria gráfica y potencia SoC mediante la conexión SSH ya
+  registrada. Los sensores ausentes se indican como no disponibles.
+- Actualización cada 20 segundos solo con la pantalla remota activa; caché
+  breve compartida, tiempos límite y estado sin conexión sin cifras antiguas.
+  No instala servicios, abre puertos ni modifica Sunshine o modelos de IA.
+
 ### Corregido — Escritura visible con el teclado del iPhone — 2026-11-20
 
 - El chat comparte un único ajuste de teclado con la ventana principal y usa

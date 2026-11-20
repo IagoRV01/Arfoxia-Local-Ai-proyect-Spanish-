@@ -651,6 +651,8 @@ class CompanionService:
         self.events: Queue[dict[str, Any]] = Queue()
         from .travel import TravelManager
         self.travel = TravelManager(store.data_dir, config.api_port)
+        from .remote_system import RemoteSystemMonitor
+        self.bc250_monitor = RemoteSystemMonitor(self.travel)
         self.database = Database(store.data_dir / "companion.sqlite3")
         self.chat_storage = ConversationStorage(
             store.data_dir / "attachments",

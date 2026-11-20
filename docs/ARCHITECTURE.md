@@ -120,4 +120,23 @@ del almacén ya protegido, conservando la cuenta Windows y el token de Arfoxia.
 La UI borra el PIN al cambiar de destino, rechaza respuestas de otro destino y
 no confunde el contador agregado de clientes con el emparejamiento del iPhone.
 
+La pestaña PC separa «Este PC» de «BC-250». `GET /api/pc/bc250` está autenticado
+y delega en `RemoteSystemMonitor` mediante `asyncio.to_thread`. El destino no es
+parametrizable: solo usa el alias SSH registrado para `bc250`, con claves de
+host estrictas, modo no interactivo, reenvíos deshabilitados y timeout de 12 s.
+Una caché de 15 s protegida por bloqueo agrupa consultas concurrentes; un fallo
+devuelve estado sin conexión sin conservar cifras antiguas como actuales.
+
+`remote_system_agent.py` se ejecuta de forma efímera con Python estándar, sin
+instalaciones ni escrituras remotas. Lee `/proc` y sensores AMD de `/sys`;
+no necesita la contraseña de Sunshine ni cambia perfiles de GPU/IA. El disco
+mostrado es `/var/home` cuando existe, evitando el 100 % normal de la raíz
+inmutable de Bazzite. La memoria gráfica es la reserva que informa el driver,
+no una cantidad que se deba sumar a la RAM del sistema. Los sensores ausentes
+se devuelven como `null`. La [documentación oficial de AMDGPU](https://docs.kernel.org/gpu/amdgpu/thermal.html)
+define las unidades de temperatura/potencia; en APU la potencia puede incluir
+CPU, por lo que la UI la etiqueta como SoC. La app consulta cada 20 s solo
+con la vista BC-250 montada y la app activa, y limpia temporizador/suscripción
+al salir. Esta vista no muestra los controles de modelos de Windows.
+
 Una futura compilación independiente o app SwiftUI puede mantener este contrato cuando haya acceso a macOS, Xcode y una identidad de firma.

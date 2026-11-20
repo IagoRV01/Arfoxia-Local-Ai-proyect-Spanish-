@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 
 import { ApiError, ArfoxiaApi } from './api';
+import { RemoteSystemScreen } from './RemoteSystemScreen';
 import {
   displayGpus,
   gpuRoleLabel,
@@ -87,7 +88,20 @@ function modelBusyKey(mode: RequestedModelMode): string {
   return `model-mode:${mode}`;
 }
 
-export function SystemScreen({ api, onUnauthorized }: Props) {
+export function SystemScreen(props: Props) {
+  const [target, setTarget] = useState<'local' | 'bc250'>('local');
+  return <View style={{ flex: 1 }}>
+    <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 18, paddingVertical: 10 }}>
+      <Button label="Este PC" compact variant={target === 'local' ? 'primary' : 'secondary'}
+        accessibilityState={{ selected: target === 'local' }} onPress={() => setTarget('local')} />
+      <Button label="BC-250" compact variant={target === 'bc250' ? 'primary' : 'secondary'}
+        accessibilityState={{ selected: target === 'bc250' }} onPress={() => setTarget('bc250')} />
+    </View>
+    {target === 'local' ? <LocalSystemScreen {...props} /> : <RemoteSystemScreen {...props} />}
+  </View>;
+}
+
+function LocalSystemScreen({ api, onUnauthorized }: Props) {
   const [model, setModel] = useState<ModelStatus | null>(null);
   const [pc, setPc] = useState<PcStatus | null>(null);
   const [refreshing, setRefreshing] = useState(false);

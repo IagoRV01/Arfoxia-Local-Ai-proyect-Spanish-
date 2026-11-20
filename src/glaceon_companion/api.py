@@ -452,6 +452,10 @@ def create_api(service: CompanionService, token: str, static_dir: Path) -> FastA
         except GameStreamingError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    @app.get("/api/pc/bc250", dependencies=[auth])
+    async def bc250_status() -> dict[str, Any]:
+        return await asyncio.to_thread(service.bc250_monitor.status)
+
     @app.get("/api/gaming/targets", dependencies=[auth])
     async def gaming_targets():
         return {"targets": service.game_streaming.targets()}

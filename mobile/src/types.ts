@@ -385,6 +385,31 @@ export interface PcStatus {
 
 export type GameStreamingTarget = 'local' | 'bc250';
 
+type NullableMetrics<T> = {
+  [Key in keyof T]: T[Key] extends number | undefined ? T[Key] | null : T[Key];
+};
+
+export interface RemotePcStatus {
+  target: 'bc250';
+  label: string;
+  configured: boolean;
+  online: boolean;
+  sampled_at: string | null;
+  error: string;
+  status: (NullableMetrics<Omit<PcStatus, 'gpus'>> & {
+    disk_path?: string;
+    cpu_temperature_c?: number | null;
+    gpus: Array<{
+      name: string;
+      utilization_percent: number | null;
+      memory_used_mb: number | null;
+      memory_total_mb: number | null;
+      temperature_c: number | null;
+      soc_power_w: number | null;
+    }>;
+  }) | null;
+}
+
 export interface GameStreamingDestination {
   id: GameStreamingTarget;
   label: string;

@@ -23,6 +23,7 @@ import type {
   ModelStatus,
   RequestedModelMode,
   PcStatus,
+  RemotePcStatus,
   PetState,
   ProjectPreview,
   PreviewSession,
@@ -325,6 +326,10 @@ export class ArfoxiaApi {
       result,
       status: result.data as PcStatus | null,
     };
+  }
+
+  async bc250Status(): Promise<RemotePcStatus> {
+    return this.request<RemotePcStatus>('/api/pc/bc250', { timeoutMs: 20_000 });
   }
 
   async uploadAttachment(attachment: PendingAttachment): Promise<AttachmentInfo> {
