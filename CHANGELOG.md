@@ -6,6 +6,17 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Corregido — Escritura visible con el teclado del iPhone — 2026-11-20
+
+- El chat comparte un único ajuste de teclado con la ventana principal y usa
+  el margen superior real de iOS, en lugar de un desplazamiento fijo de 8.
+- La navegación y el acceso a juegos se ocultan mientras se escribe; el
+  historial cede espacio al campo multilínea y al botón de enviar. Arrastrar
+  el historial permite cerrar el teclado sin perder el borrador.
+- Alinea las siete dependencias señaladas por expo-doctor con SDK 58 estable
+  mediante la CLI oficial (Expo 58.0.26 y safe-area-context 5.11.1 incluidos).
+  Sin cambio de generación de SDK, emparejamiento, chats, credenciales ni modelos.
+
 ### Corregido — Superposiciones que tapan a Arfoxia en el escritorio — 2026-11-11
 
 - En Windows, Arfoxia recupera su capa cuando una superposición transparente

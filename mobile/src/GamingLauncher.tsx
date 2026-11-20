@@ -35,9 +35,10 @@ import {
 type Props = {
   api: ArfoxiaApi;
   onUnauthorized: () => void;
+  hideLauncher?: boolean;
 };
 
-export function GamingLauncher({ api, onUnauthorized }: Props) {
+export function GamingLauncher({ api, onUnauthorized, hideLauncher = false }: Props) {
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pairing, setPairing] = useState(false);
@@ -208,7 +209,7 @@ export function GamingLauncher({ api, onUnauthorized }: Props) {
 
   return (
     <>
-      <View style={styles.launcherBar}>
+      <View style={[styles.launcherBar, hideLauncher && { display: 'none' }]}>
         <Button
           label="Jugar · PC / BC-250"
           icon="🎮"

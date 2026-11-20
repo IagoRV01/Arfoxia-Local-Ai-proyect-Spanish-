@@ -4,7 +4,6 @@ import {
   Alert,
   AppState,
   FlatList,
-  KeyboardAvoidingView,
   Linking,
   Platform,
   Pressable,
@@ -1092,11 +1091,7 @@ export function ChatScreen({
   );
 
   return (
-    <KeyboardAvoidingView
-      style={styles.page}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={8}
-    >
+    <View style={styles.page}>
       <View style={styles.header}>
         <Pressable
           accessibilityRole="button"
@@ -1154,6 +1149,9 @@ export function ChatScreen({
       ) : (
         <FlatList
           ref={list}
+          style={styles.history}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           data={entries}
           renderItem={renderEntry}
           keyExtractor={(item) => item.id}
@@ -1300,11 +1298,13 @@ export function ChatScreen({
 
         <View style={styles.inputRow}>
           <TextInput
+            accessibilityLabel="Mensaje para Arfoxia"
             value={message}
             onChangeText={setMessage}
             editable={!composerDisabled}
             maxLength={1200}
             multiline
+            scrollEnabled
             placeholder={
               selectedConversation
                 ? 'Escribe a Arfoxia…'
@@ -1374,14 +1374,19 @@ export function ChatScreen({
         hint={mediaPreview?.hint}
         onClose={() => setMediaPreview(null)}
       />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   page: {
     flex: 1,
+    minHeight: 0,
     backgroundColor: colors.background,
+  },
+  history: {
+    flex: 1,
+    minHeight: 0,
   },
   header: {
     minHeight: 69,
@@ -1602,6 +1607,7 @@ const styles = StyleSheet.create({
     color: '#28627B',
   },
   composer: {
+    flexShrink: 0,
     paddingHorizontal: 13,
     paddingTop: 10,
     paddingBottom: 10,
@@ -1711,6 +1717,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 15,
     lineHeight: 21,
+    textAlignVertical: 'top',
   },
   send: {
     width: 46,

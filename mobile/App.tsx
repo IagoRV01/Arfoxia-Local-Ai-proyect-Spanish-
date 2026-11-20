@@ -17,6 +17,7 @@ import { CompanionScreen } from './src/CompanionScreen';
 import { clearCredentials, loadCredentials } from './src/credentials';
 import { PairScreen } from './src/PairScreen';
 import { GamingLauncher } from './src/GamingLauncher';
+import { MainKeyboardLayout } from './src/KeyboardLayout';
 import { MOONLIGHT_APP_STORE_URL, moonlightShortcutUrl } from './src/moonlight';
 import { SettingsScreen } from './src/SettingsScreen';
 import { SystemScreen } from './src/SystemScreen';
@@ -152,7 +153,14 @@ export default function App() {
     );
   } else {
     content = (
-      <View style={styles.app}>
+      <MainKeyboardLayout
+        footer={(keyboardVisible) => (
+          <>
+            <GamingLauncher api={api} onUnauthorized={unauthorized} hideLauncher={keyboardVisible} />
+            {!keyboardVisible && <BottomNavigation active={tab} onChange={setTab} />}
+          </>
+        )}
+      >
         <View style={styles.content}>
           {tab === 'companion' ? (
             <CompanionScreen api={api} onUnauthorized={unauthorized} />
@@ -181,9 +189,7 @@ export default function App() {
             />
           ) : null}
         </View>
-        <GamingLauncher api={api} onUnauthorized={unauthorized} />
-        <BottomNavigation active={tab} onChange={setTab} />
-      </View>
+      </MainKeyboardLayout>
     );
   }
 
@@ -305,11 +311,9 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
-  app: {
-    flex: 1,
-  },
   content: {
     flex: 1,
+    minHeight: 0,
   },
   tabPanel: {
     flex: 1,
