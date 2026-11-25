@@ -27,6 +27,7 @@ import Markdown, {
 
 import { ApiError, ArfoxiaApi, findScreenshotId } from './api';
 import { ConversationListModal } from './ConversationListModal';
+import { isNearLatest, newestFirst } from './chatScroll';
 import { MarkdownCodeBlock, codeFontFamily } from './MarkdownCodeBlock';
 import { ProjectViewer } from './ProjectViewer';
 import {
@@ -189,7 +190,9 @@ export function ChatScreen({
   const list = useRef<FlatList<ChatEntry>>(null);
   const selectedIdRef = useRef<string | null>(null);
   const nextConversationCursorRef = useRef<string | null>(null);
-  const shouldScrollToEnd = useRef(false);
+  const followLatest = useRef(true);
+  const readingHistory = useRef(false);
+  const latestFrame = useRef<number | null>(null);
   const loadGeneration = useRef(0);
   const conversationListGeneration = useRef(0);
   const sendInFlightRef = useRef(false);
@@ -233,6 +236,29 @@ export function ChatScreen({
     () => [...messages.map(chatMessageToEntry), ...localEntries],
     [localEntries, messages],
   );
+  const displayedEntries = useMemo(() => newestFirst(entries), [entries]);
+  const scrollToLatest = useCallback(() => {
+    if (!active || !followLatest.current) return;
+    if (latestFrame.current !== null) cancelAnimationFrame(latestFrame.current);
+    latestFrame.current = requestAnimationFrame(() => {
+      latestFrame.current = null;
+      if (followLatest.current) {
+        list.current?.scrollToOffset({ offset: 0, animated: false });
+      }
+    });
+  }, [active]);
+
+  useEffect(() => {
+    if (active) {
+      readingHistory.current = false;
+      followLatest.current = true;
+      scrollToLatest();
+    }
+    return () => {
+      if (latestFrame.current !== null) cancelAnimationFrame(latestFrame.current);
+      latestFrame.current = null;
+    };
+  }, [active, scrollToLatest]);
   const totalBytes = useMemo(
     () => attachments.reduce((total, attachment) => total + attachment.size, 0),
     [attachments],
@@ -266,6 +292,8 @@ export function ChatScreen({
         ? loadGeneration.current
         : ++loadGeneration.current;
       if (!options.quiet) {
+        readingHistory.current = false;
+        followLatest.current = true;
         setLoadingHistory(true);
         setMessages([]);
         setLocalEntries([]);
@@ -303,7 +331,6 @@ export function ChatScreen({
         if (!options.quiet) {
           setHasMore(Boolean(result.has_more));
           setNextBeforeId(result.next_before_id ?? null);
-          shouldScrollToEnd.current = true;
         }
         setOffline(false);
         setError('');
@@ -456,6 +483,9 @@ export function ChatScreen({
     const timer = setInterval(sync, SYNC_INTERVAL_MS);
     const subscription = AppState.addEventListener('change', (next) => {
       if (next === 'active') {
+        readingHistory.current = false;
+        followLatest.current = true;
+        scrollToLatest();
         sync();
       }
     });
@@ -463,7 +493,7 @@ export function ChatScreen({
       clearInterval(timer);
       subscription.remove();
     };
-  }, [active, busy, api, handleError, loadConversation, loadConversationList]);
+  }, [active, busy, api, handleError, loadConversation, loadConversationList, scrollToLatest]);
 
   const createConversation = useCallback(async () => {
     if (createInFlightRef.current) {
@@ -546,6 +576,8 @@ export function ChatScreen({
     if (!conversationId || !nextBeforeId || loadingOlder) {
       return;
     }
+    readingHistory.current = true;
+    followLatest.current = false;
     setLoadingOlder(true);
     try {
       const result = await api.conversationMessages(conversationId, {
@@ -737,6 +769,8 @@ export function ChatScreen({
     let uploadedCount = 0;
     const clientMessageId = createClientMessageId();
     const localId = `local:${clientMessageId}`;
+    readingHistory.current = false;
+    followLatest.current = true;
     setLocalEntries((current) => [
       ...current,
       {
@@ -748,7 +782,6 @@ export function ChatScreen({
         delivery: 'sending',
       },
     ]);
-    shouldScrollToEnd.current = true;
 
     try {
       const attachmentIds: string[] = [];
@@ -830,7 +863,6 @@ export function ChatScreen({
           upsertConversation(current, response.conversation as Conversation),
         );
       }
-      shouldScrollToEnd.current = stillSelected;
 
       const screenshot = findScreenshotId(response);
       if (stillSelected && screenshot && !response.assistant_message) {
@@ -1152,7 +1184,8 @@ export function ChatScreen({
           style={styles.history}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-          data={entries}
+          inverted
+          data={displayedEntries}
           renderItem={renderEntry}
           keyExtractor={(item) => item.id}
           contentContainerStyle={[
@@ -1175,7 +1208,7 @@ export function ChatScreen({
               }
             />
           }
-          ListHeaderComponent={
+          ListFooterComponent={
             hasMore ? (
               <View style={styles.olderWrap}>
                 <Button
@@ -1205,12 +1238,20 @@ export function ChatScreen({
               tintColor={colors.ice}
             />
           }
-          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+          maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 64 }}
           showsVerticalScrollIndicator={false}
-          onContentSizeChange={() => {
-            if (shouldScrollToEnd.current) {
-              shouldScrollToEnd.current = false;
-              list.current?.scrollToEnd({ animated: false });
+          onLayout={scrollToLatest}
+          onContentSizeChange={scrollToLatest}
+          scrollEventThrottle={16}
+          onScrollBeginDrag={() => {
+            readingHistory.current = true;
+            followLatest.current = false;
+            if (latestFrame.current !== null) cancelAnimationFrame(latestFrame.current);
+            latestFrame.current = null;
+          }}
+          onScroll={({ nativeEvent }) => {
+            if (readingHistory.current) {
+              followLatest.current = isNearLatest(nativeEvent.contentOffset.y);
             }
           }}
         />
@@ -1463,7 +1504,7 @@ const styles = StyleSheet.create({
   },
   messages: {
     flexGrow: 1,
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
     padding: 16,
     paddingBottom: 20,
   },

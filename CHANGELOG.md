@@ -6,6 +6,16 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Corregido — El chat abre en el último mensaje — 2026-11-25
+
+- El historial móvil usa una lista invertida con el mensaje más reciente en
+  el desplazamiento cero, sin estimar la altura de mensajes largos o imágenes.
+- Al abrir el chat o volver a Expo Go, muestra el último mensaje y reajusta
+  la posición tras los cambios de tamaño del historial o del teclado.
+- Si subes a leer o cargas mensajes anteriores, conserva tu posición sin
+  arrastrarte hacia abajo durante las sincronizaciones. No cambia el orden
+  guardado, los chats, los adjuntos ni las credenciales.
+
 ### Añadido — Estadísticas de la BC-250 en la app — 2026-11-20
 
 - La sección PC permite alternar entre «Este PC» y «BC-250», sin mezclar los
