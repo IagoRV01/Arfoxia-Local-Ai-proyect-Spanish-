@@ -6,6 +6,15 @@ y las versiones del proyecto siguen versionado semántico.
 
 ## [Sin publicar]
 
+### Actualizado — Expo 58.1 compatible con Expo Go — 2026-11-26
+
+- Actualiza Expo de 58.0.26 a 58.1.0 estable, recomendado para SDK 58 por el
+  registro oficial de versiones de Expo y publicado como `latest` en npm.
+- Alinea expo-file-system 58.0.15, expo-image 58.0.19 y expo-splash-screen
+  58.0.15 mediante la CLI oficial; conserva React Native 0.88.1 y React 19.3.
+- Mantiene identificadores, SecureStore, chats, sesiones, ruta privada de
+  Tailscale y ajustes de IA/GPU. No requiere cambios del código de la app.
+
 ### Corregido — El chat abre en el último mensaje — 2026-11-25
 
 - El historial móvil usa una lista invertida con el mensaje más reciente en
